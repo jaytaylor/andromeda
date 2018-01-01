@@ -1,16 +1,23 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/onrik/logrus/filename"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	"jaytaylor.com/andromeda/crawler"
 	"jaytaylor.com/andromeda/db"
@@ -42,6 +49,10 @@ func init() {
 
 	remoteCrawlerCmd.Flags().StringVarP(&CrawlServerAddr, "addr", "a", CrawlServerAddr, "Crawl server host:port address spec")
 
+	remoteCrawlerCmd.Flags().StringVarP(&TLSCertFile, "cert", "c", TLSCertFile, "SSL/TLS public key certifcate file for mutual CA-based authentication, or in the case of a client connecting over HTTPS, this will be the SSL/TLS public-key certificate file belonging to the SSL-terminating server.")
+	remoteCrawlerCmd.Flags().StringVarP(&TLSKeyFile, "key", "k", TLSKeyFile, "SSL/TLS private key certificate file for mutual TLS CA-based authentication")
+	remoteCrawlerCmd.Flags().StringVarP(&TLSCAFile, "ca", "", TLSCAFile, "ca.crt file for mutual TLS CA-based authentication")
+
 	rebuildDBCmd.Flags().StringVarP(&RebuildDBFile, "target", "t", RebuildDBFile, "Target destination filename")
 
 	rootCmd.AddCommand(bootstrapCmd)
@@ -66,11 +77,17 @@ var (
 
 	BootstrapGoDocPackagesFile string
 
+	EnqueuePriority = db.DefaultQueuePriority
+
 	WebAddr string
 
 	CrawlServerAddr = "127.0.01:8082"
 
-	EnqueuePriority = db.DefaultQueuePriority
+	// TODO: Server-side integration not yet complete.  Currently terminating SSL
+	//       with Apache.
+	TLSCertFile string
+	TLSKeyFile  string
+	TLSCAFile   string
 )
 
 func main() {
@@ -382,6 +399,10 @@ var remoteCrawlerCmd = &cobra.Command{
 			runDoneCh = make(chan struct{}, 1)
 		)
 
+		if err := configureRemoteCrawler(r); err != nil {
+			log.Fatalf("main: configuring remote crawler: %s", err)
+		}
+
 		go func() {
 			r.Run(stopCh)
 			runDoneCh <- struct{}{}
@@ -402,6 +423,58 @@ var remoteCrawlerCmd = &cobra.Command{
 			return
 		}
 	},
+}
+
+func configureRemoteCrawler(r *crawler.Remote) error {
+	if len(TLSCertFile) == 0 && len(TLSKeyFile) == 0 && len(TLSCAFile) == 0 {
+		return nil
+	}
+
+	var creds credentials.TransportCredentials
+	if len(TLSCAFile) > 0 || len(TLSKeyFile) > 0 {
+		// Implies intent to use mutual TLS CA authentication.
+		log.WithField("cert", TLSCertFile).WithField("key", TLSKeyFile).WithField("ca", TLSCAFile).Debug("Mutual TLS CA authentication activated")
+
+		if len(TLSCertFile) == 0 || len(TLSKeyFile) == 0 || len(TLSCAFile) == 0 {
+			return errors.New("mutual TLS CA authentication required all 3 certificate flags: public.cert, private.key, and ca.cert")
+		}
+
+		// Load the client certificates from disk.
+		certificate, err := tls.LoadX509KeyPair(TLSCertFile, TLSKeyFile)
+		if err != nil {
+			return fmt.Errorf("could not load TLS key pair cert=%v key=%v: %s", TLSCertFile, TLSKeyFile, err)
+		}
+
+		// Create a certificate pool from the certificate authority.
+		certPool := x509.NewCertPool()
+		ca, err := ioutil.ReadFile(TLSCAFile)
+		if err != nil {
+			return fmt.Errorf("could not read ca certificate: %s", err)
+		}
+
+		// Append the certificates from the CA
+		if ok := certPool.AppendCertsFromPEM(ca); !ok {
+			return errors.New("failed to append ca certs")
+		}
+
+		creds = credentials.NewTLS(&tls.Config{
+			// N.B.: ServerName _must_ align with the Common Name (CN) in the certificate.
+			ServerName:   strings.Split(CrawlServerAddr, ":")[0],
+			Certificates: []tls.Certificate{certificate},
+			RootCAs:      certPool,
+		})
+	} else {
+		// Implies intent to use SSL/TLS transport.
+		log.WithField("cert", TLSCertFile).Debug("Client SSL/TLS transport activated")
+
+		var err error
+
+		if creds, err = credentials.NewClientTLSFromFile(TLSCertFile, ""); err != nil {
+			return err
+		}
+	}
+	r.DialOptions = append(r.DialOptions, grpc.WithTransportCredentials(creds))
+	return nil
 }
 
 var normalizeSubPackageKeysCmd = &cobra.Command{
