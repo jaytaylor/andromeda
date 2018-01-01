@@ -12,14 +12,16 @@ import (
 )
 
 type Remote struct {
-	Addr    string
-	crawler *Crawler
+	Addr        string
+	DialOptions []grpc.DialOption
+	crawler     *Crawler
 }
 
-func NewRemote(addr string, cfg *Config) *Remote {
+func NewRemote(addr string, crawlCfg *Config) *Remote {
 	r := &Remote{
-		Addr:    addr,
-		crawler: New(cfg),
+		Addr:        addr,
+		DialOptions: []grpc.DialOption{},
+		crawler:     New(crawlCfg),
 	}
 	return r
 }
@@ -38,7 +40,11 @@ func (r *Remote) Run(stopCh chan struct{}) {
 				return ErrStopRequested
 			}
 
-			conn, err := grpc.Dial(r.Addr, grpc.WithInsecure())
+			if len(r.DialOptions) == 0 {
+				log.Debug("Activated gRPC dial option grpc.WithInsecure() due to empty options")
+				r.DialOptions = append(r.DialOptions, grpc.WithInsecure())
+			}
+			conn, err := grpc.Dial(r.Addr, r.DialOptions...)
 			if err != nil {
 				return fmt.Errorf("Dialing %v: %s", r.Addr, err)
 			}
