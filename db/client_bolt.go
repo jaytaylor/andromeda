@@ -1,0 +1,318 @@
+package db
+
+import (
+	"fmt"
+	"sync"
+	"time"
+
+	"github.com/coreos/bbolt"
+	"github.com/gogo/protobuf/proto"
+	log "github.com/sirupsen/logrus"
+
+	"github.com/jaytaylor/universe/domain"
+)
+
+const (
+	metadataBucket = "universe-metadata"
+	packagesBucket = "packages"
+	toCrawlBucket  = "to-crawl"
+)
+
+type BoltDBConfig struct {
+	DBFile      string
+	BoltOptions *bolt.Options
+}
+
+func NewBoltDBConfig(dbFilename string) *BoltDBConfig {
+	cfg := &BoltDBConfig{
+		DBFile: dbFilename,
+		BoltOptions: &bolt.Options{
+			Timeout: 1 * time.Second,
+		},
+	}
+	return cfg
+}
+
+func (cfg BoltDBConfig) Type() DBType {
+	return Bolt
+}
+
+type BoltDBClient struct {
+	config *BoltDBConfig
+	db     *bolt.DB
+	mu     sync.Mutex
+}
+
+func newBoltDBClient(config *BoltDBConfig) *BoltDBClient {
+	client := &BoltDBClient{
+		config: config,
+	}
+	return client
+}
+
+func (client *BoltDBClient) Open() error {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+
+	if client.db != nil {
+		return nil
+	}
+
+	db, err := bolt.Open(client.config.DBFile, 0600, client.config.BoltOptions)
+	if err != nil {
+		return err
+	}
+	client.db = db
+
+	if err := client.initDB(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (client *BoltDBClient) Close() error {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+
+	if client.db == nil {
+		return nil
+	}
+
+	if err := client.db.Close(); err != nil {
+		return err
+	}
+
+	client.db = nil
+
+	return nil
+}
+
+func (client *BoltDBClient) initDB() error {
+	return client.db.Update(func(tx *bolt.Tx) error {
+		buckets := []string{
+			metadataBucket,
+			packagesBucket,
+			toCrawlBucket,
+		}
+		for _, name := range buckets {
+			if _, err := tx.CreateBucketIfNotExists([]byte(name)); err != nil {
+				return fmt.Errorf("initDB: creating bucket %q: %s", name, err)
+			}
+		}
+		return nil
+	})
+}
+
+func (client *BoltDBClient) PackageSave(pkgs ...*domain.Package) error {
+	return client.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(packagesBucket))
+		for _, pkg := range pkgs {
+			var (
+				k   = []byte(pkg.Path)
+				v   = b.Get(k)
+				err error
+			)
+			if v == nil || pkg.ID == 0 {
+				id, err := b.NextSequence()
+				if err != nil {
+					return fmt.Errorf("getting next ID for new package %q: %s", pkg.Path, err)
+				}
+
+				pkg.ID = id
+			}
+
+			if v, err = proto.Marshal(pkg); err != nil {
+				return fmt.Errorf("marshalling Package %q: %s", pkg.Path, err)
+			}
+
+			if err = b.Put(k, v); err != nil {
+				return fmt.Errorf("saving Package %q: %s", pkg.Path, err)
+			}
+		}
+
+		return nil
+	})
+}
+
+func (client *BoltDBClient) ToCrawlAdd(entries ...*domain.ToCrawlEntry) error {
+	return client.db.Update(func(tx *bolt.Tx) error {
+		for _, entry := range entries {
+			k := []byte(entry.PackageName)
+
+			{
+				b := tx.Bucket([]byte(packagesBucket))
+
+				if alreadyIndexed := b.Get(k); alreadyIndexed != nil {
+					log.WithField("pkg-name", entry.PackageName).Debug("Already indexed")
+					continue
+				}
+			}
+
+			b := tx.Bucket([]byte(toCrawlBucket))
+			if alreadyQueued := b.Get(k); alreadyQueued != nil {
+				log.WithField("pkg-name", entry.PackageName).Debug("Already queued")
+				continue
+			}
+
+			if entry.ID == 0 {
+				id, err := b.NextSequence()
+				if err != nil {
+					return fmt.Errorf("getting next ID for ToCrawlEntry %q: %s", entry.PackageName, err)
+				}
+				entry.ID = id
+			}
+
+			v, err := proto.Marshal(entry)
+			if err != nil {
+				return fmt.Errorf("marshalling ToCrawlEntry %q: %s", entry.PackageName, err)
+			}
+
+			if err := b.Put(k, v); err != nil {
+				return fmt.Errorf("saving ToCrawlEntry %q: %s", entry.PackageName, err)
+			}
+		}
+
+		return nil
+	})
+}
+
+// PackageDelete N.B. no existence check is performed.
+func (client *BoltDBClient) PackageDelete(pkgNames ...string) error {
+	return client.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(packagesBucket))
+		for _, pkgName := range pkgNames {
+			k := []byte(pkgName)
+			if err := b.Delete(k); err != nil {
+				return fmt.Errorf("deleting package %q: %s", pkgName, err)
+			}
+		}
+		return nil
+	})
+}
+
+// CrawlQueueDelete N.B. no existence check is performed.
+func (client *BoltDBClient) ToCrawlDelete(pkgNames ...string) error {
+	return client.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(toCrawlBucket))
+		for _, pkgName := range pkgNames {
+			k := []byte(pkgName)
+			if err := b.Delete(k); err != nil {
+				return fmt.Errorf("deleting to-crawl entry %q: %s", pkgName, err)
+			}
+		}
+		return nil
+	})
+}
+
+func (client *BoltDBClient) Package(pkgName string) (*domain.Package, error) {
+	var pkg domain.Package
+
+	if err := client.db.View(func(tx *bolt.Tx) error {
+		var (
+			b = tx.Bucket([]byte(packagesBucket))
+			k = []byte(pkgName)
+			v = b.Get(k)
+		)
+
+		if v == nil {
+			return ErrKeyNotFound
+		}
+
+		return proto.Unmarshal(v, &pkg)
+	}); err != nil {
+		return nil, err
+	}
+	return &pkg, nil
+}
+
+func (client *BoltDBClient) Packages(fn func(pkg *domain.Package)) error {
+	return client.db.View(func(tx *bolt.Tx) error {
+		var (
+			b = tx.Bucket([]byte(packagesBucket))
+			c = b.Cursor()
+		)
+
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			var pkg domain.Package
+			if err := proto.Unmarshal(v, &pkg); err != nil {
+				return err
+			}
+			fn(&pkg)
+		}
+		return nil
+	})
+}
+
+func (client *BoltDBClient) ToCrawl(pkgName string) (*domain.ToCrawlEntry, error) {
+	var entry domain.ToCrawlEntry
+
+	if err := client.db.View(func(tx *bolt.Tx) error {
+		var (
+			b = tx.Bucket([]byte(toCrawlBucket))
+			k = []byte(pkgName)
+			v = b.Get(k)
+		)
+
+		if v == nil {
+			return ErrKeyNotFound
+		}
+
+		return proto.Unmarshal(v, &entry)
+	}); err != nil {
+		return nil, err
+	}
+	return &entry, nil
+}
+
+func (client *BoltDBClient) ToCrawls(fn func(entry *domain.ToCrawlEntry)) error {
+	return client.db.View(func(tx *bolt.Tx) error {
+		var (
+			b = tx.Bucket([]byte(toCrawlBucket))
+			c = b.Cursor()
+		)
+
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			var entry domain.ToCrawlEntry
+			if err := proto.Unmarshal(v, &entry); err != nil {
+				return err
+			}
+			fn(&entry)
+		}
+		return nil
+	})
+}
+
+func (client *BoltDBClient) PackagesLen() (int, error) {
+	var n int
+
+	if err := client.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(packagesBucket))
+
+		n = b.Stats().KeyN
+
+		return nil
+	}); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+func (client *BoltDBClient) ToCrawlsLen() (int, error) {
+	var n int
+
+	if err := client.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(toCrawlBucket))
+
+		n = b.Stats().KeyN
+
+		return nil
+	}); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+func (client *BoltDBClient) Search(q string) (*domain.Package, error) {
+	return nil, fmt.Errorf("not yet implemented")
+}
