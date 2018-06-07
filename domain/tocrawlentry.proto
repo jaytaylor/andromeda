@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package domain;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+import "google/protobuf/timestamp.proto";
+
+message ToCrawlEntry {
+  uint64 id = 1 [(gogoproto.customname) = "ID"];
+  string package_name = 2;
+  string reason = 3;
+  google.protobuf.Timestamp submitted_at = 4 [(gogoproto.stdtime) = true];
+}

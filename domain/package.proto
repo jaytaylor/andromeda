@@ -2,22 +2,25 @@ syntax = "proto3";
 
 package domain;
 
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
 import "google/protobuf/timestamp.proto";
 
 message Package {
-  string name = 1;
-  string path = 2;
-  string url = 3;
-  string author = 4;
-  PackageSnapshot data = 5;
-  google.protobuf.Timestamp first_seen_at = 6;
-  repeated PackageCrawl history = 7;
-  // int history_last_change_index = 8;
+  uint64 id = 1 [(gogoproto.customname) = "ID"];
+  string name = 2;
+  string path = 3;
+  string url = 4 [(gogoproto.customname) = "URL"];
+  string author = 5;
+  PackageSnapshot data = 6;
+  google.protobuf.Timestamp first_seen_at = 7 [(gogoproto.stdtime) = true];
+  repeated PackageCrawl history = 8;
+  // int history_last_change_index = 9;
 }
 
 message PackageCrawl {
-  google.protobuf.Timestamp job_started_at = 1;
-  google.protobuf.Timestamp job_finished_at = 2;
+  google.protobuf.Timestamp job_started_at = 1 [(gogoproto.stdtime) = true];
+  google.protobuf.Timestamp job_finished_at = 2 [(gogoproto.stdtime) = true];
   string job_reason = 3;
   string job_succeeded = 4;
   string job_messages = 5;
@@ -25,7 +28,7 @@ message PackageCrawl {
 }
 
 message PackageSnapshot {
-  google.protobuf.Timestamp created_at = 1;
+  google.protobuf.Timestamp created_at = 1 [(gogoproto.stdtime) = true];
   repeated string imports = 2;
   repeated string test_imports = 3;
   int32 commits = 4;
