@@ -11,7 +11,7 @@ message Package {
   string name = 2;
   string path = 3;
   string url = 4 [(gogoproto.customname) = "URL"];
-  string author = 5;
+  string owner = 5;
   PackageSnapshot data = 6;
   google.protobuf.Timestamp first_seen_at = 7 [(gogoproto.stdtime) = true];
   repeated PackageCrawl history = 8;

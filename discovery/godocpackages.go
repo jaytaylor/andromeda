@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // URL points to the location of the godoc.org packages listing.
@@ -42,6 +44,7 @@ func ParseGoDocPackages(r io.Reader) (GoDocPackages, error) {
 // ListGoDocPackages downloads the latest packages listing from
 // api.godoc.org/packages.
 func ListGoDocPackages() (GoDocPackages, error) {
+	log.Info("Downloading package listing from api.godoc.org")
 	resp, err := http.Get(URL)
 	if err != nil {
 		return GoDocPackages{}, nil
@@ -52,5 +55,6 @@ func ListGoDocPackages() (GoDocPackages, error) {
 	if err != nil {
 		return gdp, err
 	}
+	log.WithField("len", len(gdp.Results)).Info("Obtained package listing from api.godoc.org")
 	return gdp, nil
 }
