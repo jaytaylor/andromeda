@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package domain;
+
+import "google/protobuf/timestamp.proto";
+
+message Package {
+  string name = 1;
+  string path = 2;
+  string url = 3;
+  string author = 4;
+  PackageSnapshot data = 5;
+  google.protobuf.Timestamp first_seen_at = 6;
+  repeated PackageCrawl history = 7;
+  // int history_last_change_index = 8;
+}
+
+message PackageCrawl {
+  google.protobuf.Timestamp job_started_at = 1;
+  google.protobuf.Timestamp job_finished_at = 2;
+  string job_reason = 3;
+  string job_succeeded = 4;
+  string job_messages = 5;
+  PackageSnapshot data = 6;
+}
+
+message PackageSnapshot {
+  google.protobuf.Timestamp created_at = 1;
+  repeated string imports = 2;
+  repeated string test_imports = 3;
+  int32 commits = 4;
+  int32 branches = 5;
+  int32 tags = 6;
+  int64 bytes = 7;
+  int32 forks = 8;
+  int32 stars = 9;
+}
