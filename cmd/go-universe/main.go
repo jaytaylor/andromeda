@@ -210,13 +210,10 @@ func bootstrap(dbClient db.DBClient) error {
 }
 
 func crawl(dbClient db.DBClient) error {
-	var (
-		cfg = &crawler.Config{
-			MaxItems: CrawlerMaxItems,
-		}
-		crawler = crawler.New(dbClient, cfg)
-	)
+	cfg := crawler.NewConfig()
+	cfg.MaxItems = CrawlerMaxItems
 
+	crawler := crawler.New(dbClient, cfg)
 	return crawler.Run()
 }
 

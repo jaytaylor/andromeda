@@ -1,5 +1,6 @@
 package crawler
 
+/*
 import (
 	//"encoding/json"
 	"fmt"
@@ -7,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -18,42 +18,6 @@ import (
 	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/cfg"
 	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/load"
 )
-
-type Config struct {
-	MaxItems    int    // Maximum number of items to process.
-	SrcPath     string // Location to checkout code to.
-	DeleteAfter bool   // Delete package code after analysis.
-}
-
-func NewConfig() *Config {
-	cfg := &Config{
-		SrcPath:     filepath.Join(os.TempDir(), "src"),
-		DeleteAfter: false,
-	}
-	return cfg
-}
-
-// TODO: Support for picking up where last run left off.
-
-type Crawler struct {
-	Config       *Config
-	Processors   []HydratorFunc
-	db           db.DBClient
-	mu           sync.RWMutex
-	numProcessed int
-}
-
-type HydratorFunc func(rr *vcs.RepoRoot, pkg *domain.Package) error
-
-// New creates and returns a new crawler instance with the supplied db client
-// and configuration.
-func New(dbClient db.DBClient, cfg *Config) *Crawler {
-	c := &Crawler{
-		Config: cfg,
-		db:     dbClient,
-	}
-	return c
-}
 
 func (c *Crawler) Run() error {
 	log.WithField("cfg", fmt.Sprintf("%# v", c.Config)).Info("Crawler starting")
@@ -96,10 +60,6 @@ func (c *Crawler) Run() error {
 		}
 		log.WithField("pkg-path", pkg.Path).Debug("Deleted to-crawl entry")
 	}
-	c.mu.Lock()
-	c.numProcessed++
-	c.mu.Unlock()
-
 	if dbErr != nil {
 		return dbErr
 	}
@@ -111,107 +71,69 @@ func (c *Crawler) Run() error {
 	return nil
 }
 
-func (c *Crawler) NumProcessed() int {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.numProcessed
-}
-
 func (c *Crawler) do(pkgPath string) (*domain.Package, error) {
 	pkg, err := c.db.Package(pkgPath)
 	if err != nil && err != db.ErrKeyNotFound {
 		return nil, err
 	}
 
-	var rr *vcs.RepoRoot
-	if strings.Contains(pkgPath, ".") {
-		rr, err = vcs.RepoRootForImportPath(pkgPath, true) // TODO: Only set true when logging is verbose.
-		if err != nil {
-			return nil, err
-		}
-		log.Infof("root=%[1]v\nrepo=%[2]v\nvcs=%[3]T/%[3]v\n", rr.Root, rr.Repo, rr.VCS.Name)
-	} else {
-		rr = &vcs.RepoRoot{
-			Repo: pkgPath,
-			Root: pkgPath,
-			VCS: &vcs.Cmd{
-				Name: "local",
-			},
-		}
+	rr, err := vcs.RepoRootForImportPath(pkgPath, true) // TODO: Only set true when logging is verbose.
+	if err != nil {
+		return nil, err
 	}
+	log.Infof("root=%[1]v\nrepo=%[2]v\nvcs=%[3]T/%[3]v\n", rr.Root, rr.Repo, rr.VCS.Name)
 
-	now := time.Now()
+	localPath := filepath.Join(c.Config.SrcPath, rr.Root)
+
+	startedAt := time.Now()
 
 	// If first crawl.
 	if pkg == nil {
+		now := time.Now()
 		pkg = &domain.Package{
 			FirstSeenAt: &now,
 			Path:        rr.Root,
-			Name:        "", // TODO: package name(s)???
+			Name:        "", // TODO: package name???
 			URL:         rr.Repo,
 			VCS:         rr.VCS.Name,
-			Data:        nil,
+			Data:        &domain.PackageSnapshot{},
 			History:     []*domain.PackageCrawl{},
 		}
 	}
 
-	pc := &domain.PackageCrawl{
-		JobStartedAt: &now,
-		Data:         &domain.PackageSnapshot{},
-	}
+	defer os.RemoveAll(localPath)
 
-	pkg.History = append(pkg.History, pc)
-
-	localPath := filepath.Join(c.Config.SrcPath, rr.Root)
-
-	if c.Config.DeleteAfter {
-		defer os.RemoveAll(localPath)
-	}
-
-	if err := c.Collect(pkg, rr); err != nil {
-		return pkg, err
-	}
-	if err := c.Hydrate(pkg, rr); err != nil {
-		return pkg, err
-	}
-	return pkg, nil
-}
-
-// Collect phase fetches information so a package can be analyzed.
-func (c *Crawler) Collect(pkg *domain.Package, rr *vcs.RepoRoot) error {
-	if !strings.Contains(pkg.Path, ".") {
-		return nil
-	}
 	if err := c.get(rr); err != nil {
 		finishedAt := time.Now()
-		pkg.LatestCrawl().AddMessage(fmt.Sprintf("go getting: %v", err.Error()))
-		pkg.LatestCrawl().JobSucceeded = false
-		pkg.LatestCrawl().JobFinishedAt = &finishedAt
-		return err
+		pc := &domain.PackageCrawl{
+			JobMessages:   []string{fmt.Sprintf("go getting: %v", err.Error())},
+			JobSucceeded:  false,
+			JobStartedAt:  &startedAt,
+			JobFinishedAt: &finishedAt,
+		}
+		pkg.History = append(pkg.History, pc)
+		return pkg, err
 	}
-	return nil
-}
 
-// Hydrate phase consumes collected information and artifacts to create or
-// update a *domain.Package struct.
-//
-// If pkg is nil, it is assumed that this is the first crawl.
-func (c *Crawler) Hydrate(pkg *domain.Package, rr *vcs.RepoRoot) error {
-	err := c.interrogate(pkg, rr)
+	pc, err := c.interrogate(rr)
 
 	finishedAt := time.Now()
 
-	pkg.LatestCrawl().JobFinishedAt = &finishedAt
+	pc.JobStartedAt = &startedAt
+	pc.JobFinishedAt = &finishedAt
+
+	// TODO: Merge in latest info.
+	pkg.History = append(pkg.History, pc)
 
 	if err != nil {
-		pkg.LatestCrawl().AddMessage(fmt.Sprintf("interrogating: %v", err.Error()))
-		pkg.LatestCrawl().JobSucceeded = false
-		return err
+		pc.JobMessages = []string{fmt.Sprintf("interrogating: %v", err.Error())}
+		pc.JobSucceeded = false
+		return pkg, err
 	}
 
-	pkg.Data = pkg.Data.Merge(pkg.LatestCrawl().Data)
-	pkg.LatestCrawl().JobSucceeded = true
-	return nil
+	pkg.Data.Merge(pc.Data)
+	pc.JobSucceeded = true
+	return pkg, nil
 }
 
 func (c *Crawler) get(rr *vcs.RepoRoot) error {
@@ -228,18 +150,21 @@ func (c *Crawler) get(rr *vcs.RepoRoot) error {
 	return nil
 }
 
-func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
-	var (
-		localPath = filepath.Join(c.Config.SrcPath, rr.Root)
-		pc        = pkg.LatestCrawl()
-	)
+func (c *Crawler) interrogate(rr *vcs.RepoRoot) (*domain.PackageCrawl, error) {
+	localPath := filepath.Join(c.Config.SrcPath, rr.Root)
 
-	pc.Data.Repo = rr.Repo
+	pc := &domain.PackageCrawl{
+		Data: &domain.PackageSnapshot{
+			Repo: rr.Repo,
+		},
+		JobMessages: []string{},
+	}
+
 	pc.Data.Readme = detectReadme(localPath)
 
 	dirs, err := subdirs(localPath)
 	if err != nil {
-		return err
+		return pc, err
 	}
 	importsMap := map[string]struct{}{}
 	testImportsMap := map[string]struct{}{}
@@ -248,7 +173,7 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 		pkgPath := strings.Replace(dir, fmt.Sprintf("%v%v", c.Config.SrcPath, os.PathSeparator), "", 1)
 		goPkg, err := loadPackageDynamic(c.Config.SrcPath, pkgPath)
 		if err != nil {
-			pkg.LatestCrawl().AddMessage(fmt.Sprintf("loading %v: %s", pkgPath, err))
+			pc.JobMessages = append(pc.JobMessages, fmt.Sprintf("loading %v: %s", pkgPath, err))
 			return
 		}
 		for _, imp := range goPkg.Imports {
@@ -287,22 +212,19 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 
 	size, err := dirSize(localPath)
 	if err != nil {
-		return err
+		return pc, err
 	}
 	pc.Data.Bytes = size
 
-	return nil
+	return pc, nil
 }
 
 // loadPackageDynamic returns slices containing imports and test imports.
 func loadPackageDynamic(parentDir string, pkgPath string) (*load.Package, error) {
-	if len(cfg.Gopath) < 10 {
-		cfg.Gopath = append(cfg.Gopath, filepath.Dir(parentDir)) //  GOROOTsrc = parentDir
-	}
-	//cfg.GOROOTsrc = parentDir
-	//cfg.BuildContext.GOROOT = filepath.Dir(parentDir)
+	cfg.GOROOTsrc = parentDir
+	cfg.BuildContext.GOROOT = filepath.Dir(parentDir)
 
-	//cfg.Gopath = filepath.SplitList(cfg.BuildContext.GOPATH + ":" + parentDir)
+	cfg.Gopath = filepath.SplitList(cfg.BuildContext.GOPATH + ":" + parentDir)
 	//defer func() { cfg.GOROOTsrc = GOROOTsrcBackup }()
 
 	lps := load.Packages([]string{pkgPath})
@@ -314,8 +236,8 @@ func loadPackageDynamic(parentDir string, pkgPath string) (*load.Package, error)
 
 func subdirs(path string) ([]string, error) {
 	dirs := []string{}
-	err := filepath.Walk(path, func(p string, info os.FileInfo, _ error) error {
-		if info != nil && info.IsDir() {
+	err := filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
+		if info.IsDir() {
 			if info.Name() == ".git" {
 				return filepath.SkipDir
 			}
@@ -332,13 +254,11 @@ func subdirs(path string) ([]string, error) {
 func dirSize(path string) (int64, error) {
 	var size int64
 	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
-		if info != nil {
-			if info.IsDir() && info.Name() == ".git" {
-				return filepath.SkipDir
-			}
-			if !info.IsDir() {
-				size += info.Size()
-			}
+		if info.IsDir() && info.Name() == ".git" {
+			return filepath.SkipDir
+		}
+		if !info.IsDir() {
+			size += info.Size()
 		}
 		return nil
 	})
@@ -375,3 +295,4 @@ func detectReadme(localPath string) string {
 	}
 	return ""
 }
+*/

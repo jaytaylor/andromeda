@@ -16,7 +16,26 @@ func NewPackage(path string) *Package {
 	return pkg
 }
 
-func (snap *PackageSnapshot) Merge(other *PackageSnapshot) {
+func (pkg *Package) LatestCrawl() *PackageCrawl {
+	l := len(pkg.History)
+	if l == 0 {
+		return nil
+	}
+	return pkg.History[l-1]
+}
+
+func (pc *PackageCrawl) AddMessage(msg string) {
+	if pc.JobMessages == nil {
+		pc.JobMessages = []string{}
+	}
+	pc.JobMessages = append(pc.JobMessages, msg)
+}
+
+func (snap *PackageSnapshot) Merge(other *PackageSnapshot) *PackageSnapshot {
+	if snap == nil {
+		snap = &PackageSnapshot{}
+	}
+
 	if other.Repo != "" {
 		snap.Repo = other.Repo
 	}
@@ -47,4 +66,6 @@ func (snap *PackageSnapshot) Merge(other *PackageSnapshot) {
 	if other.Readme != "" {
 		snap.Readme = other.Readme
 	}
+
+	return snap
 }
