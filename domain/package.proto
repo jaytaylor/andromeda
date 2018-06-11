@@ -30,13 +30,15 @@ message PackageCrawl {
 
 message PackageSnapshot {
   google.protobuf.Timestamp created_at = 1 [(gogoproto.stdtime) = true];
-  repeated string imports = 2;
-  repeated string test_imports = 3;
-  repeated string deps = 4;
-  int32 commits = 5;
-  int32 branches = 6;
-  int32 tags = 7;
-  int64 bytes = 8;
-  int32 forks = 9;
-  int32 stars = 10;
+  string repo = 2;
+  repeated string imports = 3;
+  repeated string test_imports = 4;
+  repeated string deps = 5;
+  int32 commits = 6;
+  int32 branches = 7;
+  int32 tags = 8;
+  int64 bytes = 9;
+  int32 forks = 10;
+  int32 stars = 11;
+  string readme = 12;
 }

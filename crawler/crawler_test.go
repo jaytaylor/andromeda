@@ -10,19 +10,19 @@ import (
 )
 
 func TestImportsStd(t *testing.T) {
-	imports, testImports, err := imports(cfg.BuildContext.GOROOT, "testing")
+	goPkg, err := loadPackageDynamic(filepath.Join(cfg.BuildContext.GOROOT, "src"), "testing")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("imports=%v", imports)
-	t.Logf("testImports=%v", testImports)
+	t.Logf("imports=%v", goPkg.Imports)
+	t.Logf("testImports=%v", goPkg.TestImports)
 }
 
 func TestImportsNonStd(t *testing.T) {
 	var (
 		pkgPath   = "universedynimporttest"
-		parentDir = os.TempDir()
-		localPath = filepath.Join(parentDir, "src", pkgPath)
+		parentDir = filepath.Join(os.TempDir(), "src")
+		localPath = filepath.Join(parentDir, pkgPath)
 	)
 
 	if err := os.RemoveAll(localPath); err != nil {
@@ -51,18 +51,18 @@ func main() {
 		t.Fatal(err)
 	}
 
-	imports, testImports, err := imports(parentDir, pkgPath)
+	goPkg, err := loadPackageDynamic(parentDir, pkgPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if expected, actual := 1, len(imports); actual != expected {
-		t.Errorf("Expected number of imports=%v but actual=%v", expected, actual)
+	if expected, actual := 1, len(goPkg.Imports); actual != expected {
+		t.Errorf("Expected len(goPkg.Imports)=%v but actual=%v", expected, actual)
 	}
-	if expected, actual := "fmt", imports[0]; actual != expected {
-		t.Errorf("Expected imports=%v but actual=%v", expected, actual)
+	if expected, actual := "fmt", goPkg.Imports[0]; actual != expected {
+		t.Errorf("Expected goPkg.Imports[0]=%v but actual=%v", expected, actual)
 	}
 
-	t.Logf("imports=%v", imports)
-	t.Logf("testImports=%v", testImports)
+	t.Logf("goPkg=%v", goPkg.Imports)
+	t.Logf("testImports=%v", goPkg.TestImports)
 }

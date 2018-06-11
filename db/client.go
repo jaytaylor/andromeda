@@ -7,6 +7,12 @@ import (
 	"jaytaylor.com/universe/domain"
 )
 
+const (
+	TableMetadata = "universe-metadata"
+	TablePackages = "packages"
+	TableToCrawl  = "to-crawl"
+)
+
 var (
 	ErrKeyNotFound = errors.New("requested key not found")
 )
@@ -14,6 +20,7 @@ var (
 type DBClient interface {
 	Open() error                                                   // Open / start DB client connection.
 	Close() error                                                  // Close / shutdown the DB client connection.
+	Purge(tables ...string) error                                  // Reset a DB table.
 	PackageSave(pkgs ...*domain.Package) error                     // Performs an upsert merge operation on a fully crawled package.
 	PackageDelete(pkgPaths ...string) error                        // Delete a package from the index.  Complete erasure.
 	Package(pkgPath string) (*domain.Package, error)               // Retrieve a specific package..

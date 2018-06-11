@@ -23,4 +23,5 @@ func (indexer *Indexer) Run() error {
 
 	pkg := domain.NewPackage("t-test")
 	log.Debug("whatevs %s", pkg)
+	return nil
 }

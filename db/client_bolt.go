@@ -13,12 +13,6 @@ import (
 	"jaytaylor.com/universe/domain"
 )
 
-const (
-	metadataBucket = "universe-metadata"
-	packagesBucket = "packages"
-	toCrawlBucket  = "to-crawl"
-)
-
 var (
 	ErrMetadataUnsupportedSrcType = errors.New("unsupported src type: must be an []byte, string, or proto.Message")
 	ErrMetadataUnsupportedDstType = errors.New("unsupported dst type: must be an *[]byte, *string, or proto.Message")
@@ -97,9 +91,9 @@ func (client *BoltDBClient) Close() error {
 func (client *BoltDBClient) initDB() error {
 	return client.db.Update(func(tx *bolt.Tx) error {
 		buckets := []string{
-			metadataBucket,
-			packagesBucket,
-			toCrawlBucket,
+			TableMetadata,
+			TablePackages,
+			TableToCrawl,
 		}
 		for _, name := range buckets {
 			if _, err := tx.CreateBucketIfNotExists([]byte(name)); err != nil {
@@ -110,9 +104,25 @@ func (client *BoltDBClient) initDB() error {
 	})
 }
 
+func (client *BoltDBClient) Purge(tables ...string) error {
+	return client.db.Update(func(tx *bolt.Tx) error {
+		for _, table := range tables {
+			log.WithField("bucket", table).Debug("dropping")
+			if err := tx.DeleteBucket([]byte(table)); err != nil {
+				return err
+			}
+			log.WithField("bucket", table).Debug("creating")
+			if _, err := tx.CreateBucket([]byte(table)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 func (client *BoltDBClient) PackageSave(pkgs ...*domain.Package) error {
 	return client.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(packagesBucket))
+		b := tx.Bucket([]byte(TablePackages))
 		for _, pkg := range pkgs {
 			var (
 				k   = []byte(pkg.Path)
@@ -149,7 +159,7 @@ func (client *BoltDBClient) ToCrawlAdd(entries ...*domain.ToCrawlEntry) (int, er
 			k := []byte(entry.PackagePath)
 
 			{
-				b := tx.Bucket([]byte(packagesBucket))
+				b := tx.Bucket([]byte(TablePackages))
 
 				if alreadyIndexed := b.Get(k); alreadyIndexed != nil {
 					log.WithField("pkg-name", entry.PackagePath).Debug("Already indexed")
@@ -157,7 +167,7 @@ func (client *BoltDBClient) ToCrawlAdd(entries ...*domain.ToCrawlEntry) (int, er
 				}
 			}
 
-			b := tx.Bucket([]byte(toCrawlBucket))
+			b := tx.Bucket([]byte(TableToCrawl))
 			if alreadyQueued := b.Get(k); alreadyQueued != nil {
 				// log.WithField("pkg-name", entry.PackagePath).Debug("Already queued")
 				continue
@@ -194,7 +204,7 @@ func (client *BoltDBClient) ToCrawlSave(entries ...*domain.ToCrawlEntry) error {
 	return client.db.Update(func(tx *bolt.Tx) error {
 		for _, entry := range entries {
 			var (
-				b = tx.Bucket([]byte(toCrawlBucket))
+				b = tx.Bucket([]byte(TableToCrawl))
 				k = []byte(entry.PackagePath)
 			)
 
@@ -223,7 +233,7 @@ func (client *BoltDBClient) ToCrawlSave(entries ...*domain.ToCrawlEntry) error {
 // PackageDelete N.B. no existence check is performed.
 func (client *BoltDBClient) PackageDelete(pkgPaths ...string) error {
 	return client.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(packagesBucket))
+		b := tx.Bucket([]byte(TablePackages))
 		for _, pkgPath := range pkgPaths {
 			k := []byte(pkgPath)
 			if err := b.Delete(k); err != nil {
@@ -237,7 +247,7 @@ func (client *BoltDBClient) PackageDelete(pkgPaths ...string) error {
 // CrawlQueueDelete N.B. no existence check is performed.
 func (client *BoltDBClient) ToCrawlDelete(pkgPaths ...string) error {
 	return client.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(toCrawlBucket))
+		b := tx.Bucket([]byte(TableToCrawl))
 		for _, pkgPath := range pkgPaths {
 			k := []byte(pkgPath)
 			if err := b.Delete(k); err != nil {
@@ -253,7 +263,7 @@ func (client *BoltDBClient) Package(pkgPath string) (*domain.Package, error) {
 
 	if err := client.db.View(func(tx *bolt.Tx) error {
 		var (
-			b = tx.Bucket([]byte(packagesBucket))
+			b = tx.Bucket([]byte(TablePackages))
 			k = []byte(pkgPath)
 			v = b.Get(k)
 		)
@@ -272,7 +282,7 @@ func (client *BoltDBClient) Package(pkgPath string) (*domain.Package, error) {
 func (client *BoltDBClient) Packages(fn func(pkg *domain.Package)) error {
 	return client.db.View(func(tx *bolt.Tx) error {
 		var (
-			b = tx.Bucket([]byte(packagesBucket))
+			b = tx.Bucket([]byte(TablePackages))
 			c = b.Cursor()
 		)
 
@@ -290,7 +300,7 @@ func (client *BoltDBClient) Packages(fn func(pkg *domain.Package)) error {
 func (client *BoltDBClient) PackagesWithBreak(fn func(pkg *domain.Package) bool) error {
 	return client.db.View(func(tx *bolt.Tx) error {
 		var (
-			b = tx.Bucket([]byte(packagesBucket))
+			b = tx.Bucket([]byte(TablePackages))
 			c = b.Cursor()
 		)
 
@@ -312,7 +322,7 @@ func (client *BoltDBClient) ToCrawl(pkgPath string) (*domain.ToCrawlEntry, error
 
 	if err := client.db.View(func(tx *bolt.Tx) error {
 		var (
-			b = tx.Bucket([]byte(toCrawlBucket))
+			b = tx.Bucket([]byte(TableToCrawl))
 			k = []byte(pkgPath)
 			v = b.Get(k)
 		)
@@ -331,7 +341,7 @@ func (client *BoltDBClient) ToCrawl(pkgPath string) (*domain.ToCrawlEntry, error
 func (client *BoltDBClient) ToCrawls(fn func(entry *domain.ToCrawlEntry)) error {
 	return client.db.View(func(tx *bolt.Tx) error {
 		var (
-			b = tx.Bucket([]byte(toCrawlBucket))
+			b = tx.Bucket([]byte(TableToCrawl))
 			c = b.Cursor()
 		)
 
@@ -349,7 +359,7 @@ func (client *BoltDBClient) ToCrawls(fn func(entry *domain.ToCrawlEntry)) error 
 func (client *BoltDBClient) ToCrawlsWithBreak(fn func(entry *domain.ToCrawlEntry) bool) error {
 	return client.db.View(func(tx *bolt.Tx) error {
 		var (
-			b = tx.Bucket([]byte(toCrawlBucket))
+			b = tx.Bucket([]byte(TableToCrawl))
 			c = b.Cursor()
 		)
 
@@ -370,7 +380,7 @@ func (client *BoltDBClient) PackagesLen() (int, error) {
 	var n int
 
 	if err := client.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(packagesBucket))
+		b := tx.Bucket([]byte(TablePackages))
 
 		n = b.Stats().KeyN
 
@@ -385,7 +395,7 @@ func (client *BoltDBClient) ToCrawlsLen() (int, error) {
 	var n int
 
 	if err := client.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(toCrawlBucket))
+		b := tx.Bucket([]byte(TableToCrawl))
 
 		n = b.Stats().KeyN
 
@@ -398,7 +408,7 @@ func (client *BoltDBClient) ToCrawlsLen() (int, error) {
 
 func (client *BoltDBClient) MetaSave(key string, src interface{}) error {
 	return client.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(metadataBucket))
+		b := tx.Bucket([]byte(TableMetadata))
 
 		switch src.(type) {
 		case []byte:
@@ -422,7 +432,7 @@ func (client *BoltDBClient) MetaSave(key string, src interface{}) error {
 
 func (client *BoltDBClient) MetaDelete(key string) error {
 	return client.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(metadataBucket))
+		b := tx.Bucket([]byte(TableMetadata))
 		return b.Delete([]byte(key))
 	})
 }
@@ -430,7 +440,7 @@ func (client *BoltDBClient) MetaDelete(key string) error {
 func (client *BoltDBClient) Meta(key string, dst interface{}) error {
 	return client.db.View(func(tx *bolt.Tx) error {
 		var (
-			b = tx.Bucket([]byte(metadataBucket))
+			b = tx.Bucket([]byte(TableMetadata))
 			v = b.Get([]byte(key))
 		)
 
