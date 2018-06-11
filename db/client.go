@@ -20,7 +20,8 @@ type DBClient interface {
 	Packages(func(pkg *domain.Package)) error                      // Iterates over all indexed packages and invokes callback on each.
 	PackagesWithBreak(func(pkg *domain.Package) bool) error        // Iterates over packages until callback returns false.
 	PackagesLen() (int, error)                                     // Number of packages in index.
-	ToCrawlAdd(entries ...*domain.ToCrawlEntry) error              // reason should	indicate where / how the request to queue originated.
+	ToCrawlAdd(entries ...*domain.ToCrawlEntry) (int, error)       // Only adds entries which don't already exist.  Returns number of new items added.
+	ToCrawlSave(entries ...*domain.ToCrawlEntry) error             // Stores all entries.
 	ToCrawlDelete(pkgPaths ...string) error                        // Remove a package from the crawl queue.
 	ToCrawl(pkgPath string) (*domain.ToCrawlEntry, error)          // Retrieves a single to-crawl entry.
 	ToCrawls(func(entry *domain.ToCrawlEntry)) error               // Iterates over all to-crawl entries and invokes callback on each.

@@ -141,8 +141,10 @@ func (client *BoltDBClient) PackageSave(pkgs ...*domain.Package) error {
 	})
 }
 
-func (client *BoltDBClient) ToCrawlAdd(entries ...*domain.ToCrawlEntry) error {
-	return client.db.Update(func(tx *bolt.Tx) error {
+func (client *BoltDBClient) ToCrawlAdd(entries ...*domain.ToCrawlEntry) (int, error) {
+	var numNew int
+
+	if err := client.db.Update(func(tx *bolt.Tx) error {
 		for _, entry := range entries {
 			k := []byte(entry.PackagePath)
 
@@ -160,6 +162,41 @@ func (client *BoltDBClient) ToCrawlAdd(entries ...*domain.ToCrawlEntry) error {
 				// log.WithField("pkg-name", entry.PackagePath).Debug("Already queued")
 				continue
 			}
+
+			numNew++
+
+			if entry.ID == 0 {
+				id, err := b.NextSequence()
+				if err != nil {
+					return fmt.Errorf("getting next ID for ToCrawlEntry %q: %s", entry.PackagePath, err)
+				}
+				entry.ID = id
+			}
+
+			v, err := proto.Marshal(entry)
+			if err != nil {
+				return fmt.Errorf("marshalling ToCrawlEntry %q: %s", entry.PackagePath, err)
+			}
+
+			if err := b.Put(k, v); err != nil {
+				return fmt.Errorf("saving ToCrawlEntry %q: %s", entry.PackagePath, err)
+			}
+		}
+
+		return nil
+	}); err != nil {
+		return numNew, err
+	}
+	return numNew, nil
+}
+
+func (client *BoltDBClient) ToCrawlSave(entries ...*domain.ToCrawlEntry) error {
+	return client.db.Update(func(tx *bolt.Tx) error {
+		for _, entry := range entries {
+			var (
+				b = tx.Bucket([]byte(toCrawlBucket))
+				k = []byte(entry.PackagePath)
+			)
 
 			if entry.ID == 0 {
 				id, err := b.NextSequence()
