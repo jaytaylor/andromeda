@@ -12,18 +12,19 @@ message Package {
   string path = 3;
   string url = 4 [(gogoproto.customname) = "URL"];
   string owner = 5;
-  PackageSnapshot data = 6;
-  google.protobuf.Timestamp first_seen_at = 7 [(gogoproto.stdtime) = true];
-  repeated PackageCrawl history = 8;
-  // int history_last_change_index = 9;
+  string vcs = 6 [(gogoproto.customname) = "VCS"];
+  PackageSnapshot data = 7;
+  google.protobuf.Timestamp first_seen_at = 8 [(gogoproto.stdtime) = true];
+  repeated PackageCrawl history = 9;
+  // int history_last_change_index = 10;
 }
 
 message PackageCrawl {
   google.protobuf.Timestamp job_started_at = 1 [(gogoproto.stdtime) = true];
   google.protobuf.Timestamp job_finished_at = 2 [(gogoproto.stdtime) = true];
   string job_reason = 3;
-  string job_succeeded = 4;
-  string job_messages = 5;
+  bool job_succeeded = 4;
+  repeated string job_messages = 5;
   PackageSnapshot data = 6;
 }
 

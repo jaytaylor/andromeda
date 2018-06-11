@@ -12,18 +12,23 @@ var (
 )
 
 type DBClient interface {
-	Open() error                                          // Open / start DB client connection.
-	Close() error                                         // Close / shutdown the DB client connection.
-	PackageSave(pkgs ...*domain.Package) error            // Performs an upsert merge operation on a fully crawled package.
-	PackageDelete(pkgNames ...string) error               // Delete a package from the index.  Complete erasure.
-	Package(pkgName string) (*domain.Package, error)      // Retrieve a specific package..
-	Packages(func(pkg *domain.Package)) error             // Iterates over all indexed packages and invokes callback on each.
-	PackagesLen() (int, error)                            // Number of packages in index.
-	ToCrawlAdd(entries ...*domain.ToCrawlEntry) error     // reason should	indicate where / how the request to queue originated.
-	ToCrawlDelete(pkgNames ...string) error               // Remove a package from the crawl queue.
-	ToCrawl(pkgName string) (*domain.ToCrawlEntry, error) // Retrieves a single to-crawl entry.
-	ToCrawls(func(entry *domain.ToCrawlEntry)) error      // Iterates over all to-crawl entries and invokes callback on each.
-	ToCrawlsLen() (int, error)                            // Number of packages currently awaiting crawl.
+	Open() error                                                   // Open / start DB client connection.
+	Close() error                                                  // Close / shutdown the DB client connection.
+	PackageSave(pkgs ...*domain.Package) error                     // Performs an upsert merge operation on a fully crawled package.
+	PackageDelete(pkgPaths ...string) error                        // Delete a package from the index.  Complete erasure.
+	Package(pkgPath string) (*domain.Package, error)               // Retrieve a specific package..
+	Packages(func(pkg *domain.Package)) error                      // Iterates over all indexed packages and invokes callback on each.
+	PackagesWithBreak(func(pkg *domain.Package) bool) error        // Iterates over packages until callback returns false.
+	PackagesLen() (int, error)                                     // Number of packages in index.
+	ToCrawlAdd(entries ...*domain.ToCrawlEntry) error              // reason should	indicate where / how the request to queue originated.
+	ToCrawlDelete(pkgPaths ...string) error                        // Remove a package from the crawl queue.
+	ToCrawl(pkgPath string) (*domain.ToCrawlEntry, error)          // Retrieves a single to-crawl entry.
+	ToCrawls(func(entry *domain.ToCrawlEntry)) error               // Iterates over all to-crawl entries and invokes callback on each.
+	ToCrawlsWithBreak(func(entry *domain.ToCrawlEntry) bool) error // Iterates over to-crawl entries until callback returns false.
+	ToCrawlsLen() (int, error)                                     // Number of packages currently awaiting crawl.
+	MetaSave(key string, src interface{}) error                    // Store metadata key/value.  NB: src must be one of raw []byte, string, or proto.Message struct.
+	MetaDelete(key string) error                                   // Delete a metadata key.
+	Meta(key string, dst interface{}) error                        // Retrieve metadata key and populate into dst.  NB: dst must be one of *[]byte, *string, or proto.Message struct.
 }
 
 type DBConfig interface {

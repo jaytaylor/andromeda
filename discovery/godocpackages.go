@@ -30,30 +30,30 @@ type Entry struct {
 }
 
 // ParseGoDocPackages parses api.godoc.org/packages JSON data.
-func ParseGoDocPackages(r io.Reader) (GoDocPackages, error) {
+func ParseGoDocPackages(r io.Reader) (*GoDocPackages, error) {
 	var (
 		dec = json.NewDecoder(r)
 		gdp GoDocPackages
 	)
 	if err := dec.Decode(&gdp); err != nil {
-		return gdp, err
+		return nil, err
 	}
-	return gdp, nil
+	return &gdp, nil
 }
 
 // ListGoDocPackages downloads the latest packages listing from
 // api.godoc.org/packages.
-func ListGoDocPackages() (GoDocPackages, error) {
+func ListGoDocPackages() (*GoDocPackages, error) {
 	log.Info("Downloading package listing from api.godoc.org")
 	resp, err := http.Get(URL)
 	if err != nil {
-		return GoDocPackages{}, nil
+		return nil, nil
 	}
 	defer resp.Body.Close()
 
 	gdp, err := ParseGoDocPackages(resp.Body)
 	if err != nil {
-		return gdp, err
+		return nil, err
 	}
 	log.WithField("len", len(gdp.Results)).Info("Obtained package listing from api.godoc.org")
 	return gdp, nil

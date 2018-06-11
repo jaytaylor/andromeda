@@ -3,6 +3,7 @@ package db
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -29,16 +30,16 @@ func TestBoltDBClientToCrawlOperations(t *testing.T) {
 	}()
 	defer os.Remove(filename)
 
-	pkgNames := []string{
+	pkgPaths := []string{
 		"foo-bar",
 		"jay-tay",
 		"want-moar",
 	}
 
-	for i, pkgName := range pkgNames {
+	for i, pkgPath := range pkgPaths {
 		now := time.Now()
 		entry := &domain.ToCrawlEntry{
-			PackageName: pkgName,
+			PackagePath: pkgPath,
 			Reason:      "testing",
 			SubmittedAt: &now,
 		}
@@ -58,7 +59,7 @@ func TestBoltDBClientToCrawlOperations(t *testing.T) {
 	{
 		now := time.Now()
 		entry := &domain.ToCrawlEntry{
-			PackageName: "foo-bar",
+			PackagePath: "foo-bar",
 			Reason:      "testing2",
 			SubmittedAt: &now,
 		}
@@ -210,5 +211,67 @@ func TestBoltDBClientPackageOperations(t *testing.T) {
 		if expected, actual := 4, l; actual != expected {
 			t.Errorf("Expected indexed packages len=%v but actual=%v", expected, actual)
 		}
+	}
+}
+
+func TestBoltDBClientMetaOperations(t *testing.T) {
+	filename := filepath.Join(os.TempDir(), "client-metadata-test.bolt")
+
+	os.Remove(filename)
+
+	var (
+		config = NewBoltDBConfig(filename)
+		client = NewClient(config)
+	)
+
+	if err := client.Open(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := client.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	defer os.Remove(filename)
+
+	k := "foo"
+
+	{
+		var v []byte
+		if err := client.Meta(k, &v); err != nil {
+			t.Fatal(err)
+		}
+		var nilB []byte
+		if expected, actual := nilB, v; !reflect.DeepEqual(actual, expected) {
+			t.Errorf("Expected initial metadata value=%v but actual=%v", expected, actual)
+		}
+	}
+
+	if err := client.MetaSave(k, []byte("bar")); err != nil {
+		t.Fatal(err)
+	}
+
+	{
+		var v []byte
+		if err := client.Meta(k, &v); err != nil {
+			t.Fatal(err)
+		}
+		if expected, actual := "bar", string(v); actual != expected {
+			t.Errorf("Expected metadata value=%v but actual=%v", expected, actual)
+		}
+	}
+
+	{
+		var v string
+		if err := client.Meta(k, &v); err != nil {
+			t.Fatal(err)
+		}
+		if expected, actual := "bar", v; actual != expected {
+			t.Errorf("Expected metadata value=%v but actual=%v", expected, actual)
+		}
+	}
+
+	if err := client.MetaDelete(k); err != nil {
+		t.Fatal(err)
 	}
 }

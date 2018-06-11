@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -16,6 +17,11 @@ const (
 	metadataBucket = "universe-metadata"
 	packagesBucket = "packages"
 	toCrawlBucket  = "to-crawl"
+)
+
+var (
+	ErrMetadataUnsupportedSrcType = errors.New("unsupported src type: must be an []byte, string, or proto.Message")
+	ErrMetadataUnsupportedDstType = errors.New("unsupported dst type: must be an *[]byte, *string, or proto.Message")
 )
 
 type BoltDBConfig struct {
@@ -178,13 +184,13 @@ func (client *BoltDBClient) ToCrawlAdd(entries ...*domain.ToCrawlEntry) error {
 }
 
 // PackageDelete N.B. no existence check is performed.
-func (client *BoltDBClient) PackageDelete(pkgNames ...string) error {
+func (client *BoltDBClient) PackageDelete(pkgPaths ...string) error {
 	return client.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(packagesBucket))
-		for _, pkgName := range pkgNames {
-			k := []byte(pkgName)
+		for _, pkgPath := range pkgPaths {
+			k := []byte(pkgPath)
 			if err := b.Delete(k); err != nil {
-				return fmt.Errorf("deleting package %q: %s", pkgName, err)
+				return fmt.Errorf("deleting package %q: %s", pkgPath, err)
 			}
 		}
 		return nil
@@ -192,26 +198,26 @@ func (client *BoltDBClient) PackageDelete(pkgNames ...string) error {
 }
 
 // CrawlQueueDelete N.B. no existence check is performed.
-func (client *BoltDBClient) ToCrawlDelete(pkgNames ...string) error {
+func (client *BoltDBClient) ToCrawlDelete(pkgPaths ...string) error {
 	return client.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(toCrawlBucket))
-		for _, pkgName := range pkgNames {
-			k := []byte(pkgName)
+		for _, pkgPath := range pkgPaths {
+			k := []byte(pkgPath)
 			if err := b.Delete(k); err != nil {
-				return fmt.Errorf("deleting to-crawl entry %q: %s", pkgName, err)
+				return fmt.Errorf("deleting to-crawl entry %q: %s", pkgPath, err)
 			}
 		}
 		return nil
 	})
 }
 
-func (client *BoltDBClient) Package(pkgName string) (*domain.Package, error) {
+func (client *BoltDBClient) Package(pkgPath string) (*domain.Package, error) {
 	var pkg domain.Package
 
 	if err := client.db.View(func(tx *bolt.Tx) error {
 		var (
 			b = tx.Bucket([]byte(packagesBucket))
-			k = []byte(pkgName)
+			k = []byte(pkgPath)
 			v = b.Get(k)
 		)
 
@@ -244,13 +250,33 @@ func (client *BoltDBClient) Packages(fn func(pkg *domain.Package)) error {
 	})
 }
 
-func (client *BoltDBClient) ToCrawl(pkgName string) (*domain.ToCrawlEntry, error) {
+func (client *BoltDBClient) PackagesWithBreak(fn func(pkg *domain.Package) bool) error {
+	return client.db.View(func(tx *bolt.Tx) error {
+		var (
+			b = tx.Bucket([]byte(packagesBucket))
+			c = b.Cursor()
+		)
+
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			var pkg domain.Package
+			if err := proto.Unmarshal(v, &pkg); err != nil {
+				return err
+			}
+			if cont := fn(&pkg); !cont {
+				break
+			}
+		}
+		return nil
+	})
+}
+
+func (client *BoltDBClient) ToCrawl(pkgPath string) (*domain.ToCrawlEntry, error) {
 	var entry domain.ToCrawlEntry
 
 	if err := client.db.View(func(tx *bolt.Tx) error {
 		var (
 			b = tx.Bucket([]byte(toCrawlBucket))
-			k = []byte(pkgName)
+			k = []byte(pkgPath)
 			v = b.Get(k)
 		)
 
@@ -278,6 +304,26 @@ func (client *BoltDBClient) ToCrawls(fn func(entry *domain.ToCrawlEntry)) error 
 				return err
 			}
 			fn(&entry)
+		}
+		return nil
+	})
+}
+
+func (client *BoltDBClient) ToCrawlsWithBreak(fn func(entry *domain.ToCrawlEntry) bool) error {
+	return client.db.View(func(tx *bolt.Tx) error {
+		var (
+			b = tx.Bucket([]byte(toCrawlBucket))
+			c = b.Cursor()
+		)
+
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			var entry domain.ToCrawlEntry
+			if err := proto.Unmarshal(v, &entry); err != nil {
+				return err
+			}
+			if cont := fn(&entry); !cont {
+				break
+			}
 		}
 		return nil
 	})
@@ -311,6 +357,64 @@ func (client *BoltDBClient) ToCrawlsLen() (int, error) {
 		return 0, err
 	}
 	return n, nil
+}
+
+func (client *BoltDBClient) MetaSave(key string, src interface{}) error {
+	return client.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(metadataBucket))
+
+		switch src.(type) {
+		case []byte:
+			return b.Put([]byte(key), src.([]byte))
+
+		case string:
+			return b.Put([]byte(key), []byte(src.(string)))
+
+		case proto.Message:
+			v, err := proto.Marshal(src.(proto.Message))
+			if err != nil {
+				return fmt.Errorf("marshalling %T: %s", src, err)
+			}
+			return b.Put([]byte(key), v)
+
+		default:
+			return ErrMetadataUnsupportedSrcType
+		}
+	})
+}
+
+func (client *BoltDBClient) MetaDelete(key string) error {
+	return client.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(metadataBucket))
+		return b.Delete([]byte(key))
+	})
+}
+
+func (client *BoltDBClient) Meta(key string, dst interface{}) error {
+	return client.db.View(func(tx *bolt.Tx) error {
+		var (
+			b = tx.Bucket([]byte(metadataBucket))
+			v = b.Get([]byte(key))
+		)
+
+		switch dst.(type) {
+		case *[]byte:
+			ptr := dst.(*[]byte)
+			*ptr = v
+
+		case *string:
+			ptr := dst.(*string)
+			*ptr = string(v)
+
+		case proto.Message:
+			return proto.Unmarshal(v, dst.(proto.Message))
+
+		default:
+			return ErrMetadataUnsupportedDstType
+		}
+
+		return nil
+	})
 }
 
 func (client *BoltDBClient) Search(q string) (*domain.Package, error) {
