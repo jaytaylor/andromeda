@@ -5,8 +5,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/jaytaylor/universe/db"
-	"github.com/jaytaylor/universe/domain"
+	"jaytaylor.com/universe/db"
+	"jaytaylor.com/universe/domain"
 )
 
 var (

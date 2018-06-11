@@ -10,7 +10,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/jaytaylor/universe/domain"
+	"jaytaylor.com/universe/domain"
 )
 
 const (

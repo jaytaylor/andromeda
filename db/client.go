@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jaytaylor/universe/domain"
+	"jaytaylor.com/universe/domain"
 )
 
 var (

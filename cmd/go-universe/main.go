@@ -4,9 +4,9 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/jaytaylor/universe/crawler"
-	"github.com/jaytaylor/universe/db"
-	"github.com/jaytaylor/universe/discovery"
+	"jaytaylor.com/universe/crawler"
+	"jaytaylor.com/universe/db"
+	"jaytaylor.com/universe/discovery"
 )
 
 var (
