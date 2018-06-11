@@ -34,7 +34,7 @@ func init() {
 
 	rootCmd.AddCommand(bootstrapCmd)
 	rootCmd.AddCommand(crawlCmd)
-	rootCmd.AddCommand(purgePackagesCmd)
+	rootCmd.AddCommand(purgeTableCmd)
 	rootCmd.AddCommand(statsCmd)
 	rootCmd.AddCommand(getCmd)
 }
@@ -54,22 +54,16 @@ var rootCmd = &cobra.Command{
 		initLogging()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		dbClient := db.NewClient(db.NewBoltDBConfig(DBFile))
-		if err := dbClient.Open(); err != nil {
-			log.Fatalf("main: opening db client: %s", err)
-		}
-		defer func() {
-			if err := dbClient.Close(); err != nil {
-				log.Fatalf("main: closing db client: %s", err)
+		if err := db.WithDBClient(db.NewBoltDBConfig(DBFile), func(dbClient db.DBClient) error {
+			if err := bootstrap(dbClient); err != nil {
+				return fmt.Errorf("boostrap: %s", err)
 			}
-		}()
-
-		if err := bootstrap(cmd, dbClient); err != nil {
-			log.Fatalf("main: boostrap: %s", err)
-		}
-
-		if err := crawl(cmd, dbClient); err != nil {
-			log.Fatalf("main: crawl: %s", err)
+			if err := crawl(dbClient); err != nil {
+				return fmt.Errorf("crawl: %s", err)
+			}
+			return nil
+		}); err != nil {
+			log.Fatalf("main: %s", err)
 		}
 	},
 }
@@ -82,18 +76,10 @@ var bootstrapCmd = &cobra.Command{
 		initLogging()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		dbClient := db.NewClient(db.NewBoltDBConfig(DBFile))
-		if err := dbClient.Open(); err != nil {
-			log.Fatalf("main: opening db client: %s", err)
-		}
-		defer func() {
-			if err := dbClient.Close(); err != nil {
-				log.Fatalf("main: closing db client: %s", err)
-			}
-		}()
-
-		if err := bootstrap(cmd, dbClient); err != nil {
-			log.Fatalf("main: boostrap: %s", err)
+		if err := db.WithDBClient(db.NewBoltDBConfig(DBFile), func(dbClient db.DBClient) error {
+			return bootstrap(dbClient)
+		}); err != nil {
+			log.Fatalf("main: %s", err)
 		}
 	},
 }
@@ -106,41 +92,41 @@ var crawlCmd = &cobra.Command{
 		initLogging()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		dbClient := db.NewClient(db.NewBoltDBConfig(DBFile))
-		if err := dbClient.Open(); err != nil {
-			log.Fatalf("main: opening db client: %s", err)
-		}
-		defer func() {
-			if err := dbClient.Close(); err != nil {
-				log.Fatalf("main: closing db client: %s", err)
-			}
-		}()
-
-		if err := crawl(cmd, dbClient); err != nil {
-			log.Fatalf("main: crawl: %s", err)
+		if err := db.WithDBClient(db.NewBoltDBConfig(DBFile), func(dbClient db.DBClient) error {
+			return crawl(dbClient)
+		}); err != nil {
+			log.Fatalf("main: %s", err)
 		}
 	},
 }
 
-var purgePackagesCmd = &cobra.Command{
-	Use:   "purge-packages",
-	Short: ".. jay will fill this out sometime ..",
+var purgeTableCmd = &cobra.Command{
+	Use:   "purge",
+	Short: "[table]",
 	Long:  ".. jay will fill this long one out sometime ..",
+	Args:  cobra.MinimumNArgs(1),
 	PreRun: func(_ *cobra.Command, _ []string) {
 		initLogging()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		dbClient := db.NewClient(db.NewBoltDBConfig(DBFile))
-		if err := dbClient.Open(); err != nil {
-			log.Fatalf("main: opening db client: %s", err)
-		}
-		defer func() {
-			if err := dbClient.Close(); err != nil {
-				log.Fatalf("main: closing db client: %s", err)
+		if err := db.WithDBClient(db.NewBoltDBConfig(DBFile), func(dbClient db.DBClient) error {
+			switch args[0] {
+			case db.TablePackages, "package", "pkg":
+				if err := dbClient.Purge(db.TablePackages); err != nil {
+					return fmt.Errorf("delete all packages: %s", err)
+				}
+
+			case db.TableToCrawl, "to-crawls":
+				if err := dbClient.Purge(db.TableToCrawl); err != nil {
+					return fmt.Errorf("delete all to-crawl entries: %s", err)
+				}
+
+			default:
+				return fmt.Errorf("unrecognized table %q", args[0])
 			}
-		}()
-		if err := dbClient.Purge(db.TablePackages); err != nil {
-			log.Fatalf("main: delete all packages: %s", err)
+			return nil
+		}); err != nil {
+			log.Fatalf("main: %s", err)
 		}
 	},
 }
@@ -153,27 +139,22 @@ var statsCmd = &cobra.Command{
 		initLogging()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		dbClient := db.NewClient(db.NewBoltDBConfig(DBFile))
-		if err := dbClient.Open(); err != nil {
-			log.Fatalf("main: opening db client: %s", err)
-		}
-		defer func() {
-			if err := dbClient.Close(); err != nil {
-				log.Fatalf("main: closing db client: %s", err)
+		if err := db.WithDBClient(db.NewBoltDBConfig(DBFile), func(dbClient db.DBClient) error {
+			pl, err := dbClient.PackagesLen()
+			if err != nil {
+				return fmt.Errorf("getting packages count: %s", err)
 			}
-		}()
+			log.WithField("packages", pl).Info("count")
 
-		pl, err := dbClient.PackagesLen()
-		if err != nil {
-			log.Fatalf("main: getting packages count: %s", err)
+			tcl, err := dbClient.ToCrawlsLen()
+			if err != nil {
+				return fmt.Errorf("getting to-crawls count: %s", err)
+			}
+			log.WithField("to-crawls", tcl).Info("count")
+			return nil
+		}); err != nil {
+			log.Fatalf("main: %s", err)
 		}
-		log.WithField("packages", pl).Info("count")
-
-		tcl, err := dbClient.ToCrawlsLen()
-		if err != nil {
-			log.Fatalf("main: getting to-crawls count: %s", err)
-		}
-		log.WithField("to-crawls", tcl).Info("count")
 	},
 }
 
@@ -186,46 +167,41 @@ var getCmd = &cobra.Command{
 		initLogging()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		dbClient := db.NewClient(db.NewBoltDBConfig(DBFile))
-		if err := dbClient.Open(); err != nil {
-			log.Fatalf("main: opening db client: %s", err)
-		}
-		defer func() {
-			if err := dbClient.Close(); err != nil {
-				log.Fatalf("main: closing db client: %s", err)
-			}
-		}()
+		if err := db.WithDBClient(db.NewBoltDBConfig(DBFile), func(dbClient db.DBClient) error {
+			switch args[0] {
+			case db.TablePackages, "package", "pkg":
+				pkg, err := dbClient.Package(args[1])
+				if err != nil {
+					return fmt.Errorf("getting package: %s", err)
+				}
+				j, err := json.MarshalIndent(pkg, "", "    ")
+				if err != nil {
+					return fmt.Errorf("marshalling package to JSON: %s", err)
+				}
+				fmt.Println(string(j))
 
-		switch args[0] {
-		case db.TablePackages, "package", "pkg":
-			pkg, err := dbClient.Package(args[1])
-			if err != nil {
-				log.Fatalf("main: getting package: %s", err)
-			}
-			j, err := json.MarshalIndent(pkg, "", "    ")
-			if err != nil {
-				log.Fatalf("main: marshalling package to JSON: %s", err)
-			}
-			fmt.Println(string(j))
+			case db.TableToCrawl, "to-crawls":
+				entry, err := dbClient.ToCrawl(args[1])
+				if err != nil {
+					return fmt.Errorf("getting to-crawl entry: %s", err)
+				}
+				j, err := json.MarshalIndent(entry, "", "    ")
+				if err != nil {
+					return fmt.Errorf("marshalling to-crawl entry to JSON: %s", err)
+				}
+				fmt.Println(string(j))
 
-		case db.TableToCrawl, "to-crawls":
-			entry, err := dbClient.ToCrawl(args[1])
-			if err != nil {
-				log.Fatalf("main: getting to-crawl entry: %s", err)
+			default:
+				return fmt.Errorf("unrecognized table %q", args[0])
 			}
-			j, err := json.MarshalIndent(entry, "", "    ")
-			if err != nil {
-				log.Fatalf("main: marshalling to-crawl entry to JSON: %s", err)
-			}
-			fmt.Println(string(j))
-
-		default:
-			log.Fatalf("Unrecognized table %q", args[0])
+			return nil
+		}); err != nil {
+			log.Fatalf("main: %s", err)
 		}
 	},
 }
 
-func bootstrap(cmd *cobra.Command, dbClient db.DBClient) error {
+func bootstrap(dbClient db.DBClient) error {
 	cfg := &discovery.BootstrapConfig{
 		GoDocPackagesInputFile: BootstrapGoDocPackagesFile,
 	}
@@ -233,7 +209,7 @@ func bootstrap(cmd *cobra.Command, dbClient db.DBClient) error {
 	return discovery.Bootstrap(dbClient, cfg)
 }
 
-func crawl(cmd *cobra.Command, dbClient db.DBClient) error {
+func crawl(dbClient db.DBClient) error {
 	var (
 		cfg = &crawler.Config{
 			MaxItems: CrawlerMaxItems,

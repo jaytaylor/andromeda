@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 
+	log "github.com/sirupsen/logrus"
+
 	"jaytaylor.com/universe/domain"
 )
 
@@ -54,4 +56,31 @@ func NewClient(config DBConfig) DBClient {
 	default:
 		panic(fmt.Errorf("no client constructor available for db configuration type: %v", typ))
 	}
+}
+
+// WithDBClient is a convenience utility which handles DB client construction,
+// open, and close..
+func WithDBClient(config DBConfig, fn func(dbClient DBClient) error) (err error) {
+	dbClient := NewClient(config)
+
+	if err = dbClient.Open(); err != nil {
+		err = fmt.Errorf("opening DB client: %s", err)
+		return
+	}
+	defer func() {
+		if closeErr := dbClient.Close(); closeErr != nil {
+			if err == nil {
+				err = fmt.Errorf("closing DB client: %s", closeErr)
+			} else {
+				log.Errorf("Existing error before attempt to close DB client: %s", err)
+				log.Errorf("Also encountered problem closing DB client: %s", closeErr)
+			}
+		}
+	}()
+
+	if err = fn(dbClient); err != nil {
+		return
+	}
+
+	return
 }

@@ -6,8 +6,27 @@ import (
 	"path/filepath"
 	"testing"
 
+	"jaytaylor.com/universe/db"
 	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/cfg"
 )
+
+func TestCrawlerRunCorrectness(t *testing.T) {
+	dbFile := filepath.Join(os.TempDir(), "universe-crawler-correctness.bolt")
+	if err := os.RemoveAll(dbFile); err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dbFile)
+
+	t.Fatal("test needs implemented")
+
+	// Add a bunch of to-crawl entries.
+
+	// Find a way to serve up said to-crawl entries so the crawler can `go get` them.
+
+	// Run the crawler.
+
+	// Validate that
+}
 
 func TestImportsStd(t *testing.T) {
 	goPkg, err := loadPackageDynamic(filepath.Join(cfg.BuildContext.GOROOT, "src"), "testing")
