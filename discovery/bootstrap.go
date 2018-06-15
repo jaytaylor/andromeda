@@ -57,6 +57,7 @@ func Bootstrap(dbClient db.DBClient, config *BootstrapConfig) error {
 		if n, err = dbClient.ToCrawlAdd(batch...); err != nil {
 			return err
 		}
+		numNew += n
 		numAttempted += len(batch)
 		batch = make([]*domain.ToCrawlEntry, 0, AddBatchSize)
 		return nil

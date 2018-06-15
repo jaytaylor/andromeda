@@ -3,6 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -10,6 +13,7 @@ import (
 	"jaytaylor.com/universe/crawler"
 	"jaytaylor.com/universe/db"
 	"jaytaylor.com/universe/discovery"
+	"jaytaylor.com/universe/domain"
 )
 
 var (
@@ -181,9 +185,18 @@ var getCmd = &cobra.Command{
 				fmt.Println(string(j))
 
 			case db.TableToCrawl, "to-crawls":
-				entry, err := dbClient.ToCrawl(args[1])
-				if err != nil {
-					return fmt.Errorf("getting to-crawl entry: %s", err)
+				var entry *domain.ToCrawlEntry
+				if err := dbClient.ToCrawlsWithBreak(func(e *domain.ToCrawlEntry) bool {
+					if e.PackagePath == args[1] {
+						entry = e
+						return false
+					}
+					return true
+				}); err != nil {
+					return err
+				}
+				if entry == nil {
+					return fmt.Errorf("to-crawl entry %q not found", args[1])
 				}
 				j, err := json.MarshalIndent(entry, "", "    ")
 				if err != nil {
@@ -213,8 +226,38 @@ func crawl(dbClient db.DBClient) error {
 	cfg := crawler.NewConfig()
 	cfg.MaxItems = CrawlerMaxItems
 
+	stopCh := make(chan struct{})
+	errCh := make(chan error)
 	crawler := crawler.New(dbClient, cfg)
-	return crawler.Run()
+
+	go func() {
+		errCh <- crawler.Run(stopCh)
+	}()
+
+	var (
+		err      error
+		received bool
+	)
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	select {
+	case err = <-errCh:
+	case s := <-sigCh:
+		log.WithField("sig", s).Info("Received signal")
+		select {
+		case stopCh <- struct{}{}:
+		case err = <-errCh:
+			received = true
+		}
+		if !received {
+			err = <-errCh
+		}
+	}
+	if err == crawler.ErrStopRequested {
+		return nil
+	}
+	return err
 }
 
 func initLogging() {

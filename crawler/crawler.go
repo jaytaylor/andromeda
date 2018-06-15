@@ -1,7 +1,7 @@
 package crawler
 
 import (
-	//"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -17,6 +17,10 @@ import (
 	"jaytaylor.com/universe/domain"
 	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/cfg"
 	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/load"
+)
+
+var (
+	ErrStopRequested = errors.New("stop requested")
 )
 
 type Config struct {
@@ -37,13 +41,31 @@ func NewConfig() *Config {
 
 type Crawler struct {
 	Config       *Config
-	Processors   []HydratorFunc
+	Processors   []ProcessorFunc
 	db           db.DBClient
 	mu           sync.RWMutex
 	numProcessed int
 }
 
-type HydratorFunc func(rr *vcs.RepoRoot, pkg *domain.Package) error
+// ProcessorFunc are functions which perofrm the actual crawling and record
+// insights and hydration work.
+type ProcessorFunc func(ctx *crawlerContext) error
+
+type crawlerContext struct {
+	entry  *domain.ToCrawlEntry
+	rr     *vcs.RepoRoot
+	pkg    *domain.Package
+	stopCh chan struct{}
+}
+
+func (ctx *crawlerContext) shouldStop() bool {
+	select {
+	case <-ctx.stopCh:
+		return true
+	default:
+		return false
+	}
+}
 
 // New creates and returns a new crawler instance with the supplied db client
 // and configuration.
@@ -52,62 +74,58 @@ func New(dbClient db.DBClient, cfg *Config) *Crawler {
 		Config: cfg,
 		db:     dbClient,
 	}
+	c.Processors = []ProcessorFunc{
+		c.Collect,
+		c.Hydrate,
+	}
 	return c
 }
 
-func (c *Crawler) Run() error {
+func (c *Crawler) Run(stopCh chan struct{}) error {
 	log.WithField("cfg", fmt.Sprintf("%# v", c.Config)).Info("Crawler starting")
 
 	var (
-		i     = 0
-		err   error
-		dbErr error
+		i   = 0
+		err error
 	)
 
 	for ; c.Config.MaxItems <= 0 || i < c.Config.MaxItems; i++ {
-		var pkg *domain.Package
+		var (
+			entry *domain.ToCrawlEntry
+			pkg   *domain.Package
+		)
 
-		dbErr = c.db.ToCrawlsWithBreak(func(entry *domain.ToCrawlEntry) bool {
-			if c.Config.MaxItems > 0 && i >= c.Config.MaxItems {
-				return false
-			}
-			log.WithField("entry", fmt.Sprintf("%# v", entry)).Debug("Processing")
-			pkg, err = c.do(entry.PackagePath)
-			if pkg != nil {
-				if saveErr := c.db.PackageSave(pkg); saveErr != nil {
-					log.WithField("i", i).Errorf("Also encountered error saving package: %s", saveErr)
-				}
-			}
-			//pj, _ := json.Marshal(pkg)
-			//log.WithField("pkg", string(pj)).Info("Package crawl finished")
-			log.WithField("pkg", pkg).Info("Package crawl finished")
-			if err != nil {
-				log.WithField("i", i).Errorf("Problem: %s", err)
-				return false
-			}
-			log.Debug("pkg=%s", pkg)
-			return false
-		})
-		if dbErr != nil || err != nil {
+		if entry, err = c.db.ToCrawlDequeue(); err != nil {
 			break
 		}
-		if err = c.db.ToCrawlDelete(pkg.Path); err != nil {
+		log.WithField("entry", fmt.Sprintf("%# v", entry)).Debug("Processing")
+		if pkg, err = c.do(entry.PackagePath, stopCh); err != nil {
+			log.Info("Issue crawling package, attempting re-queue due to: %s", err)
+			if _, err := c.db.ToCrawlAdd(entry); err != nil {
+				log.WithField("ToCrawlEntry", entry).Errorf("Re-queueing entry failed: %s", err)
+			}
 			break
 		}
-		log.WithField("pkg-path", pkg.Path).Debug("Deleted to-crawl entry")
-	}
-	c.mu.Lock()
-	c.numProcessed++
-	c.mu.Unlock()
+		log.WithField("pkg", pkg).Info("Package crawl finished")
+		if err = c.db.PackageSave(pkg); err != nil {
+			break
+		}
 
-	if dbErr != nil {
-		return dbErr
+		c.mu.Lock()
+		c.numProcessed++
+		c.mu.Unlock()
+
+		select {
+		case <-stopCh:
+			log.Debug("Stop request received")
+			break
+		default:
+		}
 	}
 	if err != nil {
 		return err
 	}
 	log.WithField("i", i).Info("Run completed")
-
 	return nil
 }
 
@@ -117,10 +135,18 @@ func (c *Crawler) NumProcessed() int {
 	return c.numProcessed
 }
 
-func (c *Crawler) do(pkgPath string) (*domain.Package, error) {
+func (c *Crawler) do(pkgPath string, stopCh chan struct{}) (*domain.Package, error) {
+	ctx := &crawlerContext{
+		stopCh: stopCh,
+	}
+
 	pkg, err := c.db.Package(pkgPath)
 	if err != nil && err != db.ErrKeyNotFound {
 		return nil, err
+	}
+
+	if ctx.shouldStop() {
+		return nil, ErrStopRequested
 	}
 
 	var rr *vcs.RepoRoot
@@ -168,25 +194,34 @@ func (c *Crawler) do(pkgPath string) (*domain.Package, error) {
 		defer os.RemoveAll(localPath)
 	}
 
-	if err := c.Collect(pkg, rr); err != nil {
-		return pkg, err
-	}
-	if err := c.Hydrate(pkg, rr); err != nil {
-		return pkg, err
+	ctx.pkg = pkg
+	ctx.rr = rr
+
+	for _, pFn := range c.Processors {
+		pCh := make(chan error)
+		go func() {
+			pCh <- pFn(ctx)
+		}()
+		select {
+		case err = <-pCh:
+			return pkg, err
+		case <-ctx.stopCh:
+			return nil, ErrStopRequested
+		}
 	}
 	return pkg, nil
 }
 
 // Collect phase fetches information so a package can be analyzed.
-func (c *Crawler) Collect(pkg *domain.Package, rr *vcs.RepoRoot) error {
-	if !strings.Contains(pkg.Path, ".") {
+func (c *Crawler) Collect(ctx *crawlerContext) error {
+	if !strings.Contains(ctx.pkg.Path, ".") {
 		return nil
 	}
-	if err := c.get(rr); err != nil {
+	if err := c.get(ctx.rr); err != nil {
 		finishedAt := time.Now()
-		pkg.LatestCrawl().AddMessage(fmt.Sprintf("go getting: %v", err.Error()))
-		pkg.LatestCrawl().JobSucceeded = false
-		pkg.LatestCrawl().JobFinishedAt = &finishedAt
+		ctx.pkg.LatestCrawl().AddMessage(fmt.Sprintf("go getting: %v", err.Error()))
+		ctx.pkg.LatestCrawl().JobSucceeded = false
+		ctx.pkg.LatestCrawl().JobFinishedAt = &finishedAt
 		return err
 	}
 	return nil
@@ -196,21 +231,21 @@ func (c *Crawler) Collect(pkg *domain.Package, rr *vcs.RepoRoot) error {
 // update a *domain.Package struct.
 //
 // If pkg is nil, it is assumed that this is the first crawl.
-func (c *Crawler) Hydrate(pkg *domain.Package, rr *vcs.RepoRoot) error {
-	err := c.interrogate(pkg, rr)
+func (c *Crawler) Hydrate(ctx *crawlerContext) error {
+	err := c.interrogate(ctx.pkg, ctx.rr)
 
 	finishedAt := time.Now()
 
-	pkg.LatestCrawl().JobFinishedAt = &finishedAt
+	ctx.pkg.LatestCrawl().JobFinishedAt = &finishedAt
 
 	if err != nil {
-		pkg.LatestCrawl().AddMessage(fmt.Sprintf("interrogating: %v", err.Error()))
-		pkg.LatestCrawl().JobSucceeded = false
+		ctx.pkg.LatestCrawl().AddMessage(fmt.Sprintf("interrogating: %v", err.Error()))
+		ctx.pkg.LatestCrawl().JobSucceeded = false
 		return err
 	}
 
-	pkg.Data = pkg.Data.Merge(pkg.LatestCrawl().Data)
-	pkg.LatestCrawl().JobSucceeded = true
+	ctx.pkg.Data = ctx.pkg.Data.Merge(ctx.pkg.LatestCrawl().Data)
+	ctx.pkg.LatestCrawl().JobSucceeded = true
 	return nil
 }
 

@@ -273,7 +273,7 @@ func (client *BoltDBClient) ToCrawlAdd(entries ...*domain.ToCrawlEntry) (int, er
 
 	numNew := len(candidates)
 
-	toAdd := make([]*boltqueue.Message, 0, len(candidates))
+	toAdd := make([]*boltqueue.Message, 0, numNew)
 	for _, entry := range candidates {
 		v, err := proto.Marshal(entry)
 		if err != nil {
