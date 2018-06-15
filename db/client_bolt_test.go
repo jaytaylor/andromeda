@@ -76,7 +76,7 @@ func TestBoltDBClientToCrawlOperations(t *testing.T) {
 	}
 
 	{
-		if err := client.ToCrawlDelete("jay-tay"); err != nil {
+		if _, err := client.ToCrawlDequeue(); err != nil {
 			t.Fatal(err)
 		}
 		l, err := client.ToCrawlsLen()
