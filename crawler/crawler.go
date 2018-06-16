@@ -264,7 +264,7 @@ func (c *Crawler) CatalogImporters(ctx *crawlerContext) error {
 	for _, imp := range ctx.pkg.Data.AllImports() {
 		rr, err := vcs.RepoRootForImportPath(imp, true) // TODO: Only set true when logging is verbose.
 		if err != nil {
-			log.Error("Failed to resolve repo for import=%v: %s", imp, err)
+			log.Errorf("Failed to resolve repo for import=%v: %s", imp, err)
 			continue
 		}
 		log.Info("found rr=%# v", rr)
@@ -291,13 +291,15 @@ func (c *Crawler) saveImportedBy(rr *vcs.RepoRoot, ctx *crawlerContext) error {
 			Data:       nil,
 			History:    []*domain.PackageCrawl{},
 		}
-		if n, err := c.db.ToCrawlAdd(&domain.ToCrawlEntry{
-			PackagePath: rr.Root,
-			Reason:      fmt.Sprintf("In use by %v", ctx.pkg.Path),
-		}); err != nil {
-			log.Warnf("Problem enqueueing pkg=%v: %s (ignored, continuing)", rr.Root, err)
-		} else if n > 0 {
-			log.Infof("Added newly discovered package=%v into to-crawl queue", rr.Root)
+		if exists, err := c.db.Package(rr.Root); err == nil && exists == nil {
+			if n, err := c.db.ToCrawlAdd(&domain.ToCrawlEntry{
+				PackagePath: rr.Root,
+				Reason:      fmt.Sprintf("In use by %v", ctx.pkg.Path),
+			}); err != nil {
+				log.Warnf("Problem enqueueing pkg=%v: %s (ignored, continuing)", rr.Root, err)
+			} else if n > 0 {
+				log.Infof("Added newly discovered package=%v into to-crawl queue", rr.Root)
+			}
 		}
 	}
 	pkg.ImportedBy = unique.Strings(append(pkg.ImportedBy, ctx.pkg.Path))
