@@ -16,7 +16,7 @@ message Package {
   PackageSnapshot data = 7;
   google.protobuf.Timestamp first_seen_at = 8 [(gogoproto.stdtime) = true];
   repeated PackageCrawl history = 9;
-  // int history_last_change_index = 10;
+  repeated string imported_by = 10;
 }
 
 message PackageCrawl {

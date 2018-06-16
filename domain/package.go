@@ -2,6 +2,7 @@ package domain
 
 import (
 	"reflect"
+	"sort"
 	"time"
 )
 
@@ -29,6 +30,19 @@ func (pc *PackageCrawl) AddMessage(msg string) {
 		pc.JobMessages = []string{}
 	}
 	pc.JobMessages = append(pc.JobMessages, msg)
+}
+
+func (snap *PackageSnapshot) AllImports() []string {
+	impsMap := map[string]struct{}{}
+	for _, imp := range append(snap.Imports, snap.TestImports...) {
+		impsMap[imp] = struct{}{}
+	}
+	all := make([]string, 0, len(impsMap))
+	for imp, _ := range impsMap {
+		all = append(all, imp)
+	}
+	sort.Strings(all)
+	return all
 }
 
 func (snap *PackageSnapshot) Merge(other *PackageSnapshot) *PackageSnapshot {

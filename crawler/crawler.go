@@ -3,6 +3,7 @@ package crawler
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 
 	"jaytaylor.com/universe/db"
 	"jaytaylor.com/universe/domain"
+	"jaytaylor.com/universe/pkg/unique"
 	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/cfg"
 	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/load"
 )
@@ -77,6 +79,7 @@ func New(dbClient db.DBClient, cfg *Config) *Crawler {
 	c.Processors = []ProcessorFunc{
 		c.Collect,
 		c.Hydrate,
+		c.CatalogImporters,
 	}
 	return c
 }
@@ -122,10 +125,12 @@ func (c *Crawler) Run(stopCh chan struct{}) error {
 		default:
 		}
 	}
+	log.WithField("i", i).Info("Run ended")
 	if err != nil {
-		return err
+		if err == io.EOF {
+			return nil
+		}
 	}
-	log.WithField("i", i).Info("Run completed")
 	return nil
 }
 
@@ -178,6 +183,7 @@ func (c *Crawler) do(pkgPath string, stopCh chan struct{}) (*domain.Package, err
 			VCS:         rr.VCS.Name,
 			Data:        nil,
 			History:     []*domain.PackageCrawl{},
+			ImportedBy:  []string{},
 		}
 	}
 
@@ -204,7 +210,9 @@ func (c *Crawler) do(pkgPath string, stopCh chan struct{}) (*domain.Package, err
 		}()
 		select {
 		case err = <-pCh:
-			return pkg, err
+			if err != nil {
+				return pkg, err
+			}
 		case <-ctx.stopCh:
 			return nil, ErrStopRequested
 		}
@@ -214,6 +222,7 @@ func (c *Crawler) do(pkgPath string, stopCh chan struct{}) (*domain.Package, err
 
 // Collect phase fetches information so a package can be analyzed.
 func (c *Crawler) Collect(ctx *crawlerContext) error {
+	log.Debug("collect starting")
 	if !strings.Contains(ctx.pkg.Path, ".") {
 		return nil
 	}
@@ -232,6 +241,7 @@ func (c *Crawler) Collect(ctx *crawlerContext) error {
 //
 // If pkg is nil, it is assumed that this is the first crawl.
 func (c *Crawler) Hydrate(ctx *crawlerContext) error {
+	log.Debug("hydrate starting")
 	err := c.interrogate(ctx.pkg, ctx.rr)
 
 	finishedAt := time.Now()
@@ -246,6 +256,52 @@ func (c *Crawler) Hydrate(ctx *crawlerContext) error {
 
 	ctx.pkg.Data = ctx.pkg.Data.Merge(ctx.pkg.LatestCrawl().Data)
 	ctx.pkg.LatestCrawl().JobSucceeded = true
+	return nil
+}
+
+func (c *Crawler) CatalogImporters(ctx *crawlerContext) error {
+	log.Debug("catalog starting")
+	for _, imp := range ctx.pkg.Data.AllImports() {
+		rr, err := vcs.RepoRootForImportPath(imp, true) // TODO: Only set true when logging is verbose.
+		if err != nil {
+			log.Error("Failed to resolve repo for import=%v: %s", imp, err)
+			continue
+		}
+		log.Info("found rr=%# v", rr)
+		if err := c.saveImportedBy(rr, ctx); err != nil {
+			return err
+		}
+	}
+	log.Info("done finding rr's")
+	return nil
+}
+
+func (c *Crawler) saveImportedBy(rr *vcs.RepoRoot, ctx *crawlerContext) error {
+	pkg, err := c.db.Package(rr.Root)
+	if err != nil && err != db.ErrKeyNotFound {
+		return err
+	}
+	if pkg == nil {
+		pkg = &domain.Package{
+			Path:       rr.Root,
+			Name:       "", // TODO: package name(s)???
+			URL:        rr.Repo,
+			VCS:        rr.VCS.Name,
+			ImportedBy: []string{},
+			Data:       nil,
+			History:    []*domain.PackageCrawl{},
+		}
+		if n, err := c.db.ToCrawlAdd(&domain.ToCrawlEntry{
+			PackagePath: rr.Root,
+			Reason:      fmt.Sprintf("In use by %v", ctx.pkg.Path),
+		}); err != nil {
+			log.Warnf("Problem enqueueing pkg=%v: %s (ignored, continuing)", rr.Root, err)
+		} else if n > 0 {
+			log.Infof("Added newly discovered package=%v into to-crawl queue", rr.Root)
+		}
+	}
+	pkg.ImportedBy = unique.Strings(append(pkg.ImportedBy, ctx.pkg.Path))
+
 	return nil
 }
 
@@ -272,15 +328,12 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 	pc.Data.Repo = rr.Repo
 	pc.Data.Readme = detectReadme(localPath)
 
-	dirs, err := subdirs(localPath)
-	if err != nil {
-		return err
-	}
 	importsMap := map[string]struct{}{}
 	testImportsMap := map[string]struct{}{}
 
 	scanDir := func(dir string) {
-		pkgPath := strings.Replace(dir, fmt.Sprintf("%v%v", c.Config.SrcPath, os.PathSeparator), "", 1)
+		log.Infof("dir=%v b=%v", dir, fmt.Sprintf("%v%v", c.Config.SrcPath, string(os.PathSeparator)))
+		pkgPath := strings.Replace(dir, fmt.Sprintf("%v%v", c.Config.SrcPath, string(os.PathSeparator)), "", 1)
 		goPkg, err := loadPackageDynamic(c.Config.SrcPath, pkgPath)
 		if err != nil {
 			pkg.LatestCrawl().AddMessage(fmt.Sprintf("loading %v: %s", pkgPath, err))
@@ -305,6 +358,11 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 	}
 
 	scanDir(localPath)
+
+	dirs, err := subdirs(localPath)
+	if err != nil {
+		return err
+	}
 
 	for _, dir := range dirs {
 		scanDir(dir)

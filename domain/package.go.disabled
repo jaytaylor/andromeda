@@ -1,0 +1,33 @@
+package domain
+
+import (
+	"time"
+)
+
+type Package struct {
+	Name        string
+	Path        string
+	URL         string
+	Author      string
+	Imports     []string
+	TestImports []string
+	FirstSeen   time.Time
+	History     PackageCrawlHistory
+}
+
+type PackageCrawlHistory []PackageCrawl
+
+type PackageCrawl struct {
+	Time         time.Time
+	JobReason    string
+	JobSucceeded bool
+	JobMessages  string
+	Branches     int
+	Tags         int
+	Stars        int
+	Forks        int
+	Bytes        int64
+}
+
+type RepositoryStatistics struct {
+}

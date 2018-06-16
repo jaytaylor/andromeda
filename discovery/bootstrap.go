@@ -53,13 +53,13 @@ func Bootstrap(dbClient db.DBClient, config *BootstrapConfig) error {
 	)
 
 	doBatch := func() error {
-		log.WithField("this-batch", len(batch)).WithField("total-attempted", numAttempted).WithField("total-new", numNew).Debug("Adding batch of to-crawl entries to DB")
 		if n, err = dbClient.ToCrawlAdd(batch...); err != nil {
 			return err
 		}
 		numNew += n
 		numAttempted += len(batch)
 		batch = make([]*domain.ToCrawlEntry, 0, AddBatchSize)
+		log.WithField("this-batch", len(batch)).WithField("total-attempted", numAttempted).WithField("total-new", numNew).Debug("Added batch of to-crawl entries to DB")
 		return nil
 	}
 

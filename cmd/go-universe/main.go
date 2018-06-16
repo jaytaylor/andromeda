@@ -228,10 +228,10 @@ func crawl(dbClient db.DBClient) error {
 
 	stopCh := make(chan struct{})
 	errCh := make(chan error)
-	crawler := crawler.New(dbClient, cfg)
+	c := crawler.New(dbClient, cfg)
 
 	go func() {
-		errCh <- crawler.Run(stopCh)
+		errCh <- c.Run(stopCh)
 	}()
 
 	var (
@@ -254,10 +254,10 @@ func crawl(dbClient db.DBClient) error {
 			err = <-errCh
 		}
 	}
-	if err == crawler.ErrStopRequested {
-		return nil
+	if err != nil && err != crawler.ErrStopRequested {
+		return err
 	}
-	return err
+	return nil
 }
 
 func initLogging() {
