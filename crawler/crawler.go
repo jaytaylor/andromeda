@@ -35,7 +35,7 @@ func init() {
 	// Set environment variables telling git to avoid triggering interactive
 	// prompts.
 	os.Setenv("GIT_TERMINAL_PROMPT", "0")
-	os.Setenv("GIT_SSH_COMMAND", "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no")
+	os.Setenv("GIT_SSH_COMMAND", "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o BatchMode=yes")
 }
 
 type Config struct {
