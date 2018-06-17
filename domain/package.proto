@@ -13,10 +13,10 @@ message Package {
   string url = 4 [(gogoproto.customname) = "URL"];
   string owner = 5;
   string vcs = 6 [(gogoproto.customname) = "VCS"];
-  PackageSnapshot data = 7;
-  google.protobuf.Timestamp first_seen_at = 8 [(gogoproto.stdtime) = true];
-  repeated PackageCrawl history = 9;
-  repeated string imported_by = 10;
+  google.protobuf.Timestamp first_seen_at = 7 [(gogoproto.stdtime) = true];
+  repeated string imported_by = 8;
+  PackageSnapshot data = 9;
+  repeated PackageCrawl history = 10;
 }
 
 message PackageCrawl {

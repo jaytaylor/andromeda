@@ -1,90 +1,82 @@
 package crawler
 
 import (
-	//"fmt"
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
-	// "net/http"
-	// "net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
-	// "github.com/AaronO/go-git-http"
+	log "github.com/sirupsen/logrus"
 
 	"jaytaylor.com/universe/db"
 	"jaytaylor.com/universe/domain"
 	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/cfg"
 )
 
-/*type testHandler struct {
-	gitServerURL string
+func init() {
+	if testing.Verbose() {
+		log.SetLevel(log.DebugLevel)
+	}
 }
 
-func (th *restHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	reply := fmt.Sprintf(`<!DOCTYPE html><html><head><meta name="go-import" content="%[1]v git http://%[2]v:%[3]v/git/%[1]v"></head></html>`, r.RequestURI, th.gitServerURL)
-	fmt.Fprinf(w, reply)
-}*/
-
-func TestCrawlerRunCorrectness(t *testing.T) {
+func TestCrawlerRun(t *testing.T) {
 	dbFile := filepath.Join(os.TempDir(), "universe-crawler-correctness.bolt")
 	if err := os.RemoveAll(dbFile); err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(dbFile)
 
-	// t.Fatal("test needs implemented")
-
-	/*gitPath := filepath.Join(os.TempDir(), "testgit")
-	if err := os.MkdirAll(gitPath, os.FileMode(int(0700))); err != nil {
-		t.Fatal(err)
+	toCrawls := []*domain.ToCrawlEntry{
+		&domain.ToCrawlEntry{PackagePath: "testing"},
+		&domain.ToCrawlEntry{PackagePath: "net/http"},
+		&domain.ToCrawlEntry{PackagePath: "path/filepath"},
+		&domain.ToCrawlEntry{PackagePath: "runtime"},
+		&domain.ToCrawlEntry{PackagePath: "os"},
 	}
-	defer os.RemoveAll(gitPath)
 
-	gS := httptest.NewServer(githttp.New(gitPath))
-	gS.Start()
-	defer gS.Close()
-
-	s0 := httptest.NewServer(&testHandler{gitServerPort: gS.URL})
-	s0.*/
-
-	// Add several (3+) to-crawl entries.
 	if err := db.WithDBClient(db.NewBoltDBConfig(dbFile), func(dbClient db.DBClient) error {
-		if _, err := dbClient.ToCrawlAdd(
-			&domain.ToCrawlEntry{PackagePath: "testing"},
-			&domain.ToCrawlEntry{PackagePath: "net/http"},
-			&domain.ToCrawlEntry{PackagePath: "path/filepath"},
-			&domain.ToCrawlEntry{PackagePath: "os"},
-		); err != nil {
+		// Add several (3+) to-crawl entries.
+		if _, err := dbClient.ToCrawlAdd(toCrawls...); err != nil {
 			return err
 		}
 
 		tcl, _ := dbClient.ToCrawlsLen()
 		t.Logf("%v", tcl)
-		if expected, actual := 4, tcl; actual != expected {
+		if expected, actual := len(toCrawls), tcl; actual != expected {
 			t.Errorf("Expected len(to-crawl entries)=%v but actual=%v", expected, actual)
 		}
 
+		// Run the crawler.
 		cfg := NewConfig()
+		cfg.IncludeStdLib = true
 		cfg.SrcPath = filepath.Join(os.TempDir(), "universe-crawler-correctness")
 		defer os.RemoveAll(cfg.SrcPath)
 
 		c := New(dbClient, cfg)
-		stopCh := make(chan struct{})
-		if err := c.Run(stopCh); err != nil {
+		if err := c.Run(nil); err != nil {
 			t.Error(err)
 			return nil
+		}
+
+		// Verify results.
+		{
+			pkg, err := dbClient.Package("runtime")
+			if err != nil {
+				return err
+			}
+			if expected, actual := 10, len(pkg.ImportedBy); actual < expected {
+				j, _ := json.MarshalIndent(pkg, "", "    ")
+				t.Logf("\"runtime\" package JSON:\n%v", string(j))
+				return fmt.Errorf("Expected \"runtime\" to be imported by > %v others but actual=%v", expected, actual)
+			}
 		}
 
 		return nil
 	}); err != nil {
 		t.Error(err)
 	}
-
-	// Find a way to serve up said to-crawl entries so the crawler can `go get` them.
-
-	// Run the crawler.
-
-	// Validate that
 }
 
 func TestImportsStd(t *testing.T) {

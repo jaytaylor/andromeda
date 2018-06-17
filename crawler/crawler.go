@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -22,9 +23,10 @@ import (
 )
 
 var (
-	DefaultMaxItems    = -1
-	DefaultSrcPath     = filepath.Join(os.TempDir(), "src")
-	DefaultDeleteAfter = false
+	DefaultMaxItems      = -1
+	DefaultSrcPath       = filepath.Join(os.TempDir(), "src")
+	DefaultDeleteAfter   = false
+	DefaultIncludeStdLib = false
 
 	ErrStopRequested = errors.New("stop requested")
 )
@@ -34,16 +36,18 @@ func init() {
 }
 
 type Config struct {
-	MaxItems    int    // Maximum number of items to process.
-	SrcPath     string // Location to checkout code to.
-	DeleteAfter bool   // Delete package code after analysis.
+	MaxItems      int    // Maximum number of items to process.
+	SrcPath       string // Location to checkout code to.
+	DeleteAfter   bool   // Delete package code after analysis.
+	IncludeStdLib bool   // Include standard library in associations and analysis.
 }
 
 func NewConfig() *Config {
 	cfg := &Config{
-		MaxItems:    DefaultMaxItems,
-		SrcPath:     DefaultSrcPath,
-		DeleteAfter: DefaultDeleteAfter,
+		MaxItems:      DefaultMaxItems,
+		SrcPath:       DefaultSrcPath,
+		DeleteAfter:   DefaultDeleteAfter,
+		IncludeStdLib: DefaultIncludeStdLib,
 	}
 	return cfg
 }
@@ -95,7 +99,11 @@ func New(dbClient db.DBClient, cfg *Config) *Crawler {
 
 // Run crawls from the to-crawl queue.
 func (c *Crawler) Run(stopCh chan struct{}) error {
-	log.WithField("cfg", fmt.Sprintf("%# v", c.Config)).Info("Crawler.Run starting")
+	if stopCh == nil {
+		log.Debug("nil stopCh received, this job will not be stoppable")
+		stopCh = make(chan struct{})
+	}
+	//log.WithField("cfg", fmt.Sprintf("%# v", c.Config)).Info("Crawler.Run starting")
 
 	var (
 		i   = 0
@@ -151,7 +159,11 @@ func (c *Crawler) Run(stopCh chan struct{}) error {
 
 // Do crawls the named packages.
 func (c *Crawler) Do(stopCh chan struct{}, pkgs ...string) error {
-	log.WithField("cfg", fmt.Sprintf("%# v", c.Config)).Info("Crawler.Do starting")
+	if stopCh == nil {
+		log.Debug("nil stopCh received, this job will not be stoppable")
+		stopCh = make(chan struct{})
+	}
+	//log.WithField("cfg", fmt.Sprintf("%# v", c.Config)).Info("Crawler.Do starting")
 
 	var (
 		i   = 0
@@ -212,38 +224,16 @@ func (c *Crawler) do(pkgPath string, stopCh chan struct{}) (*domain.Package, err
 		return nil, ErrStopRequested
 	}
 
-	var rr *vcs.RepoRoot
-	if strings.Contains(pkgPath, ".") {
-		rr, err = vcs.RepoRootForImportPath(pkgPath, true) // TODO: Only set true when logging is verbose.
-		if err != nil {
-			return nil, err
-		}
-		rr.Repo = strings.Replace(rr.Repo, "https://github.com/", "git@github.com:", 1)
-		log.Infof("root=%[1]v\nrepo=%[2]v\nvcs=%[3]T/%[3]v\n", rr.Root, rr.Repo, rr.VCS.Name)
-	} else {
-		rr = &vcs.RepoRoot{
-			Repo: pkgPath,
-			Root: pkgPath,
-			VCS: &vcs.Cmd{
-				Name: "local",
-			},
-		}
+	rr, err := importToRepoRoot(pkgPath, true) // TODO: Only set true when logging is verbose.
+	if err != nil {
+		return nil, err
 	}
 
 	now := time.Now()
 
 	// If first crawl.
 	if pkg == nil {
-		pkg = &domain.Package{
-			FirstSeenAt: &now,
-			Path:        rr.Root,
-			Name:        "", // TODO: package name(s)???
-			URL:         rr.Repo,
-			VCS:         rr.VCS.Name,
-			Data:        nil,
-			History:     []*domain.PackageCrawl{},
-			ImportedBy:  []string{},
-		}
+		pkg = newPackage(rr, &now)
 	}
 
 	pc := &domain.PackageCrawl{
@@ -281,7 +271,9 @@ func (c *Crawler) do(pkgPath string, stopCh chan struct{}) (*domain.Package, err
 
 // Collect phase fetches information so a package can be analyzed.
 func (c *Crawler) Collect(ctx *crawlerContext) error {
-	log.Debug("collect starting")
+	//log.Debug("collect starting")
+	// Skip standard library packages, because they're already in $GOROOT and
+	// "go get" doesn't work with them.
 	if !strings.Contains(ctx.pkg.Path, ".") {
 		return nil
 	}
@@ -300,7 +292,7 @@ func (c *Crawler) Collect(ctx *crawlerContext) error {
 //
 // If pkg is nil, it is assumed that this is the first crawl.
 func (c *Crawler) Hydrate(ctx *crawlerContext) error {
-	log.Debug("hydrate starting")
+	//log.Debug("hydrate starting")
 	err := c.interrogate(ctx.pkg, ctx.rr)
 
 	finishedAt := time.Now()
@@ -319,51 +311,87 @@ func (c *Crawler) Hydrate(ctx *crawlerContext) error {
 }
 
 func (c *Crawler) CatalogImporters(ctx *crawlerContext) error {
-	log.Debug("catalog starting")
+	//log.WithField("pkg", ctx.pkg.Path).WithField("imports", ctx.pkg.Data.AllImports()).Info("catalog starting")
+	var (
+		updatedPkgs = map[string]*domain.Package{}
+		discoveries = map[string]*domain.ToCrawlEntry{}
+	)
 	for _, imp := range ctx.pkg.Data.AllImports() {
-		rr, err := vcs.RepoRootForImportPath(imp, true) // TODO: Only set true when logging is verbose.
+		rr, err := importToRepoRoot(imp, true) // TODO: Only set true when logging is verbose.
 		if err != nil {
-			log.Errorf("Failed to resolve repo for import=%v: %s", imp, err)
+			log.WithField("pkg", ctx.pkg.Path).Errorf("Failed to resolve repo for import=%v: %s", imp, err)
 			continue
 		}
-		rr.Repo = strings.Replace(rr.Repo, "https://github.com/", "git@github.com:", 1)
-		log.Info("found rr=%# v", rr)
-		if err := c.saveImportedBy(rr, ctx); err != nil {
+		if err := c.updateAssociations(rr, ctx, updatedPkgs, discoveries); err != nil {
 			return err
 		}
 	}
-	log.Info("done finding rr's")
+	// Save updated packages.
+	if err := c.savePackagesMap(updatedPkgs); err != nil {
+		return err
+	}
+	// Enqueue newly discovered packages.
+	if err := c.enqueueToCrawlsMap(discoveries); err != nil {
+		return err
+	}
+	//log.Infof("done finding rr's for pkg=%v", ctx.pkg.Path)
 	return nil
 }
 
-func (c *Crawler) saveImportedBy(rr *vcs.RepoRoot, ctx *crawlerContext) error {
-	pkg, err := c.db.Package(rr.Root)
-	if err != nil && err != db.ErrKeyNotFound {
-		return err
-	}
-	if pkg == nil {
-		pkg = &domain.Package{
-			Path:       rr.Root,
-			Name:       "", // TODO: package name(s)???
-			URL:        rr.Repo,
-			VCS:        rr.VCS.Name,
-			ImportedBy: []string{},
-			Data:       nil,
-			History:    []*domain.PackageCrawl{},
-		}
-		if exists, err := c.db.Package(rr.Root); err == nil && exists == nil {
-			if n, err := c.db.ToCrawlAdd(&domain.ToCrawlEntry{
+// updateAssociations updates referenced packages for the "imported_by" portion
+// of the graph.
+func (c *Crawler) updateAssociations(rr *vcs.RepoRoot, ctx *crawlerContext, updatedPkgs map[string]*domain.Package, discoveries map[string]*domain.ToCrawlEntry) error {
+	var (
+		pkg *domain.Package
+		ok  bool
+		err error
+	)
+	if pkg, ok = updatedPkgs[rr.Root]; !ok {
+		if pkg, err = c.db.Package(rr.Root); err != nil && err != db.ErrKeyNotFound {
+			return err
+		} else if pkg == nil {
+			pkg = newPackage(rr, nil)
+			discoveries[rr.Root] = &domain.ToCrawlEntry{
 				PackagePath: rr.Root,
 				Reason:      fmt.Sprintf("In use by %v", ctx.pkg.Path),
-			}); err != nil {
-				log.Warnf("Problem enqueueing pkg=%v: %s (ignored, continuing)", rr.Root, err)
-			} else if n > 0 {
-				log.Infof("Added newly discovered package=%v into to-crawl queue", rr.Root)
 			}
 		}
 	}
-	pkg.ImportedBy = unique.Strings(append(pkg.ImportedBy, ctx.pkg.Path))
+	newImportedBy := unique.Strings(append(pkg.ImportedBy, ctx.pkg.Path))
+	if !reflect.DeepEqual(pkg.ImportedBy, newImportedBy) {
+		pkg.ImportedBy = newImportedBy
+		updatedPkgs[rr.Root] = pkg
+		log.WithField("imported-by", pkg.Path).WithField("pkg", ctx.pkg.Path).Debug("Discovered new association")
+	}
+	return nil
+}
 
+func (c *Crawler) savePackagesMap(pkgs map[string]*domain.Package) error {
+	list := make([]*domain.Package, 0, len(pkgs))
+	for _, pkg := range pkgs {
+		list = append(list, pkg)
+	}
+	if err := c.db.PackageSave(list...); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Crawler) enqueueToCrawlsMap(toCrawls map[string]*domain.ToCrawlEntry) error {
+	list := make([]*domain.ToCrawlEntry, 0, len(toCrawls))
+	for _, entry := range toCrawls {
+		list = append(list, entry)
+	}
+	if n, err := c.db.ToCrawlAdd(list...); err != nil {
+		log.Warnf("Problem enqueueing %v new candidate to-crawl entries: %s", len(toCrawls), err)
+		return err
+	} else if n > 0 {
+		plural := ""
+		if n > 1 {
+			plural = "s"
+		}
+		log.Infof("Added %v newly discovered package%v into to-crawl queue", n, plural)
+	}
 	return nil
 }
 
@@ -387,6 +415,7 @@ func (c *Crawler) get(rr *vcs.RepoRoot) error {
 	//     ssh-keyscan <enter_domainname_e.g._github.com> >> ~/.ssh/known_hosts
 	//
 	if err := rr.VCS.Create(dst, rr.Repo); err != nil {
+		log.WithField("pkg", rr.Root).Errorf("Problem creating / go-get'ing repo: %s", err)
 		return err
 	}
 	return nil
@@ -416,7 +445,7 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 			if pieces := strings.SplitN(imp, "/vendor/", 2); len(pieces) > 1 {
 				imp = pieces[1]
 			}
-			if strings.Contains(imp, ".") {
+			if c.Config.IncludeStdLib || strings.Contains(imp, ".") {
 				importsMap[imp] = struct{}{}
 			}
 		}
@@ -424,7 +453,7 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 			if pieces := strings.SplitN(imp, "/vendor/", 2); len(pieces) > 1 {
 				imp = pieces[1]
 			}
-			if strings.Contains(imp, ".") {
+			if c.Config.IncludeStdLib || strings.Contains(imp, ".") {
 				testImportsMap[imp] = struct{}{}
 			}
 		}
@@ -542,4 +571,45 @@ func detectReadme(localPath string) string {
 		}
 	}
 	return ""
+}
+
+func newPackage(rr *vcs.RepoRoot, now *time.Time) *domain.Package {
+	if now == nil {
+		ts := time.Now()
+		now = &ts
+	}
+	pkg := &domain.Package{
+		FirstSeenAt: now,
+		Path:        rr.Root,
+		Name:        "", // TODO: package name(s)???
+		URL:         rr.Repo,
+		VCS:         rr.VCS.Name,
+		Data:        nil,
+		ImportedBy:  []string{},
+		History:     []*domain.PackageCrawl{},
+	}
+	return pkg
+}
+
+func importToRepoRoot(pkgPath string, debug bool) (*vcs.RepoRoot, error) {
+	var (
+		rr  *vcs.RepoRoot
+		err error
+	)
+	if strings.Contains(pkgPath, ".") {
+		if rr, err = vcs.RepoRootForImportPath(pkgPath, true); err != nil { // TODO: Only set true when logging is verbose.
+			return nil, err
+		}
+		rr.Repo = strings.Replace(rr.Repo, "https://github.com/", "git@github.com:", 1)
+		log.Infof("root=%v repo=%v vcs=%v", rr.Root, rr.Repo, rr.VCS.Name)
+	} else {
+		rr = &vcs.RepoRoot{
+			Repo: pkgPath,
+			Root: pkgPath,
+			VCS: &vcs.Cmd{
+				Name: "local",
+			},
+		}
+	}
+	return rr, nil
 }
