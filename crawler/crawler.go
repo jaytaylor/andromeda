@@ -22,8 +22,16 @@ import (
 )
 
 var (
+	DefaultMaxItems    = -1
+	DefaultSrcPath     = filepath.Join(os.TempDir(), "src")
+	DefaultDeleteAfter = false
+
 	ErrStopRequested = errors.New("stop requested")
 )
+
+func init() {
+	os.Setenv("GIT_TERMINAL_PROMPT", "0")
+}
 
 type Config struct {
 	MaxItems    int    // Maximum number of items to process.
@@ -33,8 +41,9 @@ type Config struct {
 
 func NewConfig() *Config {
 	cfg := &Config{
-		SrcPath:     filepath.Join(os.TempDir(), "src"),
-		DeleteAfter: false,
+		MaxItems:    DefaultMaxItems,
+		SrcPath:     DefaultSrcPath,
+		DeleteAfter: DefaultDeleteAfter,
 	}
 	return cfg
 }
@@ -103,7 +112,7 @@ func (c *Crawler) Run(stopCh chan struct{}) error {
 		}
 		log.WithField("entry", fmt.Sprintf("%# v", entry)).Debug("Processing")
 		if pkg, err = c.do(entry.PackagePath, stopCh); err != nil {
-			log.Info("Issue crawling package, attempting re-queue due to: %s", err)
+			log.WithField("ToCrawlEntry", entry).Errorf("Issue crawling package, attempting re-queue due to: %s", err)
 			if _, err := c.db.ToCrawlAdd(entry); err != nil {
 				log.WithField("ToCrawlEntry", entry).Errorf("Re-queueing entry failed: %s", err)
 			}
@@ -160,6 +169,7 @@ func (c *Crawler) do(pkgPath string, stopCh chan struct{}) (*domain.Package, err
 		if err != nil {
 			return nil, err
 		}
+		rr.Repo = strings.Replace(rr.Repo, "https://github.com/", "git@github.com:", 1)
 		log.Infof("root=%[1]v\nrepo=%[2]v\nvcs=%[3]T/%[3]v\n", rr.Root, rr.Repo, rr.VCS.Name)
 	} else {
 		rr = &vcs.RepoRoot{
@@ -267,6 +277,7 @@ func (c *Crawler) CatalogImporters(ctx *crawlerContext) error {
 			log.Errorf("Failed to resolve repo for import=%v: %s", imp, err)
 			continue
 		}
+		rr.Repo = strings.Replace(rr.Repo, "https://github.com/", "git@github.com:", 1)
 		log.Info("found rr=%# v", rr)
 		if err := c.saveImportedBy(rr, ctx); err != nil {
 			return err
@@ -391,11 +402,13 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 
 // loadPackageDynamic returns slices containing imports and test imports.
 func loadPackageDynamic(parentDir string, pkgPath string) (*load.Package, error) {
-	if len(cfg.Gopath) < 10 {
+	/*if len(cfg.Gopath) < 10 {
+		log.Debugf("Adding path=%q to GOPATH", filepath.Dir(parentDir))
 		cfg.Gopath = append(cfg.Gopath, filepath.Dir(parentDir)) //  GOROOTsrc = parentDir
-	}
+	}*/
 	//cfg.GOROOTsrc = parentDir
 	//cfg.BuildContext.GOROOT = filepath.Dir(parentDir)
+	cfg.BuildContext.GOPATH = filepath.Dir(parentDir)
 
 	//cfg.Gopath = filepath.SplitList(cfg.BuildContext.GOPATH + ":" + parentDir)
 	//defer func() { cfg.GOROOTsrc = GOROOTsrcBackup }()

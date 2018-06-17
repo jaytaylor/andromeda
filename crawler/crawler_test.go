@@ -69,7 +69,8 @@ func TestCrawlerRunCorrectness(t *testing.T) {
 		defer os.RemoveAll(cfg.SrcPath)
 
 		c := New(dbClient, cfg)
-		if err := c.Run(); err != nil {
+		stopCh := make(chan struct{})
+		if err := c.Run(stopCh); err != nil {
 			t.Error(err)
 			return nil
 		}

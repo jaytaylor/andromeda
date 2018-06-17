@@ -22,19 +22,19 @@ var (
 	Verbose bool
 
 	BootstrapGoDocPackagesFile string
-
-	CrawlerMaxItems = -1
 )
 
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&Quiet, "quiet", "q", false, "Activate quiet log output")
 	rootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Activate verbose log output")
-	rootCmd.PersistentFlags().StringVarP(&DBFile, "db", "d", DBFile, "Path to BoltDB file")
+	rootCmd.PersistentFlags().StringVarP(&DBFile, "db", "b", DBFile, "Path to BoltDB file")
 
 	bootstrapCmd.Flags().StringVarP(&BootstrapGoDocPackagesFile, "godoc-packages-file", "g", "", "Path to local api.godoc.org/packages file to use")
-	bootstrapCmd.Flags().IntVarP(&discovery.AddBatchSize, "batch-size", "b", discovery.AddBatchSize, "Batch group size per DB transaction")
+	bootstrapCmd.Flags().IntVarP(&discovery.AddBatchSize, "batch-size", "s", discovery.AddBatchSize, "Batch group size per DB transaction")
 
-	crawlCmd.Flags().IntVarP(&CrawlerMaxItems, "max-items", "m", CrawlerMaxItems, "Maximum number of package items to crawl")
+	crawlCmd.Flags().IntVarP(&crawler.DefaultMaxItems, "max-items", "m", crawler.DefaultMaxItems, "Maximum number of package items to crawl (<=0 signifies unlimited)")
+	crawlCmd.Flags().StringVarP(&crawler.DefaultSrcPath, "src-path", "s", crawler.DefaultSrcPath, "Path to checkout source code to")
+	crawlCmd.Flags().BoolVarP(&crawler.DefaultDeleteAfter, "delete-after", "d", crawler.DefaultDeleteAfter, "Delete source code after analysis")
 
 	rootCmd.AddCommand(bootstrapCmd)
 	rootCmd.AddCommand(crawlCmd)
@@ -224,7 +224,6 @@ func bootstrap(dbClient db.DBClient) error {
 
 func crawl(dbClient db.DBClient) error {
 	cfg := crawler.NewConfig()
-	cfg.MaxItems = CrawlerMaxItems
 
 	stopCh := make(chan struct{})
 	errCh := make(chan error)
