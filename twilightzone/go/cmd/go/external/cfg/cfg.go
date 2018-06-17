@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"jaytaylor.com/universe/twilightzone/go/cmd/external/objabi"
+	"jaytaylor.com/andromeda/twilightzone/go/cmd/external/objabi"
 )
 
 // These are general "build flags" used by build and other commands.

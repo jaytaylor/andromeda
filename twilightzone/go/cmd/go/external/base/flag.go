@@ -7,8 +7,8 @@ package base
 import (
 	"flag"
 
-	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/cfg"
-	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/str"
+	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/cfg"
+	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/str"
 )
 
 // A StringsFlag is a command-line flag that interprets its argument

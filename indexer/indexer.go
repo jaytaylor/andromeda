@@ -3,8 +3,8 @@ package indexer
 import (
 	log "github.com/sirupsen/logrus"
 
-	"jaytaylor.com/universe/db"
-	"jaytaylor.com/universe/domain"
+	"jaytaylor.com/andromeda/db"
+	"jaytaylor.com/andromeda/domain"
 )
 
 type Indexer struct {

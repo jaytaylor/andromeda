@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/cfg"
+	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/cfg"
 )
 
 // Configuration for finding tool binaries.

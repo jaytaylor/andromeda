@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
-	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/base"
-	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/str"
+	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/base"
+	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/str"
 )
 
 var (

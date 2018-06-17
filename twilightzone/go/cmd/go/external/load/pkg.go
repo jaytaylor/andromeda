@@ -18,9 +18,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/base"
-	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/cfg"
-	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/str"
+	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/base"
+	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/cfg"
+	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/str"
 )
 
 var IgnoreImports bool // control whether we ignore imports in packages

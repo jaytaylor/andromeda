@@ -11,7 +11,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"jaytaylor.com/bboltqueue"
 
-	"jaytaylor.com/universe/domain"
+	"jaytaylor.com/andromeda/domain"
 )
 
 var (

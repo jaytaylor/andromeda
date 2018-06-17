@@ -18,8 +18,8 @@ import (
 	"strings"
 	"sync"
 
-	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/cfg"
-	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/str"
+	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/cfg"
+	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/str"
 )
 
 // A Command is an implementation of a go command

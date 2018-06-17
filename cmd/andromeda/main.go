@@ -10,14 +10,14 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"jaytaylor.com/universe/crawler"
-	"jaytaylor.com/universe/db"
-	"jaytaylor.com/universe/discovery"
-	"jaytaylor.com/universe/domain"
+	"jaytaylor.com/andromeda/crawler"
+	"jaytaylor.com/andromeda/db"
+	"jaytaylor.com/andromeda/discovery"
+	"jaytaylor.com/andromeda/domain"
 )
 
 var (
-	DBFile  = "universe.bolt"
+	DBFile  = "andromeda.bolt"
 	Quiet   bool
 	Verbose bool
 
@@ -51,7 +51,7 @@ func main() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "go-universe",
+	Use:   "andromeda",
 	Short: ".. jay will fill this out sometime ..",
 	Long:  ".. jay will fill this long one out sometime ..",
 	//Args:  cobra.MinimumNArgs(1),

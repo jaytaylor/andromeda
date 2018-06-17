@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"jaytaylor.com/universe/domain"
+	"jaytaylor.com/andromeda/domain"
 )
 
 func TestBoltDBClientToCrawlOperations(t *testing.T) {

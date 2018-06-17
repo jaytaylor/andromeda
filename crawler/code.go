@@ -13,10 +13,10 @@ import (
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/tools/go/vcs"
 
-	"jaytaylor.com/universe/db"
-	"jaytaylor.com/universe/domain"
-	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/cfg"
-	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/load"
+	"jaytaylor.com/andromeda/db"
+	"jaytaylor.com/andromeda/domain"
+	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/cfg"
+	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/load"
 )
 
 func (c *Crawler) Run() error {

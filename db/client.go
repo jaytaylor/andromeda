@@ -6,11 +6,11 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"jaytaylor.com/universe/domain"
+	"jaytaylor.com/andromeda/domain"
 )
 
 const (
-	TableMetadata = "universe-metadata"
+	TableMetadata = "andromeda-metadata"
 	TablePackages = "packages"
 	TableToCrawl  = "to-crawl"
 )

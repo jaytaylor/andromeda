@@ -14,7 +14,7 @@ import (
 	"regexp"
 	"strings"
 
-	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/cfg"
+	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/cfg"
 )
 
 // allPackages returns all the packages that can be found

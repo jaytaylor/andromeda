@@ -1,7 +1,12 @@
+# Andromeda
 
 Golang Packages Database
 
-Complete graph of the known Go Universe.
+Andromeda analyzes the complete graph of the known Go Universe.
+
+## Requirements
+
+* Golang 1.7 or newer
 
 ### TODOs
 

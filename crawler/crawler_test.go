@@ -10,9 +10,9 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"jaytaylor.com/universe/db"
-	"jaytaylor.com/universe/domain"
-	"jaytaylor.com/universe/twilightzone/go/cmd/go/external/cfg"
+	"jaytaylor.com/andromeda/db"
+	"jaytaylor.com/andromeda/domain"
+	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/cfg"
 )
 
 func init() {
@@ -22,7 +22,7 @@ func init() {
 }
 
 func TestCrawlerRun(t *testing.T) {
-	dbFile := filepath.Join(os.TempDir(), "universe-crawler-correctness.bolt")
+	dbFile := filepath.Join(os.TempDir(), "andromeda-crawler-correctness.bolt")
 	if err := os.RemoveAll(dbFile); err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestCrawlerRun(t *testing.T) {
 		// Run the crawler.
 		cfg := NewConfig()
 		cfg.IncludeStdLib = true
-		cfg.SrcPath = filepath.Join(os.TempDir(), "universe-crawler-correctness")
+		cfg.SrcPath = filepath.Join(os.TempDir(), "andromeda-crawler-correctness")
 		defer os.RemoveAll(cfg.SrcPath)
 
 		c := New(dbClient, cfg)
@@ -90,7 +90,7 @@ func TestImportsStd(t *testing.T) {
 
 func TestImportsNonStd(t *testing.T) {
 	var (
-		pkgPath   = "universedynimporttest"
+		pkgPath   = "andromedadynimporttest"
 		parentDir = filepath.Join(os.TempDir(), "src")
 		localPath = filepath.Join(parentDir, pkgPath)
 	)
