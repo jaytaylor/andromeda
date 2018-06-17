@@ -41,6 +41,7 @@ func init() {
 	rootCmd.AddCommand(purgeTableCmd)
 	rootCmd.AddCommand(statsCmd)
 	rootCmd.AddCommand(getCmd)
+	rootCmd.AddCommand(lsCmd)
 }
 
 func main() {
@@ -92,12 +93,12 @@ var crawlCmd = &cobra.Command{
 	Use:   "crawl",
 	Short: ".. jay will fill this out sometime ..",
 	Long:  ".. jay will fill this long one out sometime ..",
-	PreRun: func(_ *cobra.Command, _ []string) {
+	PreRun: func(_ *cobra.Command, args []string) {
 		initLogging()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := db.WithDBClient(db.NewBoltDBConfig(DBFile), func(dbClient db.DBClient) error {
-			return crawl(dbClient)
+			return crawl(dbClient, args...)
 		}); err != nil {
 			log.Fatalf("main: %s", err)
 		}
@@ -214,6 +215,63 @@ var getCmd = &cobra.Command{
 	},
 }
 
+var lsCmd = &cobra.Command{
+	Use:   "ls",
+	Short: "[table]",
+	Long:  ".. jay will fill this long one out sometime ..",
+	Args:  cobra.MinimumNArgs(1),
+	PreRun: func(_ *cobra.Command, _ []string) {
+		initLogging()
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := db.WithDBClient(db.NewBoltDBConfig(DBFile), func(dbClient db.DBClient) error {
+			switch args[0] {
+			case db.TablePackages, "package", "pkg":
+				fmt.Println("[")
+				var prevPkg *domain.Package
+				if err := dbClient.Packages(func(pkg *domain.Package) {
+					if prevPkg != nil {
+						j, _ := json.MarshalIndent(prevPkg, "", "    ")
+						fmt.Printf("%v,", string(j))
+					}
+					prevPkg = pkg
+				}); err != nil {
+					return err
+				}
+				if prevPkg != nil {
+					j, _ := json.MarshalIndent(prevPkg, "", "    ")
+					fmt.Printf("%v\n", string(j))
+				}
+				fmt.Println("]")
+
+			case db.TableToCrawl, "to-crawls":
+				fmt.Println("[")
+				var prevEntry *domain.ToCrawlEntry
+				if err := dbClient.ToCrawls(func(entry *domain.ToCrawlEntry) {
+					if prevEntry != nil {
+						j, _ := json.MarshalIndent(prevEntry, "", "    ")
+						fmt.Printf("%v,\n", j)
+					}
+					prevEntry = entry
+				}); err != nil {
+					return err
+				}
+				if prevEntry != nil {
+					j, _ := json.MarshalIndent(prevEntry, "", "    ")
+					fmt.Printf("%v\n", string(j))
+				}
+				fmt.Println("]")
+
+			default:
+				return fmt.Errorf("unrecognized table %q", args[0])
+			}
+			return nil
+		}); err != nil {
+			log.Fatalf("main: %s", err)
+		}
+	},
+}
+
 func bootstrap(dbClient db.DBClient) error {
 	cfg := &discovery.BootstrapConfig{
 		GoDocPackagesInputFile: BootstrapGoDocPackagesFile,
@@ -222,7 +280,7 @@ func bootstrap(dbClient db.DBClient) error {
 	return discovery.Bootstrap(dbClient, cfg)
 }
 
-func crawl(dbClient db.DBClient) error {
+func crawl(dbClient db.DBClient, args ...string) error {
 	cfg := crawler.NewConfig()
 
 	stopCh := make(chan struct{})
@@ -230,7 +288,12 @@ func crawl(dbClient db.DBClient) error {
 	c := crawler.New(dbClient, cfg)
 
 	go func() {
-		errCh <- c.Run(stopCh)
+		if len(args) > 0 {
+			errCh <- c.Do(stopCh, args...)
+		} else {
+			// Generic queue crawl.
+			errCh <- c.Run(stopCh)
+		}
 	}()
 
 	var (

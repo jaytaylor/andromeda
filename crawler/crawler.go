@@ -93,8 +93,9 @@ func New(dbClient db.DBClient, cfg *Config) *Crawler {
 	return c
 }
 
+// Run crawls from the to-crawl queue.
 func (c *Crawler) Run(stopCh chan struct{}) error {
-	log.WithField("cfg", fmt.Sprintf("%# v", c.Config)).Info("Crawler starting")
+	log.WithField("cfg", fmt.Sprintf("%# v", c.Config)).Info("Crawler.Run starting")
 
 	var (
 		i   = 0
@@ -114,9 +115,14 @@ func (c *Crawler) Run(stopCh chan struct{}) error {
 		if pkg, err = c.do(entry.PackagePath, stopCh); err != nil {
 			log.WithField("ToCrawlEntry", entry).Errorf("Issue crawling package, attempting re-queue due to: %s", err)
 			if _, err := c.db.ToCrawlAdd(entry); err != nil {
-				log.WithField("ToCrawlEntry", entry).Errorf("Re-queueing entry failed: %s", err)
+				log.WithField("ToCrawlEntry", entry).Errorf("Re-queueing crawling entry failed: %s", err)
+				break
+			} else {
+				log.WithField("ToCrawlEntry", entry).Info("Re-queued OK")
 			}
-			break
+			if err == ErrStopRequested {
+				break
+			}
 		}
 		log.WithField("pkg", pkg).Info("Package crawl finished")
 		if err = c.db.PackageSave(pkg); err != nil {
@@ -135,6 +141,49 @@ func (c *Crawler) Run(stopCh chan struct{}) error {
 		}
 	}
 	log.WithField("i", i).Info("Run ended")
+	if err != nil {
+		if err == io.EOF {
+			return nil
+		}
+	}
+	return nil
+}
+
+// Do crawls the named packages.
+func (c *Crawler) Do(stopCh chan struct{}, pkgs ...string) error {
+	log.WithField("cfg", fmt.Sprintf("%# v", c.Config)).Info("Crawler.Do starting")
+
+	var (
+		i   = 0
+		err error
+	)
+
+	for ; i < len(pkgs) && c.Config.MaxItems <= 0 || i < c.Config.MaxItems; i++ {
+		var pkg *domain.Package
+		log.WithField("entry", fmt.Sprintf("%# v", pkgs[i])).Debug("Processing")
+		if pkg, err = c.do(pkgs[i], stopCh); err != nil {
+			log.WithField("ToCrawlEntry", pkgs[i]).Errorf("Re-queueing entry failed: %s", err)
+			if err == ErrStopRequested {
+				break
+			}
+		}
+		log.WithField("pkg", pkgs[i]).Info("Package crawl finished")
+		if err = c.db.PackageSave(pkg); err != nil {
+			break
+		}
+
+		c.mu.Lock()
+		c.numProcessed++
+		c.mu.Unlock()
+
+		select {
+		case <-stopCh:
+			log.Debug("Stop request received")
+			break
+		default:
+		}
+	}
+	log.WithField("i", i).Info("Do ended")
 	if err != nil {
 		if err == io.EOF {
 			return nil
