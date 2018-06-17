@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -14,6 +15,7 @@ import (
 	"jaytaylor.com/andromeda/db"
 	"jaytaylor.com/andromeda/discovery"
 	"jaytaylor.com/andromeda/domain"
+	"jaytaylor.com/andromeda/web"
 )
 
 var (
@@ -22,6 +24,8 @@ var (
 	Verbose bool
 
 	BootstrapGoDocPackagesFile string
+
+	WebAddr string
 )
 
 func init() {
@@ -36,12 +40,15 @@ func init() {
 	crawlCmd.Flags().StringVarP(&crawler.DefaultSrcPath, "src-path", "s", crawler.DefaultSrcPath, "Path to checkout source code to")
 	crawlCmd.Flags().BoolVarP(&crawler.DefaultDeleteAfter, "delete-after", "d", crawler.DefaultDeleteAfter, "Delete source code after analysis")
 
+	webCmd.Flags().StringVarP(&WebAddr, "addr", "a", "", "Interface bind address:port spec")
+
 	rootCmd.AddCommand(bootstrapCmd)
 	rootCmd.AddCommand(crawlCmd)
 	rootCmd.AddCommand(purgeTableCmd)
 	rootCmd.AddCommand(statsCmd)
 	rootCmd.AddCommand(getCmd)
 	rootCmd.AddCommand(lsCmd)
+	rootCmd.AddCommand(webCmd)
 }
 
 func main() {
@@ -272,6 +279,42 @@ var lsCmd = &cobra.Command{
 	},
 }
 
+var webCmd = &cobra.Command{
+	Use:   "web",
+	Short: ".. jay will fill this long one out sometime ..",
+	Long:  ".. jay will fill this long one out sometime ..",
+	PreRun: func(_ *cobra.Command, _ []string) {
+		initLogging()
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		dbCfg := db.NewBoltDBConfig(DBFile)
+		dbCfg.BoltOptions.Timeout = 5 * time.Second
+		if err := db.WithDBClient(dbCfg, func(dbClient db.DBClient) error {
+			cfg := &web.Config{
+				Addr: WebAddr,
+				// TODO: DevMode
+			}
+			ws := web.New(dbClient, cfg)
+			if err := ws.Start(); err != nil {
+				return err
+			}
+			log.Infof("Web service started on %s", ws.Addr())
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+			select {
+			case s := <-sigCh:
+				log.WithField("sig", s).Info("Received signal, shutting down web service..")
+				if err := ws.Stop(); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			log.Fatalf("main: %s", err)
+		}
+	},
+}
+
 func bootstrap(dbClient db.DBClient) error {
 	cfg := &discovery.BootstrapConfig{
 		GoDocPackagesInputFile: BootstrapGoDocPackagesFile,
@@ -306,7 +349,7 @@ func crawl(dbClient db.DBClient, args ...string) error {
 	select {
 	case err = <-errCh:
 	case s := <-sigCh:
-		log.WithField("sig", s).Info("Received signal")
+		log.WithField("sig", s).Info("Received signa, shutting down crawlerl")
 		select {
 		case stopCh <- struct{}{}:
 		case err = <-errCh:

@@ -1,1 +1,3 @@
-universe.bolt
+# Default DB filename.
+/andromeda.bolt
+
