@@ -375,6 +375,17 @@ func (c *Crawler) get(rr *vcs.RepoRoot) error {
 	if err := os.MkdirAll(c.Config.SrcPath, os.FileMode(int(0755))); err != nil {
 		return err
 	}
+	// TODO: Deal with ssh key prompts, e.g.
+	//
+	//     The authenticity of host 'git.apache.org (54.84.58.65)' can't be established.
+	//     ECDSA key fingerprint is 8c:59:e8:18:9b:7a:bb:99:f3:5b:1c:ca:d4:3f:12:d8.
+	//     Are you sure you want to continue connecting (yes/no)? yes
+	//
+	// Can be handled by checking ~/.ssh/known_hosts file for repository domain /
+	// IP address, and if not found, add via:
+	//
+	//     ssh-keyscan <enter_domainname_e.g._github.com> >> ~/.ssh/known_hosts
+	//
 	if err := rr.VCS.Create(dst, rr.Repo); err != nil {
 		return err
 	}
