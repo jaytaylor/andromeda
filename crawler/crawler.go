@@ -32,7 +32,10 @@ var (
 )
 
 func init() {
+	// Set environment variables telling git to avoid triggering interactive
+	// prompts.
 	os.Setenv("GIT_TERMINAL_PROMPT", "0")
+	os.Setenv("GIT_SSH_COMMAND", "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no")
 }
 
 type Config struct {
@@ -126,14 +129,21 @@ func (c *Crawler) Run(stopCh chan struct{}) error {
 				log.WithField("ToCrawlEntry", entry).Errorf("Re-queueing crawling entry failed: %s", err)
 				break
 			} else {
-				log.WithField("ToCrawlEntry", entry).Info("Re-queued OK")
+				log.WithField("ToCrawlEntry", entry).Debug("Re-queued OK")
 			}
 			if err == ErrStopRequested {
 				break
 			}
 		}
-		log.WithField("pkg", pkg).Info("Package crawl finished")
-		if err = c.db.PackageSave(pkg); err != nil {
+
+		extra := ""
+		if err != nil {
+			extra = fmt.Sprintf("; err=%s", err)
+		}
+		log.WithField("pkg", entry.PackagePath).Debugf("Package crawl finished%v", extra)
+		if pkg == nil {
+			log.WithField("pkg", entry.PackagePath).Debug("Save skipped because pkg==nil")
+		} else if err = c.db.PackageSave(pkg); err != nil {
 			break
 		}
 
@@ -147,6 +157,8 @@ func (c *Crawler) Run(stopCh chan struct{}) error {
 			break
 		default:
 		}
+
+		c.logStats()
 	}
 	log.WithField("i", i).Info("Run ended")
 	if err != nil {
@@ -179,8 +191,15 @@ func (c *Crawler) Do(stopCh chan struct{}, pkgs ...string) error {
 				break
 			}
 		}
-		log.WithField("pkg", pkgs[i]).Info("Package crawl finished")
-		if err = c.db.PackageSave(pkg); err != nil {
+
+		extra := ""
+		if err != nil {
+			extra = fmt.Sprintf("; err=%s", err)
+		}
+		log.WithField("pkg", pkgs[i]).Debugf("Package crawl finished%v", extra)
+		if pkg == nil {
+			log.WithField("pkg", pkgs[i]).Debug("Save skipped because pkg==nil")
+		} else if err = c.db.PackageSave(pkg); err != nil {
 			break
 		}
 
@@ -194,6 +213,7 @@ func (c *Crawler) Do(stopCh chan struct{}, pkgs ...string) error {
 			break
 		default:
 		}
+		c.logStats()
 	}
 	log.WithField("i", i).Info("Do ended")
 	if err != nil {
@@ -395,28 +415,22 @@ func (c *Crawler) enqueueToCrawlsMap(toCrawls map[string]*domain.ToCrawlEntry) e
 	return nil
 }
 
+// get emulates `go get`.
 func (c *Crawler) get(rr *vcs.RepoRoot) error {
-	dst := filepath.Join(c.Config.SrcPath, rr.Root)
-	if err := os.RemoveAll(dst); err != nil {
-		return err
-	}
 	if err := os.MkdirAll(c.Config.SrcPath, os.FileMode(int(0755))); err != nil {
 		return err
 	}
-	// TODO: Deal with ssh key prompts, e.g.
-	//
-	//     The authenticity of host 'git.apache.org (54.84.58.65)' can't be established.
-	//     ECDSA key fingerprint is 8c:59:e8:18:9b:7a:bb:99:f3:5b:1c:ca:d4:3f:12:d8.
-	//     Are you sure you want to continue connecting (yes/no)? yes
-	//
-	// Can be handled by checking ~/.ssh/known_hosts file for repository domain /
-	// IP address, and if not found, add via:
-	//
-	//     ssh-keyscan <enter_domainname_e.g._github.com> >> ~/.ssh/known_hosts
-	//
+
+	dst := filepath.Join(c.Config.SrcPath, rr.Root)
 	if err := rr.VCS.Create(dst, rr.Repo); err != nil {
-		log.WithField("pkg", rr.Root).Errorf("Problem creating / go-get'ing repo: %s", err)
-		return err
+		if err := os.RemoveAll(dst); err != nil {
+			return err
+		}
+		// Retry after resetting the directory.
+		if err := rr.VCS.Create(dst, rr.Repo); err != nil {
+			log.WithField("pkg", rr.Root).Errorf("Problem creating / go-get'ing repo: %s", err)
+			return err
+		}
 	}
 	return nil
 }
@@ -487,6 +501,12 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 	pc.Data.Bytes = size
 
 	return nil
+}
+
+func (c *Crawler) logStats() {
+	pl, _ := c.db.PackagesLen()
+	ql, _ := c.db.ToCrawlsLen()
+	log.WithField("packages", pl).WithField("to-crawls", ql).Debug("Stats")
 }
 
 // loadPackageDynamic returns slices containing imports and test imports.
