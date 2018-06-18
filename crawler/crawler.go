@@ -28,7 +28,8 @@ var (
 	DefaultDeleteAfter   = false
 	DefaultIncludeStdLib = false
 
-	ErrStopRequested = errors.New("stop requested")
+	ErrStopRequested  = errors.New("stop requested")
+	ErrPackageInvalid = errors.New("package structure is invalid")
 )
 
 func init() {
@@ -280,13 +281,26 @@ func (c *Crawler) do(pkgPath string, stopCh chan struct{}) (*domain.Package, err
 		select {
 		case err = <-pCh:
 			if err != nil {
-				return pkg, err
+				if !c.errorShouldInterruptExecution(err) {
+					log.WithField("pkg", ctx.pkg.Path).Warnf("Ignoring non-fatal error: %s", err)
+					return ctx.pkg, nil
+				}
+				return ctx.pkg, err
 			}
 		case <-ctx.stopCh:
 			return nil, ErrStopRequested
 		}
 	}
 	return pkg, nil
+}
+
+// errorShouldInterruptExecution returns true if crawler should cease execution
+// due to a particular error condition.
+func (_ *Crawler) errorShouldInterruptExecution(err error) bool {
+	if err != nil && err != ErrPackageInvalid {
+		return true
+	}
+	return false
 }
 
 // Collect phase fetches information so a package can be analyzed.
@@ -447,13 +461,14 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 	importsMap := map[string]struct{}{}
 	testImportsMap := map[string]struct{}{}
 
-	scanDir := func(dir string) {
+	scanDir := func(dir string) error {
 		log.Infof("dir=%v b=%v", dir, fmt.Sprintf("%v%v", c.Config.SrcPath, string(os.PathSeparator)))
+		var goPkg *load.Package
 		pkgPath := strings.Replace(dir, fmt.Sprintf("%v%v", c.Config.SrcPath, string(os.PathSeparator)), "", 1)
 		goPkg, err := loadPackageDynamic(c.Config.SrcPath, pkgPath)
 		if err != nil {
 			pkg.LatestCrawl().AddMessage(fmt.Sprintf("loading %v: %s", pkgPath, err))
-			return
+			return ErrPackageInvalid
 		}
 		for _, imp := range goPkg.Imports {
 			if pieces := strings.SplitN(imp, "/vendor/", 2); len(pieces) > 1 {
@@ -471,9 +486,12 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 				testImportsMap[imp] = struct{}{}
 			}
 		}
+		return nil
 	}
 
-	scanDir(localPath)
+	if err := scanDir(localPath); err != nil {
+		return err
+	}
 
 	dirs, err := subdirs(localPath)
 	if err != nil {
@@ -481,7 +499,9 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 	}
 
 	for _, dir := range dirs {
-		scanDir(dir)
+		if err := scanDir(dir); err != nil {
+			return err
+		}
 	}
 
 	pc.Data.Imports = []string{}
@@ -524,6 +544,9 @@ func loadPackageDynamic(parentDir string, pkgPath string) (*load.Package, error)
 
 	lps := load.Packages([]string{pkgPath})
 	for _, lp := range lps {
+		if lp.Error != nil {
+			return lp, errors.New(lp.Error.Error())
+		}
 		return lp, nil
 	}
 	return nil, fmt.Errorf("no pkg found")

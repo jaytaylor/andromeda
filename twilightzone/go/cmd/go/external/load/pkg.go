@@ -6,6 +6,7 @@
 package load
 
 import (
+	"errors"
 	"fmt"
 	"go/build"
 	"go/token"
@@ -1436,8 +1437,27 @@ func Packages(args []string) []*Package {
 // cannot be loaded at all.
 // The packages that fail to load will have p.Error != nil.
 func PackagesAndErrors(args []string) []*Package {
-	if len(args) > 0 && strings.HasSuffix(args[0], ".go") {
-		return []*Package{GoFilesPackage(args)}
+	isDir := func(file string) bool {
+		fi, err := os.Stat(file)
+		if err != nil {
+			return false
+		}
+		return fi.IsDir()
+
+	}
+	if len(args) > 0 && !isDir(args[0]) && strings.HasSuffix(args[0], ".go") {
+		gfp, err := GoFilesPackage(args)
+		if err != nil {
+			pkg := &Package{
+				PackagePublic: PackagePublic{
+					Error: &PackageError{
+						Err: err.Error(),
+					},
+				},
+			}
+			return []*Package{pkg}
+		}
+		return []*Package{gfp}
 	}
 
 	args = ImportPaths(args)
@@ -1509,11 +1529,11 @@ func PackagesForBuild(args []string) []*Package {
 // GoFilesPackage creates a package for building a collection of Go files
 // (typically named on the command line). The target is named p.a for
 // package p or named after the first Go file for package main.
-func GoFilesPackage(gofiles []string) *Package {
+func GoFilesPackage(gofiles []string) (*Package, error) {
 	// TODO: Remove this restriction.
 	for _, f := range gofiles {
 		if !strings.HasSuffix(f, ".go") {
-			base.Fatalf("named files must be .go files")
+			return nil, errors.New("named files must be .go files")
 		}
 	}
 
@@ -1530,10 +1550,10 @@ func GoFilesPackage(gofiles []string) *Package {
 	for _, file := range gofiles {
 		fi, err := os.Stat(file)
 		if err != nil {
-			base.Fatalf("%s", err)
+			return nil, err
 		}
 		if fi.IsDir() {
-			base.Fatalf("%s is a directory, should be a Go file", file)
+			return nil, fmt.Errorf("%s is a directory, should be a Go file", file)
 		}
 		dir1, _ := filepath.Split(file)
 		if dir1 == "" {
@@ -1542,7 +1562,7 @@ func GoFilesPackage(gofiles []string) *Package {
 		if dir == "" {
 			dir = dir1
 		} else if dir != dir1 {
-			base.Fatalf("named files must all be in one directory; have %s and %s", dir, dir1)
+			return nil, fmt.Errorf("named files must all be in one directory; have %s and %s", dir, dir1)
 		}
 		dirent = append(dirent, fi)
 	}
@@ -1554,7 +1574,7 @@ func GoFilesPackage(gofiles []string) *Package {
 	}
 	dir, err = filepath.Abs(dir)
 	if err != nil {
-		base.Fatalf("%s", err)
+		return nil, err
 	}
 
 	bp, err := ctxt.ImportDir(dir, 0)
@@ -1579,7 +1599,7 @@ func GoFilesPackage(gofiles []string) *Package {
 		}
 	}
 
-	return pkg
+	return pkg, nil
 }
 
 // TestPackagesFor returns package structs ptest, the package p plus
