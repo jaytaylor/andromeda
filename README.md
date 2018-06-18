@@ -11,6 +11,12 @@ Andromeda analyzes the complete graph of the known Go Universe.
 * [go-bindata](https://github.com/jteeuwen/go-bindata)
 * stringer `go get -u -a golang.org/x/tools/cmd/stringer`
 
+## Installation
+
+```bash
+go get jaytaylor.com/andromeda/...
+```
+
 ### TODOs
 
 [ ] Add attribute "CanGoGet" to indicate if package is buildable via `go get`.  Then provide a search filter to only include such packages.
@@ -21,7 +27,7 @@ Andromeda analyzes the complete graph of the known Go Universe.
 
 * [protoc](https://github.com/google/protobuf/releases)
 
-```go
+```bash
 go get -u github.com/golang/protobuf/...
 go get -u github.com/gogo/protobuf/...
 go get -u github.com/gogo/gateway/...
