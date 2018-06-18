@@ -11,14 +11,30 @@ Andromeda analyzes the complete graph of the known Go Universe.
 * [go-bindata](https://github.com/jteeuwen/go-bindata)
 * stringer `go get -u -a golang.org/x/tools/cmd/stringer`
 
-
-## Development
-
-```go
-go generate ./...
-```
-
 ### TODOs
 
 [ ] Add attribute "CanGoGet" to indicate if package is buildable via `go get`.  Then provide a search filter to only include such packages.
+
+## Development
+
+### Requirements
+
+* [protoc](https://github.com/google/protobuf/releases)
+
+```go
+go get -u github.com/golang/protobuf/...
+go get -u github.com/gogo/protobuf/...
+go get -u github.com/gogo/gateway/...
+go get -u github.com/gogo/googleapis/...
+go get -u github.com/grpc-ecosystem/go-grpc-middleware/...
+go get -u github.com/grpc-ecosystem/grpc-gateway
+go get -u github.com/grpc-ecosystem/grpc-gateway/...
+go get -u github.com/mwitkow/go-proto-validators/...
+
+go generate ./...
+```
+
+### License
+
+TBD
 
