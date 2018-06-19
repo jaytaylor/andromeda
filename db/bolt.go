@@ -1,6 +1,7 @@
 package db
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"sync"
@@ -19,13 +20,13 @@ var (
 	ErrMetadataUnsupportedDstType = errors.New("unsupported dst type: must be an *[]byte, *string, or proto.Message")
 )
 
-type BoltDBConfig struct {
+type BoltConfig struct {
 	DBFile      string
 	BoltOptions *bolt.Options
 }
 
-func NewBoltDBConfig(dbFilename string) *BoltDBConfig {
-	cfg := &BoltDBConfig{
+func NewBoltConfig(dbFilename string) *BoltConfig {
+	cfg := &BoltConfig{
 		DBFile: dbFilename,
 		BoltOptions: &bolt.Options{
 			Timeout: 1 * time.Second,
@@ -34,25 +35,25 @@ func NewBoltDBConfig(dbFilename string) *BoltDBConfig {
 	return cfg
 }
 
-func (cfg BoltDBConfig) Type() DBType {
+func (cfg BoltConfig) Type() Type {
 	return Bolt
 }
 
-type BoltDBClient struct {
-	config *BoltDBConfig
+type BoltClient struct {
+	config *BoltConfig
 	db     *bolt.DB
 	q      *boltqueue.PQueue
 	mu     sync.Mutex
 }
 
-func newBoltDBClient(config *BoltDBConfig) *BoltDBClient {
-	client := &BoltDBClient{
+func newBoltDBClient(config *BoltConfig) *BoltClient {
+	client := &BoltClient{
 		config: config,
 	}
 	return client
 }
 
-func (client *BoltDBClient) Open() error {
+func (client *BoltClient) Open() error {
 	client.mu.Lock()
 	defer client.mu.Unlock()
 
@@ -75,7 +76,7 @@ func (client *BoltDBClient) Open() error {
 	return nil
 }
 
-func (client *BoltDBClient) Close() error {
+func (client *BoltClient) Close() error {
 	client.mu.Lock()
 	defer client.mu.Unlock()
 
@@ -92,7 +93,7 @@ func (client *BoltDBClient) Close() error {
 	return nil
 }
 
-func (client *BoltDBClient) initDB() error {
+func (client *BoltClient) initDB() error {
 	return client.db.Update(func(tx *bolt.Tx) error {
 		buckets := []string{
 			TableMetadata,
@@ -108,7 +109,7 @@ func (client *BoltDBClient) initDB() error {
 	})
 }
 
-func (client *BoltDBClient) Purge(tables ...string) error {
+func (client *BoltClient) Purge(tables ...string) error {
 	return client.db.Update(func(tx *bolt.Tx) error {
 		for _, table := range tables {
 			log.WithField("bucket", table).Debug("dropping")
@@ -124,7 +125,7 @@ func (client *BoltDBClient) Purge(tables ...string) error {
 	})
 }
 
-func (client *BoltDBClient) PackageSave(pkgs ...*domain.Package) error {
+func (client *BoltClient) PackageSave(pkgs ...*domain.Package) error {
 	return client.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(TablePackages))
 		for _, pkg := range pkgs {
@@ -156,7 +157,7 @@ func (client *BoltDBClient) PackageSave(pkgs ...*domain.Package) error {
 }
 
 // PackageDelete N.B. no existence check is performed.
-func (client *BoltDBClient) PackageDelete(pkgPaths ...string) error {
+func (client *BoltClient) PackageDelete(pkgPaths ...string) error {
 	return client.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(TablePackages))
 		for _, pkgPath := range pkgPaths {
@@ -169,7 +170,9 @@ func (client *BoltDBClient) PackageDelete(pkgPaths ...string) error {
 	})
 }
 
-func (client *BoltDBClient) Package(pkgPath string) (*domain.Package, error) {
+var pkgSepB = []byte{'/'}
+
+func (client *BoltClient) Package(pkgPath string) (*domain.Package, error) {
 	var pkg domain.Package
 
 	if err := client.db.View(func(tx *bolt.Tx) error {
@@ -179,8 +182,11 @@ func (client *BoltDBClient) Package(pkgPath string) (*domain.Package, error) {
 			v = b.Get(k)
 		)
 
-		if v == nil {
-			return ErrKeyNotFound
+		if len(v) == 0 {
+			// Fallback to hierarchical search.
+			if v = client.hierarchicalKeySearch(b, k, pkgSepB); len(v) == 0 {
+				return ErrKeyNotFound
+			}
 		}
 
 		return proto.Unmarshal(v, &pkg)
@@ -190,7 +196,58 @@ func (client *BoltDBClient) Package(pkgPath string) (*domain.Package, error) {
 	return &pkg, nil
 }
 
-func (client *BoltDBClient) Packages(fn func(pkg *domain.Package)) error {
+func (client *BoltClient) Packages(pkgPaths ...string) (map[string]*domain.Package, error) {
+	pkgs := map[string]*domain.Package{}
+
+	if err := client.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(TablePackages))
+		for _, pkgPath := range pkgPaths {
+			k := []byte(pkgPath)
+			v := b.Get(k)
+			if len(v) == 0 {
+				// Fallback to hierarchical search.
+				v = client.hierarchicalKeySearch(b, k, pkgSepB)
+			}
+			if len(v) > 0 {
+				pkg := &domain.Package{}
+				if err := proto.Unmarshal(v, pkg); err != nil {
+					return err
+				}
+				pkgs[pkgPath] = pkg
+			}
+		}
+		return nil
+	}); err != nil {
+		return pkgs, err
+	}
+	return pkgs, nil
+}
+
+// hierarchicalKeySearch searches for any keys matching the leading part of the
+// input key when split by "/" characters.
+func (client *BoltClient) hierarchicalKeySearch(b *bolt.Bucket, key []byte, splitOn []byte) []byte {
+	if pieces := bytes.Split(key, splitOn); len(pieces) >= 2 {
+		b.ForEach(func(k, v []byte) error {
+			return nil
+		})
+		var (
+			prefix = bytes.Join(pieces[0:2], splitOn)
+			v      []byte
+		)
+		if v = b.Get(prefix); len(v) > 0 {
+			return v
+		}
+		for _, piece := range pieces[2:] {
+			prefix = append(prefix, append(splitOn, piece...)...)
+			if v = b.Get(prefix); len(v) > 0 {
+				return v
+			}
+		}
+	}
+	return nil
+}
+
+func (client *BoltClient) EachPackage(fn func(pkg *domain.Package)) error {
 	return client.db.View(func(tx *bolt.Tx) error {
 		var (
 			b = tx.Bucket([]byte(TablePackages))
@@ -208,7 +265,7 @@ func (client *BoltDBClient) Packages(fn func(pkg *domain.Package)) error {
 	})
 }
 
-func (client *BoltDBClient) PackagesWithBreak(fn func(pkg *domain.Package) bool) error {
+func (client *BoltClient) EachPackageWithBreak(fn func(pkg *domain.Package) bool) error {
 	return client.db.View(func(tx *bolt.Tx) error {
 		var (
 			b = tx.Bucket([]byte(TablePackages))
@@ -228,7 +285,7 @@ func (client *BoltDBClient) PackagesWithBreak(fn func(pkg *domain.Package) bool)
 	})
 }
 
-func (client *BoltDBClient) PackagesLen() (int, error) {
+func (client *BoltClient) PackagesLen() (int, error) {
 	var n int
 
 	if err := client.db.View(func(tx *bolt.Tx) error {
@@ -243,7 +300,7 @@ func (client *BoltDBClient) PackagesLen() (int, error) {
 	return n, nil
 }
 
-func (client *BoltDBClient) ToCrawlAdd(entries ...*domain.ToCrawlEntry) (int, error) {
+func (client *BoltClient) ToCrawlAdd(entries ...*domain.ToCrawlEntry) (int, error) {
 	candidates := map[string]*domain.ToCrawlEntry{}
 	for _, entry := range entries {
 		candidates[entry.PackagePath] = entry
@@ -290,7 +347,7 @@ func (client *BoltDBClient) ToCrawlAdd(entries ...*domain.ToCrawlEntry) (int, er
 }
 
 // ToCrawlDequeue pops the next *domain.ToCrawlEntry off the from of the crawl queue.
-func (client *BoltDBClient) ToCrawlDequeue() (*domain.ToCrawlEntry, error) {
+func (client *BoltClient) ToCrawlDequeue() (*domain.ToCrawlEntry, error) {
 	m, err := client.q.Dequeue(TableToCrawl)
 	if err != nil {
 		return nil, err
@@ -302,7 +359,7 @@ func (client *BoltDBClient) ToCrawlDequeue() (*domain.ToCrawlEntry, error) {
 	return entry, nil
 }
 
-func (client *BoltDBClient) ToCrawls(fn func(entry *domain.ToCrawlEntry)) error {
+func (client *BoltClient) EachToCrawl(fn func(entry *domain.ToCrawlEntry)) error {
 	var protoErr error
 	err := client.q.Scan(TableToCrawl, func(m *boltqueue.Message) {
 		if protoErr != nil {
@@ -323,7 +380,7 @@ func (client *BoltDBClient) ToCrawls(fn func(entry *domain.ToCrawlEntry)) error 
 	return nil
 }
 
-func (client *BoltDBClient) ToCrawlsWithBreak(fn func(entry *domain.ToCrawlEntry) bool) error {
+func (client *BoltClient) EachToCrawlWithBreak(fn func(entry *domain.ToCrawlEntry) bool) error {
 	var (
 		keepGoing = true
 		protoErr  error
@@ -353,7 +410,7 @@ func (client *BoltDBClient) ToCrawlsWithBreak(fn func(entry *domain.ToCrawlEntry
 
 const numPriorities = 10
 
-func (client *BoltDBClient) ToCrawlsLen() (int, error) {
+func (client *BoltClient) ToCrawlsLen() (int, error) {
 	total := 0
 	for i := 0; i < numPriorities; i++ {
 		n, err := client.q.Len(TableToCrawl, i)
@@ -365,7 +422,9 @@ func (client *BoltDBClient) ToCrawlsLen() (int, error) {
 	return total, nil
 }
 
-func (client *BoltDBClient) MetaSave(key string, src interface{}) error {
+// TODO: Add Get (slow, n due to iteration) and Update methods for ToCrawl.
+
+func (client *BoltClient) MetaSave(key string, src interface{}) error {
 	return client.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(TableMetadata))
 
@@ -389,14 +448,14 @@ func (client *BoltDBClient) MetaSave(key string, src interface{}) error {
 	})
 }
 
-func (client *BoltDBClient) MetaDelete(key string) error {
+func (client *BoltClient) MetaDelete(key string) error {
 	return client.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(TableMetadata))
 		return b.Delete([]byte(key))
 	})
 }
 
-func (client *BoltDBClient) Meta(key string, dst interface{}) error {
+func (client *BoltClient) Meta(key string, dst interface{}) error {
 	return client.db.View(func(tx *bolt.Tx) error {
 		var (
 			b = tx.Bucket([]byte(TableMetadata))
@@ -423,6 +482,6 @@ func (client *BoltDBClient) Meta(key string, dst interface{}) error {
 	})
 }
 
-func (client *BoltDBClient) Search(q string) (*domain.Package, error) {
+func (client *BoltClient) Search(q string) (*domain.Package, error) {
 	return nil, fmt.Errorf("not yet implemented")
 }

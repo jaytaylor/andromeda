@@ -16,7 +16,7 @@ func TestBoltDBClientToCrawlOperations(t *testing.T) {
 	os.Remove(filename)
 
 	var (
-		config = NewBoltDBConfig(filename)
+		config = NewBoltConfig(filename)
 		client = NewClient(config)
 	)
 
@@ -95,7 +95,7 @@ func TestBoltDBClientPackageOperations(t *testing.T) {
 	os.Remove(filename)
 
 	var (
-		config = NewBoltDBConfig(filename)
+		config = NewBoltConfig(filename)
 		client = NewClient(config)
 	)
 
@@ -151,7 +151,7 @@ func TestBoltDBClientPackageOperations(t *testing.T) {
 			n              = 0
 			seenArchivePkg bool
 		)
-		if err := client.Packages(func(pkg *domain.Package) {
+		if err := client.EachPackage(func(pkg *domain.Package) {
 			n++
 			if !seenArchivePkg && pkg.Path == "jaytaylor.com/archive.is" {
 				seenArchivePkg = true
@@ -166,6 +166,16 @@ func TestBoltDBClientPackageOperations(t *testing.T) {
 		}
 		if !seenArchivePkg {
 			t.Errorf("Expected to have seen the jaytaylor.com/archive.is package but did not")
+		}
+	}
+
+	// Test client.Packages(...) multi-get.
+	{
+		pkgs, err := client.Packages(append([]string{"foo"}, pkgPaths...)...)
+		if err != nil {
+			t.Error(err)
+		} else if expected, actual := len(pkgPaths), len(pkgs); actual != expected {
+			t.Errorf("Expected number of packages in multi-get map=%v but actual=%v", expected, actual)
 		}
 	}
 
@@ -200,6 +210,16 @@ func TestBoltDBClientPackageOperations(t *testing.T) {
 		}
 	}
 
+	// Test hierarchical pkg resolution 1/2.
+	{
+		pkg, err := client.Package("jaytaylor.com/archive.is/cmd/archive.is")
+		if err != nil {
+			t.Error(err)
+		} else if expected, actual := "jaytaylor.com/archive.is", pkg.Path; actual != expected {
+			t.Errorf("Expected package root=%v but actual=%v", expected, actual)
+		}
+	}
+
 	{
 		if err := client.PackageDelete("jaytaylor.com/archive.is"); err != nil {
 			t.Fatal(err)
@@ -212,6 +232,14 @@ func TestBoltDBClientPackageOperations(t *testing.T) {
 			t.Errorf("Expected indexed packages len=%v but actual=%v", expected, actual)
 		}
 	}
+
+	// Test hierarchical pkg resolution 2/2.
+	{
+		_, err := client.Package("jaytaylor.com/archive.is/cmd/archive.is")
+		if expected, actual := ErrKeyNotFound, err; actual != expected {
+			t.Errorf("Expected get of non-existant pkg to return error=%v but actual=%v", expected, actual)
+		}
+	}
 }
 
 func TestBoltDBClientMetaOperations(t *testing.T) {
@@ -220,7 +248,7 @@ func TestBoltDBClientMetaOperations(t *testing.T) {
 	os.Remove(filename)
 
 	var (
-		config = NewBoltDBConfig(filename)
+		config = NewBoltConfig(filename)
 		client = NewClient(config)
 	)
 

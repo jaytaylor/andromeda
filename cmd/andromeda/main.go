@@ -66,7 +66,7 @@ var rootCmd = &cobra.Command{
 		initLogging()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := db.WithDBClient(db.NewBoltDBConfig(DBFile), func(dbClient db.DBClient) error {
+		if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
 			if err := bootstrap(dbClient); err != nil {
 				return fmt.Errorf("boostrap: %s", err)
 			}
@@ -88,7 +88,7 @@ var bootstrapCmd = &cobra.Command{
 		initLogging()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := db.WithDBClient(db.NewBoltDBConfig(DBFile), func(dbClient db.DBClient) error {
+		if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
 			return bootstrap(dbClient)
 		}); err != nil {
 			log.Fatalf("main: %s", err)
@@ -104,7 +104,7 @@ var crawlCmd = &cobra.Command{
 		initLogging()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := db.WithDBClient(db.NewBoltDBConfig(DBFile), func(dbClient db.DBClient) error {
+		if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
 			return crawl(dbClient, args...)
 		}); err != nil {
 			log.Fatalf("main: %s", err)
@@ -121,7 +121,7 @@ var purgeTableCmd = &cobra.Command{
 		initLogging()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := db.WithDBClient(db.NewBoltDBConfig(DBFile), func(dbClient db.DBClient) error {
+		if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
 			switch args[0] {
 			case db.TablePackages, "package", "pkg":
 				if err := dbClient.Purge(db.TablePackages); err != nil {
@@ -151,7 +151,7 @@ var statsCmd = &cobra.Command{
 		initLogging()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := db.WithDBClient(db.NewBoltDBConfig(DBFile), func(dbClient db.DBClient) error {
+		if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
 			pl, err := dbClient.PackagesLen()
 			if err != nil {
 				return fmt.Errorf("getting packages count: %s", err)
@@ -179,7 +179,7 @@ var getCmd = &cobra.Command{
 		initLogging()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := db.WithDBClient(db.NewBoltDBConfig(DBFile), func(dbClient db.DBClient) error {
+		if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
 			switch args[0] {
 			case db.TablePackages, "package", "pkg":
 				pkg, err := dbClient.Package(args[1])
@@ -194,7 +194,7 @@ var getCmd = &cobra.Command{
 
 			case db.TableToCrawl, "to-crawls":
 				var entry *domain.ToCrawlEntry
-				if err := dbClient.ToCrawlsWithBreak(func(e *domain.ToCrawlEntry) bool {
+				if err := dbClient.EachToCrawlWithBreak(func(e *domain.ToCrawlEntry) bool {
 					if e.PackagePath == args[1] {
 						entry = e
 						return false
@@ -231,12 +231,12 @@ var lsCmd = &cobra.Command{
 		initLogging()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := db.WithDBClient(db.NewBoltDBConfig(DBFile), func(dbClient db.DBClient) error {
+		if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
 			switch args[0] {
 			case db.TablePackages, "package", "pkg":
 				fmt.Println("[")
 				var prevPkg *domain.Package
-				if err := dbClient.Packages(func(pkg *domain.Package) {
+				if err := dbClient.EachPackage(func(pkg *domain.Package) {
 					if prevPkg != nil {
 						j, _ := json.MarshalIndent(prevPkg, "", "    ")
 						fmt.Printf("%v,", string(j))
@@ -254,7 +254,7 @@ var lsCmd = &cobra.Command{
 			case db.TableToCrawl, "to-crawls":
 				fmt.Println("[")
 				var prevEntry *domain.ToCrawlEntry
-				if err := dbClient.ToCrawls(func(entry *domain.ToCrawlEntry) {
+				if err := dbClient.EachToCrawl(func(entry *domain.ToCrawlEntry) {
 					if prevEntry != nil {
 						j, _ := json.MarshalIndent(prevEntry, "", "    ")
 						fmt.Printf("%v,\n", j)
@@ -287,9 +287,9 @@ var webCmd = &cobra.Command{
 		initLogging()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		dbCfg := db.NewBoltDBConfig(DBFile)
+		dbCfg := db.NewBoltConfig(DBFile)
 		dbCfg.BoltOptions.Timeout = 5 * time.Second
-		if err := db.WithDBClient(dbCfg, func(dbClient db.DBClient) error {
+		if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
 			cfg := &web.Config{
 				Addr: WebAddr,
 				// TODO: DevMode
@@ -315,7 +315,7 @@ var webCmd = &cobra.Command{
 	},
 }
 
-func bootstrap(dbClient db.DBClient) error {
+func bootstrap(dbClient db.Client) error {
 	cfg := &discovery.BootstrapConfig{
 		GoDocPackagesInputFile: BootstrapGoDocPackagesFile,
 	}
@@ -323,19 +323,19 @@ func bootstrap(dbClient db.DBClient) error {
 	return discovery.Bootstrap(dbClient, cfg)
 }
 
-func crawl(dbClient db.DBClient, args ...string) error {
+func crawl(dbClient db.Client, args ...string) error {
 	cfg := crawler.NewConfig()
 
 	stopCh := make(chan struct{})
 	errCh := make(chan error)
-	c := crawler.New(dbClient, cfg)
+	m := crawler.NewMaster(dbClient, cfg)
 
 	go func() {
 		if len(args) > 0 {
-			errCh <- c.Do(stopCh, args...)
+			errCh <- m.Do(stopCh, args...)
 		} else {
 			// Generic queue crawl.
-			errCh <- c.Run(stopCh)
+			errCh <- m.Run(stopCh)
 		}
 	}()
 
