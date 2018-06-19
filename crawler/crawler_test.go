@@ -54,7 +54,7 @@ func TestCrawlerRun(t *testing.T) {
 		cfg.SrcPath = filepath.Join(os.TempDir(), "andromeda-crawler-correctness")
 		defer os.RemoveAll(cfg.SrcPath)
 
-		c := New(dbClient, cfg)
+		c := NewCoordinator(dbClient, cfg)
 		if err := c.Run(nil); err != nil {
 			t.Error(err)
 			return nil

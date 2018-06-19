@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"gigawatt.io/errorlib"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/tools/go/vcs"
 
@@ -58,12 +59,16 @@ func NewConfig() *Config {
 
 // TODO: Support for picking up where last run left off.
 
-type Crawler struct {
-	Config       *Config
-	Processors   []ProcessorFunc
+type CrawlerCoordinator struct {
 	db           db.DBClient
-	mu           sync.RWMutex
+	crawler      *Crawler
 	numProcessed int
+	mu           sync.RWMutex
+}
+
+type Crawler struct {
+	Config     *Config
+	Processors []ProcessorFunc
 }
 
 // ProcessorFunc are functions which perofrm the actual crawling and record
@@ -86,23 +91,86 @@ func (ctx *crawlerContext) shouldStop() bool {
 	}
 }
 
+func NewCoordinator(dbClient db.DBClient, cfg *Config) *CrawlerCoordinator {
+	cc := &CrawlerCoordinator{
+		db:      dbClient,
+		crawler: New(cfg),
+	}
+	return cc
+}
+
 // New creates and returns a new crawler instance with the supplied db client
 // and configuration.
-func New(dbClient db.DBClient, cfg *Config) *Crawler {
+func New(cfg *Config) *Crawler {
 	c := &Crawler{
 		Config: cfg,
-		db:     dbClient,
 	}
 	c.Processors = []ProcessorFunc{
 		c.Collect,
 		c.Hydrate,
-		c.CatalogImporters,
 	}
 	return c
 }
 
+func (c *CrawlerCoordinator) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
+	for {
+		var (
+			entry *domain.ToCrawlEntry
+			pkg   *domain.Package
+			err   error
+		)
+
+		if entry, err = c.db.ToCrawlDequeue(); err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+		log.WithField("entry", fmt.Sprintf("%# v", entry)).Debug("Processing")
+		if err = stream.Send(entry); err != nil {
+			if err2 := c.requeue(entry, err); err2 != nil {
+				return errorlib.Merge([]error{err, err2})
+			}
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+
+		if pkg, err = stream.Recv(); err != nil {
+			if err2 := c.requeue(entry, err); err2 != nil {
+				return errorlib.Merge([]error{err, err2})
+			}
+			if err == ErrStopRequested {
+				return nil
+			}
+		}
+
+		return func() error {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+
+			if err = c.CatalogImporters(pkg); err != nil {
+				return err
+			}
+
+			extra := ""
+			if err != nil {
+				extra = fmt.Sprintf("; err=%s", err)
+			}
+			log.WithField("pkg", entry.PackagePath).Debugf("Package crawl received%v", extra)
+			if pkg == nil {
+				log.WithField("pkg", entry.PackagePath).Debug("Save skipped because pkg==nil")
+			} else if err = c.db.PackageSave(pkg); err != nil {
+				return err
+			}
+			return nil
+		}()
+	}
+}
+
 // Run crawls from the to-crawl queue.
-func (c *Crawler) Run(stopCh chan struct{}) error {
+func (c *CrawlerCoordinator) Run(stopCh chan struct{}) error {
 	if stopCh == nil {
 		log.Debug("nil stopCh received, this job will not be stoppable")
 		stopCh = make(chan struct{})
@@ -114,7 +182,7 @@ func (c *Crawler) Run(stopCh chan struct{}) error {
 		err error
 	)
 
-	for ; c.Config.MaxItems <= 0 || i < c.Config.MaxItems; i++ {
+	for ; c.crawler.Config.MaxItems <= 0 || i < c.crawler.Config.MaxItems; i++ {
 		var (
 			entry *domain.ToCrawlEntry
 			pkg   *domain.Package
@@ -124,17 +192,25 @@ func (c *Crawler) Run(stopCh chan struct{}) error {
 			break
 		}
 		log.WithField("entry", fmt.Sprintf("%# v", entry)).Debug("Processing")
-		if pkg, err = c.do(entry.PackagePath, stopCh); err != nil {
-			log.WithField("ToCrawlEntry", entry).Errorf("Issue crawling package, attempting re-queue due to: %s", err)
-			if _, err := c.db.ToCrawlAdd(entry); err != nil {
-				log.WithField("ToCrawlEntry", entry).Errorf("Re-queueing crawling entry failed: %s", err)
-				break
-			} else {
-				log.WithField("ToCrawlEntry", entry).Debug("Re-queued OK")
+		if pkg, err = c.db.Package(entry.PackagePath); err != nil && err != db.ErrKeyNotFound {
+			if err2 := c.requeue(entry, err); err2 != nil {
+				return errorlib.Merge([]error{err, err2})
+			}
+		} else if err == db.ErrKeyNotFound {
+			pkg = &domain.Package{
+				Path: entry.PackagePath,
+			}
+		}
+
+		if pkg, err = c.crawler.Do(pkg, stopCh); err != nil {
+			if err2 := c.requeue(entry, err); err2 != nil {
+				return errorlib.Merge([]error{err, err2})
 			}
 			if err == ErrStopRequested {
 				break
 			}
+		} else if err = c.CatalogImporters(pkg); err != nil {
+			break
 		}
 
 		extra := ""
@@ -171,7 +247,7 @@ func (c *Crawler) Run(stopCh chan struct{}) error {
 }
 
 // Do crawls the named packages.
-func (c *Crawler) Do(stopCh chan struct{}, pkgs ...string) error {
+func (c *CrawlerCoordinator) Do(stopCh chan struct{}, pkgs ...string) error {
 	if stopCh == nil {
 		log.Debug("nil stopCh received, this job will not be stoppable")
 		stopCh = make(chan struct{})
@@ -183,14 +259,18 @@ func (c *Crawler) Do(stopCh chan struct{}, pkgs ...string) error {
 		err error
 	)
 
-	for ; i < len(pkgs) && c.Config.MaxItems <= 0 || i < c.Config.MaxItems; i++ {
+	for ; i < len(pkgs) && c.crawler.Config.MaxItems <= 0 || i < c.crawler.Config.MaxItems; i++ {
 		var pkg *domain.Package
 		log.WithField("entry", fmt.Sprintf("%# v", pkgs[i])).Debug("Processing")
-		if pkg, err = c.do(pkgs[i], stopCh); err != nil {
-			log.WithField("ToCrawlEntry", pkgs[i]).Errorf("Re-queueing entry failed: %s", err)
-			if err == ErrStopRequested {
-				break
+		if pkg, err = c.db.Package(pkgs[i]); err != nil && err != db.ErrKeyNotFound {
+			return err
+		} else if err == db.ErrKeyNotFound {
+			pkg = &domain.Package{
+				Path: pkgs[i],
 			}
+		}
+		if pkg, err = c.crawler.Do(pkg, stopCh); err != nil && err == ErrStopRequested {
+			break
 		}
 
 		extra := ""
@@ -201,6 +281,8 @@ func (c *Crawler) Do(stopCh chan struct{}, pkgs ...string) error {
 		if pkg == nil {
 			log.WithField("pkg", pkgs[i]).Debug("Save skipped because pkg==nil")
 		} else if err = c.db.PackageSave(pkg); err != nil {
+			break
+		} else if err = c.CatalogImporters(pkg); err != nil {
 			break
 		}
 
@@ -225,27 +307,118 @@ func (c *Crawler) Do(stopCh chan struct{}, pkgs ...string) error {
 	return nil
 }
 
-func (c *Crawler) NumProcessed() int {
+func (c *CrawlerCoordinator) CatalogImporters(pkg *domain.Package) error {
+	//log.WithField("pkg", pkg.Path).WithField("imports", pkg.Data.AllImports()).Info("catalog starting")
+	var (
+		updatedPkgs = map[string]*domain.Package{}
+		discoveries = map[string]*domain.ToCrawlEntry{}
+	)
+	for _, imp := range pkg.Data.AllImports() {
+		rr, err := importToRepoRoot(imp, log.GetLevel() == log.DebugLevel)
+		if err != nil {
+			log.WithField("pkg", pkg.Path).Errorf("Failed to resolve repo for import=%v: %s", imp, err)
+			continue
+		}
+		if err := c.updateAssociations(rr, pkg, updatedPkgs, discoveries); err != nil {
+			return err
+		}
+	}
+	// Save updated packages.
+	if err := c.savePackagesMap(updatedPkgs); err != nil {
+		return err
+	}
+	// Enqueue newly discovered packages.
+	if err := c.enqueueToCrawlsMap(discoveries); err != nil {
+		return err
+	}
+	//log.Infof("done finding rr's for pkg=%v", pkg.Path)
+	return nil
+}
+
+// updateAssociations updates referenced packages for the "imported_by" portion
+// of the graph.
+func (c *CrawlerCoordinator) updateAssociations(rr *vcs.RepoRoot, consumerPkg *domain.Package, updatedPkgs map[string]*domain.Package, discoveries map[string]*domain.ToCrawlEntry) error {
+	var (
+		pkg *domain.Package
+		ok  bool
+		err error
+	)
+	if pkg, ok = updatedPkgs[rr.Root]; !ok {
+		if pkg, err = c.db.Package(rr.Root); err != nil && err != db.ErrKeyNotFound {
+			return err
+		} else if pkg == nil {
+			pkg = newPackage(rr, nil)
+			discoveries[rr.Root] = &domain.ToCrawlEntry{
+				PackagePath: rr.Root,
+				Reason:      fmt.Sprintf("In use by %v", consumerPkg.Path),
+			}
+		}
+	}
+	newImportedBy := unique.Strings(append(pkg.ImportedBy, consumerPkg.Path))
+	if !reflect.DeepEqual(pkg.ImportedBy, newImportedBy) {
+		pkg.ImportedBy = newImportedBy
+		updatedPkgs[rr.Root] = pkg
+		log.WithField("imported-by", pkg.Path).WithField("pkg", consumerPkg.Path).Debug("Discovered new association")
+	}
+	return nil
+}
+
+func (c *CrawlerCoordinator) savePackagesMap(pkgs map[string]*domain.Package) error {
+	list := make([]*domain.Package, 0, len(pkgs))
+	for _, pkg := range pkgs {
+		list = append(list, pkg)
+	}
+	if err := c.db.PackageSave(list...); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *CrawlerCoordinator) enqueueToCrawlsMap(toCrawls map[string]*domain.ToCrawlEntry) error {
+	list := make([]*domain.ToCrawlEntry, 0, len(toCrawls))
+	for _, entry := range toCrawls {
+		list = append(list, entry)
+	}
+	if n, err := c.db.ToCrawlAdd(list...); err != nil {
+		log.Warnf("Problem enqueueing %v new candidate to-crawl entries: %s", len(toCrawls), err)
+		return err
+	} else if n > 0 {
+		plural := ""
+		if n > 1 {
+			plural = "s"
+		}
+		log.Infof("Added %v newly discovered package%v into to-crawl queue", n, plural)
+	}
+	return nil
+}
+
+func (c *CrawlerCoordinator) requeue(entry *domain.ToCrawlEntry, cause error) error {
+	log.WithField("ToCrawlEntry", entry).Errorf("Issue crawling package, attempting re-queue due to: %s", cause)
+	if _, err := c.db.ToCrawlAdd(entry); err != nil {
+		log.WithField("ToCrawlEntry", entry).Errorf("Re-queueing crawling entry failed: %s", err)
+		return err
+	}
+	log.WithField("ToCrawlEntry", entry).Debug("Re-queued OK")
+	return nil
+}
+
+func (c *CrawlerCoordinator) NumProcessed() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.numProcessed
 }
 
-func (c *Crawler) do(pkgPath string, stopCh chan struct{}) (*domain.Package, error) {
+func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.Package, error) {
 	ctx := &crawlerContext{
+		pkg:    pkg,
 		stopCh: stopCh,
-	}
-
-	pkg, err := c.db.Package(pkgPath)
-	if err != nil && err != db.ErrKeyNotFound {
-		return nil, err
 	}
 
 	if ctx.shouldStop() {
 		return nil, ErrStopRequested
 	}
 
-	rr, err := importToRepoRoot(pkgPath, true) // TODO: Only set true when logging is verbose.
+	rr, err := importToRepoRoot(pkg.Path, log.GetLevel() == log.DebugLevel)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +426,7 @@ func (c *Crawler) do(pkgPath string, stopCh chan struct{}) (*domain.Package, err
 	now := time.Now()
 
 	// If first crawl.
-	if pkg == nil {
+	if pkg.MostlyEmpty() {
 		pkg = newPackage(rr, &now)
 	}
 
@@ -341,91 +514,6 @@ func (c *Crawler) Hydrate(ctx *crawlerContext) error {
 
 	ctx.pkg.Data = ctx.pkg.Data.Merge(ctx.pkg.LatestCrawl().Data)
 	ctx.pkg.LatestCrawl().JobSucceeded = true
-	return nil
-}
-
-func (c *Crawler) CatalogImporters(ctx *crawlerContext) error {
-	//log.WithField("pkg", ctx.pkg.Path).WithField("imports", ctx.pkg.Data.AllImports()).Info("catalog starting")
-	var (
-		updatedPkgs = map[string]*domain.Package{}
-		discoveries = map[string]*domain.ToCrawlEntry{}
-	)
-	for _, imp := range ctx.pkg.Data.AllImports() {
-		rr, err := importToRepoRoot(imp, true) // TODO: Only set true when logging is verbose.
-		if err != nil {
-			log.WithField("pkg", ctx.pkg.Path).Errorf("Failed to resolve repo for import=%v: %s", imp, err)
-			continue
-		}
-		if err := c.updateAssociations(rr, ctx, updatedPkgs, discoveries); err != nil {
-			return err
-		}
-	}
-	// Save updated packages.
-	if err := c.savePackagesMap(updatedPkgs); err != nil {
-		return err
-	}
-	// Enqueue newly discovered packages.
-	if err := c.enqueueToCrawlsMap(discoveries); err != nil {
-		return err
-	}
-	//log.Infof("done finding rr's for pkg=%v", ctx.pkg.Path)
-	return nil
-}
-
-// updateAssociations updates referenced packages for the "imported_by" portion
-// of the graph.
-func (c *Crawler) updateAssociations(rr *vcs.RepoRoot, ctx *crawlerContext, updatedPkgs map[string]*domain.Package, discoveries map[string]*domain.ToCrawlEntry) error {
-	var (
-		pkg *domain.Package
-		ok  bool
-		err error
-	)
-	if pkg, ok = updatedPkgs[rr.Root]; !ok {
-		if pkg, err = c.db.Package(rr.Root); err != nil && err != db.ErrKeyNotFound {
-			return err
-		} else if pkg == nil {
-			pkg = newPackage(rr, nil)
-			discoveries[rr.Root] = &domain.ToCrawlEntry{
-				PackagePath: rr.Root,
-				Reason:      fmt.Sprintf("In use by %v", ctx.pkg.Path),
-			}
-		}
-	}
-	newImportedBy := unique.Strings(append(pkg.ImportedBy, ctx.pkg.Path))
-	if !reflect.DeepEqual(pkg.ImportedBy, newImportedBy) {
-		pkg.ImportedBy = newImportedBy
-		updatedPkgs[rr.Root] = pkg
-		log.WithField("imported-by", pkg.Path).WithField("pkg", ctx.pkg.Path).Debug("Discovered new association")
-	}
-	return nil
-}
-
-func (c *Crawler) savePackagesMap(pkgs map[string]*domain.Package) error {
-	list := make([]*domain.Package, 0, len(pkgs))
-	for _, pkg := range pkgs {
-		list = append(list, pkg)
-	}
-	if err := c.db.PackageSave(list...); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *Crawler) enqueueToCrawlsMap(toCrawls map[string]*domain.ToCrawlEntry) error {
-	list := make([]*domain.ToCrawlEntry, 0, len(toCrawls))
-	for _, entry := range toCrawls {
-		list = append(list, entry)
-	}
-	if n, err := c.db.ToCrawlAdd(list...); err != nil {
-		log.Warnf("Problem enqueueing %v new candidate to-crawl entries: %s", len(toCrawls), err)
-		return err
-	} else if n > 0 {
-		plural := ""
-		if n > 1 {
-			plural = "s"
-		}
-		log.Infof("Added %v newly discovered package%v into to-crawl queue", n, plural)
-	}
 	return nil
 }
 
@@ -523,7 +611,7 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 	return nil
 }
 
-func (c *Crawler) logStats() {
+func (c *CrawlerCoordinator) logStats() {
 	pl, _ := c.db.PackagesLen()
 	ql, _ := c.db.ToCrawlsLen()
 	log.WithField("packages", pl).WithField("to-crawls", ql).Debug("Stats")

@@ -3,7 +3,6 @@
 
 package domain
 
-import go_proto_validators "github.com/mwitkow/go-proto-validators"
 import proto "github.com/gogo/protobuf/proto"
 import golang_proto "github.com/golang/protobuf/proto"
 import fmt "fmt"
@@ -24,19 +23,3 @@ var _ = golang_proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 var _ = time.Kitchen
-
-func (this *UpdateOperations) Validate() error {
-	if this.Package != nil {
-		if err := go_proto_validators.CallValidatorIfExists(this.Package); err != nil {
-			return go_proto_validators.FieldError("Package", err)
-		}
-	}
-	for _, item := range this.ToCrawls {
-		if item != nil {
-			if err := go_proto_validators.CallValidatorIfExists(item); err != nil {
-				return go_proto_validators.FieldError("ToCrawls", err)
-			}
-		}
-	}
-	return nil
-}

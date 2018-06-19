@@ -28,16 +28,16 @@ var _ status.Status
 var _ = runtime.String
 var _ = utilities.NewDoubleArray
 
-func request_RemoteCrawlerService_Do_0(ctx context.Context, marshaler runtime.Marshaler, client RemoteCrawlerServiceClient, req *http.Request, pathParams map[string]string) (RemoteCrawlerService_DoClient, runtime.ServerMetadata, error) {
+func request_RemoteCrawlerService_Attach_0(ctx context.Context, marshaler runtime.Marshaler, client RemoteCrawlerServiceClient, req *http.Request, pathParams map[string]string) (RemoteCrawlerService_AttachClient, runtime.ServerMetadata, error) {
 	var metadata runtime.ServerMetadata
-	stream, err := client.Do(ctx)
+	stream, err := client.Attach(ctx)
 	if err != nil {
 		grpclog.Infof("Failed to start streaming: %v", err)
 		return nil, metadata, err
 	}
 	dec := marshaler.NewDecoder(req.Body)
 	handleSend := func() error {
-		var protoReq ToCrawlEntry
+		var protoReq Package
 		err := dec.Decode(&protoReq)
 		if err == io.EOF {
 			return err
@@ -118,7 +118,7 @@ func RegisterRemoteCrawlerServiceHandler(ctx context.Context, mux *runtime.Serve
 // "RemoteCrawlerServiceClient" to call the correct interceptors.
 func RegisterRemoteCrawlerServiceHandlerClient(ctx context.Context, mux *runtime.ServeMux, client RemoteCrawlerServiceClient) error {
 
-	mux.Handle("POST", pattern_RemoteCrawlerService_Do_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle("POST", pattern_RemoteCrawlerService_Attach_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		if cn, ok := w.(http.CloseNotifier); ok {
@@ -136,14 +136,14 @@ func RegisterRemoteCrawlerServiceHandlerClient(ctx context.Context, mux *runtime
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
-		resp, md, err := request_RemoteCrawlerService_Do_0(rctx, inboundMarshaler, client, req, pathParams)
+		resp, md, err := request_RemoteCrawlerService_Attach_0(rctx, inboundMarshaler, client, req, pathParams)
 		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-		forward_RemoteCrawlerService_Do_0(ctx, mux, outboundMarshaler, w, req, func() (proto.Message, error) { return resp.Recv() }, mux.GetForwardResponseOptions()...)
+		forward_RemoteCrawlerService_Attach_0(ctx, mux, outboundMarshaler, w, req, func() (proto.Message, error) { return resp.Recv() }, mux.GetForwardResponseOptions()...)
 
 	})
 
@@ -151,9 +151,9 @@ func RegisterRemoteCrawlerServiceHandlerClient(ctx context.Context, mux *runtime
 }
 
 var (
-	pattern_RemoteCrawlerService_Do_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"api", "v1", "crawl"}, ""))
+	pattern_RemoteCrawlerService_Attach_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"api", "v1", "attach"}, ""))
 )
 
 var (
-	forward_RemoteCrawlerService_Do_0 = runtime.ForwardResponseStream
+	forward_RemoteCrawlerService_Attach_0 = runtime.ForwardResponseStream
 )
