@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
 	"sync"
 
 	"gigawatt.io/errorlib"
@@ -14,6 +15,9 @@ import (
 	"jaytaylor.com/andromeda/domain"
 	"jaytaylor.com/andromeda/pkg/unique"
 )
+
+// TODO: Need scheme for ensuring a write hasn't occurred to the affected
+//       package since the crawler pulled the item from the queue.
 
 // TODO: Support for picking up where last run left off.
 
@@ -51,7 +55,12 @@ func (m *Master) Resolve(pkgPath string) (*vcs.RepoRoot, error) {
 	if !strings.Contains(pkgPath, ".") {
 		return importToRepoRoot(pkgPath)
 	}
-	c.db.Resolve(pkgPath
+	pkg, err := m.db.Package(pkgPath)
+	if err != nil {
+		return nil, err
+	}
+	rr := pkg.RepoRoot()
+	return rr, nil
 }
 
 // Attach implements the gRPC interface for crawler workers to get jobs and
@@ -255,18 +264,36 @@ func (m *Master) Do(stopCh chan struct{}, pkgs ...string) error {
 // CatalogImporters resolves and adds the "imported_by" association between a
 // package and 3rd party packages it makes use of.
 func (m *Master) CatalogImporters(pkg *domain.Package) error {
-	//log.WithField("pkg", pkg.Path).WithField("imports", pkg.Data.AllImports()).Info("catalog starting")
+	// log.WithField("pkg", pkg.Path).Infof("catalog starting: %# v", pkg)
+	// log.WithField("pkg", pkg.Path).WithField("imports", pkg.Data.AllImports()).Info("catalog starting")
+
+	// Lock to guard against data clobbering.
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	var (
 		updatedPkgs = map[string]*domain.Package{}
 		discoveries = map[string]*domain.ToCrawlEntry{}
 	)
+	knownPkgs, err := m.db.Packages(pkg.Data.AllImports()...)
+	if err != nil {
+		return err
+	}
 	for _, pkgPath := range pkg.Data.AllImports() {
-		rr, err := importToRepoRoot(pkgPath)
-		if err != nil {
-			log.WithField("pkg", pkg.Path).Errorf("Failed to resolve repo for import=%v: %s", pkgPath, err)
-			continue
+		var rr *vcs.RepoRoot
+		usedPkg, ok := updatedPkgs[pkgPath]
+		if !ok {
+			if usedPkg, ok = knownPkgs[pkgPath]; !ok {
+				if rr, err = importToRepoRoot(pkgPath); err != nil {
+					log.WithField("pkg", pkg.Path).Errorf("Failed to resolve repo for import=%v, skipping: %s", pkgPath, err)
+					continue
+				}
+			}
 		}
-		if err = m.buildAssociations(rr, pkg, updatedPkgs, discoveries); err != nil {
+		if rr == nil {
+			rr = usedPkg.RepoRoot()
+		}
+		if err = m.buildAssociations(rr, usedPkg, pkg, updatedPkgs, discoveries); err != nil {
 			return err
 		}
 	}
@@ -284,28 +311,29 @@ func (m *Master) CatalogImporters(pkg *domain.Package) error {
 
 // buildAssociations updates referenced packages for the "imported_by" portion
 // of the graph.
-func (m *Master) buildAssociations(rr *vcs.RepoRoot, consumerPkg *domain.Package, updatedPkgs map[string]*domain.Package, discoveries map[string]*domain.ToCrawlEntry) error {
+func (m *Master) buildAssociations(rr *vcs.RepoRoot, usedPkg *domain.Package, consumerPkg *domain.Package, updatedPkgs map[string]*domain.Package, discoveries map[string]*domain.ToCrawlEntry) error {
 	var (
-		pkg *domain.Package
 		ok  bool
 		err error
 	)
-	if pkg, ok = updatedPkgs[rr.Root]; !ok {
-		if pkg, err = m.db.Package(rr.Root); err != nil && err != db.ErrKeyNotFound {
-			return err
-		} else if pkg == nil {
-			pkg = newPackage(rr, nil)
-			discoveries[rr.Root] = &domain.ToCrawlEntry{
-				PackagePath: rr.Root,
-				Reason:      fmt.Sprintf("In use by %v", consumerPkg.Path),
+	if usedPkg == nil {
+		if usedPkg, ok = updatedPkgs[rr.Root]; !ok {
+			if usedPkg, err = m.db.Package(rr.Root); err != nil && err != db.ErrKeyNotFound {
+				return err
+			} else if usedPkg == nil {
+				usedPkg = newPackage(rr, nil)
+				discoveries[rr.Root] = &domain.ToCrawlEntry{
+					PackagePath: rr.Root,
+					Reason:      fmt.Sprintf("In use by %v", consumerPkg.Path),
+				}
 			}
 		}
 	}
-	newImportedBy := unique.Strings(append(pkg.ImportedBy, consumerPkg.Path))
-	if !reflect.DeepEqual(pkg.ImportedBy, newImportedBy) {
-		pkg.ImportedBy = newImportedBy
-		updatedPkgs[rr.Root] = pkg
-		log.WithField("imported-by", pkg.Path).WithField("pkg", consumerPkg.Path).Debug("Discovered new association")
+	newImportedBy := unique.Strings(append(usedPkg.ImportedBy, consumerPkg.Path))
+	if !reflect.DeepEqual(usedPkg.ImportedBy, newImportedBy) {
+		usedPkg.ImportedBy = newImportedBy
+		updatedPkgs[rr.Root] = usedPkg
+		log.WithField("consumer-pkg", consumerPkg).WithField("imported-pkg", usedPkg.Path).Debug("Discovered new association")
 	}
 	return nil
 }
