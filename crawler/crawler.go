@@ -92,8 +92,8 @@ func New(cfg *Config) *Crawler {
 }
 
 // Resolve implements the PackageResolver interface.
-func (m *Master) Resolve(pkgPath string) (*vcs.RepoRoot, error) {
-	return importToRepoRoot(path)
+func (c *Crawler) Resolve(pkgPath string) (*vcs.RepoRoot, error) {
+	return importToRepoRoot(pkgPath)
 }
 
 func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.Package, error) {
@@ -405,7 +405,7 @@ func newPackage(rr *vcs.RepoRoot, now ...*time.Time) *domain.Package {
 		Name:        "", // TODO: package name(s)???
 		URL:         rr.Repo,
 		VCS:         rr.VCS.Name,
-		Data:        nil,
+		Data:        &domain.PackageSnapshot{},
 		ImportedBy:  []string{},
 		History:     []*domain.PackageCrawl{},
 	}
