@@ -39,19 +39,19 @@ option (gogoproto.messagename_all) = true;
 
 service RemoteCrawlerService {
   // rpc Next() returns (ToCrawlEntry) {}
-  rpc Do(stream ToCrawlEntry) returns (stream UpdateOperations) {
+  rpc Attach(stream Package) returns (stream ToCrawlEntry) {
     option (google.api.http) = {
-      post: "/api/v1/crawl"
+      post: "/api/v1/attach"
       body: "*"
     };
   }
 }
 
-message UpdateOperations {
-  Package Package = 1;
-  repeated ToCrawlEntry ToCrawls = 2;
-  repeated string ReferencedPackages = 3;
-}
+// message UpdatesDelta {
+//   Package Package = 1;
+//   repeated ToCrawlEntry ToCrawls = 2;
+//   repeated string ReferencedPackages = 3;
+// }
 
 // message ImportRelation {
 //   PackagePath string = 1;

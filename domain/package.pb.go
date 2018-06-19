@@ -13,7 +13,6 @@
 		Package
 		PackageCrawl
 		PackageSnapshot
-		UpdateOperations
 		ToCrawlEntry
 */
 package domain
