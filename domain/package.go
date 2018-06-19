@@ -5,6 +5,8 @@ import (
 	"sort"
 	"time"
 
+	"golang.org/x/tools/go/vcs"
+
 	"jaytaylor.com/andromeda/pkg/unique"
 )
 
@@ -29,6 +31,17 @@ func (pkg *Package) LatestCrawl() *PackageCrawl {
 
 func (pkg *Package) MostlyEmpty() bool {
 	return len(pkg.URL) == 0 && len(pkg.VCS) == 0 && pkg.Data == nil
+}
+
+func (pkg Package) RepoRoot() *vcs.RepoRoot {
+	rr := &vcs.RepoRoot{
+		Repo: pkg.URL,
+		Root: pkg.Path,
+		VCS: &vcs.Cmd{
+			Name: pkg.VCS,
+		},
+	}
+	return rr
 }
 
 func (pkg *Package) Merge(other *Package) *Package {

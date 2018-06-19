@@ -8,10 +8,10 @@ import (
 )
 
 type Indexer struct {
-	db db.DBClient
+	db db.Client
 }
 
-func NewIndexer(dbClient db.DBClient) *Indexer {
+func NewIndexer(dbClient db.Client) *Indexer {
 	indexer := &Indexer{
 		db: dbClient,
 	}

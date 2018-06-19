@@ -36,7 +36,7 @@ func TestCrawlerRun(t *testing.T) {
 		&domain.ToCrawlEntry{PackagePath: "os"},
 	}
 
-	if err := db.WithDBClient(db.NewBoltDBConfig(dbFile), func(dbClient db.DBClient) error {
+	if err := db.WithClient(db.NewBoltConfig(dbFile), func(dbClient db.Client) error {
 		// Add several (3+) to-crawl entries.
 		if _, err := dbClient.ToCrawlAdd(toCrawls...); err != nil {
 			return err
@@ -54,8 +54,8 @@ func TestCrawlerRun(t *testing.T) {
 		cfg.SrcPath = filepath.Join(os.TempDir(), "andromeda-crawler-correctness")
 		defer os.RemoveAll(cfg.SrcPath)
 
-		c := NewCoordinator(dbClient, cfg)
-		if err := c.Run(nil); err != nil {
+		m := NewMaster(dbClient, cfg)
+		if err := m.Run(nil); err != nil {
 			t.Error(err)
 			return nil
 		}

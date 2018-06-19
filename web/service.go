@@ -33,10 +33,10 @@ type WebService struct {
 	*web.WebServer
 
 	Config *Config
-	DB     db.DBClient
+	DB     db.Client
 }
 
-func New(db db.DBClient, cfg *Config) *WebService {
+func New(db db.Client, cfg *Config) *WebService {
 	service := &WebService{
 		Config: cfg,
 		DB:     db,
