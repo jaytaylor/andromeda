@@ -128,10 +128,11 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.Package
 
 	pkg.History = append(pkg.History, pc)
 
-	localPath := filepath.Join(c.Config.SrcPath, rr.Root)
+	// localPath := filepath.Join(c.Config.SrcPath, rr.Root)
 
 	if c.Config.DeleteAfter {
-		defer os.RemoveAll(localPath)
+		onePastSrcPath := filepath.Join(c.Config.SrcPath, strings.SplitN(rr.Root, "/", 2)[0])
+		defer os.RemoveAll(onePastSrcPath)
 	}
 
 	ctx.pkg = pkg
