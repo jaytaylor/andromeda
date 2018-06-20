@@ -12,5 +12,9 @@
 Number of packages in index: {{ .DB.PackagesLen }}
 <br>
 Crawl queue length: {{ .DB.ToCrawlsLen }}
+<br>
+Active workers: {{ index .Config.Master.Stats "remotes" }}
+<br>
+Crawls since program started: {{ index .Config.Master.Stats "crawls" }}
 </body>
 </html>

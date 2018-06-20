@@ -35,10 +35,11 @@ import (
 //     - Overseer
 //     - Master
 type Master struct {
-	db           db.Client
-	crawler      *Crawler
-	numProcessed int
-	mu           sync.RWMutex
+	db         db.Client
+	crawler    *Crawler
+	numCrawls  int
+	numRemotes int
+	mu         sync.RWMutex
 }
 
 // NewMaster constructs and returns a new Master crawler instance.
@@ -67,7 +68,10 @@ func (m *Master) Resolve(pkgPath string) (*vcs.RepoRoot, error) {
 // stream back results which the master is responsible for merging and storing
 // in the database.
 func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
-	log.Debug("Attach invoked")
+	m.mu.Lock()
+	m.numRemotes++
+	m.mu.Unlock()
+	log.WithField("active-remotes", m.numRemotes).Debug("Attach invoked")
 	for {
 		var (
 			entry  *domain.ToCrawlEntry
@@ -89,25 +93,46 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			if err == io.EOF {
 				return nil
 			}
+			log.WithField("pkg", entry.PackagePath).Errorf("Problem sending entry to remote crawler: %s (attach bailing out)", err)
 			return err
 		}
 
+		// TODO: Put stopCh plumbing so process can be interrupted and entries re-queued.
+		// go func() {
+		// 	result, err = stream.Recv()
+		// }()
+		//
+		// select {
+		// 	case <-stopCh
+		// }
+
 		if result, err = stream.Recv(); err != nil {
-			if err2 := m.requeue(entry, err); err2 != nil {
-				log.WithField("pkg", entry.PackagePath).Errorf("Re-queueing due to crawl error failed: %s (note: this is quite undesirable)", err)
+			if err2 := m.requeue(entry, fmt.Errorf("remote crawler: %s", err)); err2 != nil {
+				// TODO: Consider placing entries in an intermediate table while in-flight,
+				//       so they'll never get lost.
 				return errorlib.Merge([]error{err, err2})
 			}
 			if err == ErrStopRequested {
 				return nil
 			}
-			log.Errorf("Received error with crawl result: %s", err)
+			log.WithField("pkg", entry.PackagePath).Errorf("Problem receiving rawl result: %s (attach bailing out)", err)
 			return err
+		} else if len(result.Error) > 0 {
+			log.WithField("pkg", entry.PackagePath).Errorf("Received error inside crawl result: %s", result.Error)
+			if err2 := m.requeue(entry, fmt.Errorf("remote crawler: %s", err)); err2 != nil {
+				// TODO: Consider placing entries in an intermediate table while in-flight,
+				//       so they'll never get lost.
+				return errorlib.Merge([]error{err, err2})
+			}
+			continue
 		}
 
 		if err := func() error {
 			// Lock to guard against data clobbering.
 			m.mu.Lock()
 			defer m.mu.Unlock()
+
+			log.WithField("pkg", entry.PackagePath).Debug("Starting index update process..")
 
 			var existing *domain.Package
 			if existing, err = m.db.Package(entry.PackagePath); err != nil && err != db.ErrKeyNotFound {
@@ -132,6 +157,10 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			log.WithField("pkg", result.Package.Path).Errorf("Hard error saving: %s", err)
 			return err
 		}
+
+		m.mu.Lock()
+		m.numCrawls++
+		m.mu.Unlock()
 	}
 }
 
@@ -191,7 +220,7 @@ func (m *Master) Run(stopCh chan struct{}) error {
 		}
 
 		m.mu.Lock()
-		m.numProcessed++
+		m.numCrawls++
 		m.mu.Unlock()
 
 		select {
@@ -253,7 +282,7 @@ func (m *Master) Do(stopCh chan struct{}, pkgs ...string) error {
 		}
 
 		m.mu.Lock()
-		m.numProcessed++
+		m.numCrawls++
 		m.mu.Unlock()
 
 		select {
@@ -276,7 +305,7 @@ func (m *Master) Do(stopCh chan struct{}, pkgs ...string) error {
 // CatalogImporters resolves and adds the "imported_by" association between a
 // package and 3rd party packages it makes use of.
 func (m *Master) CatalogImporters(pkg *domain.Package) error {
-	// log.WithField("pkg", pkg.Path).Infof("catalog starting: %# v", pkg)
+	log.WithField("pkg", pkg.Path).Infof("catalog starting: %# v", pkg)
 	// log.WithField("pkg", pkg.Path).WithField("imports", pkg.Data.AllImports()).Info("catalog starting")
 
 	var (
@@ -380,17 +409,22 @@ func (m *Master) enqueueToCrawlsMap(toCrawls map[string]*domain.ToCrawlEntry) er
 }
 
 func (m *Master) requeue(entry *domain.ToCrawlEntry, cause error) error {
-	log.WithField("ToCrawlEntry", entry).Errorf("Issue crawling package, attempting re-queue due to: %s", cause)
+	log.WithField("pkg", entry.PackagePath).Debugf("Attempting re-queue entry due to: %s", cause)
 	if _, err := m.db.ToCrawlAdd(entry); err != nil {
-		log.WithField("ToCrawlEntry", entry).Errorf("Re-queueing crawling entry failed: %s", err)
+		log.WithField("pkg", entry.PackagePath).Errorf("Re-queueing failed: %s (highly undesirable, graph integrity compromised)", err)
 		return err
 	}
-	log.WithField("ToCrawlEntry", entry).Debug("Re-queued OK")
+	log.WithField("pkg", entry.PackagePath).Debug("Re-queued OK")
 	return nil
 }
 
-func (m *Master) NumProcessed() int {
+func (m *Master) Stats() map[string]int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.numProcessed
+
+	stats := map[string]int{
+		"crawls":  m.numCrawls,
+		"remotes": m.numRemotes,
+	}
+	return stats
 }

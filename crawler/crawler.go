@@ -98,6 +98,8 @@ func (c *Crawler) Resolve(pkgPath string) (*vcs.RepoRoot, error) {
 }
 
 func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.Package, error) {
+	log.WithField("pkg", pkg.Path).Debug("Starting crawl")
+
 	ctx := &crawlerContext{
 		pkg:    pkg,
 		stopCh: stopCh,
@@ -440,7 +442,8 @@ func importToRepoRoot(pkgPath string) (*vcs.RepoRoot, error) {
 			return nil, err
 		}
 		rr.Repo = strings.Replace(rr.Repo, "https://github.com/", "git@github.com:", 1)
-		log.Infof("root=%v repo=%v vcs=%v", rr.Root, rr.Repo, rr.VCS.Name)
+		//logInfof("root=%v repo=%v vcs=%v", rr.Root, rr.Repo, rr.VCS.Name)
+		// log.WithField("root", rr.Root).WithField("repo", rr.Repo).WithField("vcs", rr.VCS.Name).Debug("Found rr OK")
 	} else {
 		rr = &vcs.RepoRoot{
 			Repo: pkgPath,
