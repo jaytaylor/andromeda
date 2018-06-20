@@ -37,7 +37,7 @@ func request_RemoteCrawlerService_Attach_0(ctx context.Context, marshaler runtim
 	}
 	dec := marshaler.NewDecoder(req.Body)
 	handleSend := func() error {
-		var protoReq Package
+		var protoReq CrawlResult
 		err := dec.Decode(&protoReq)
 		if err == io.EOF {
 			return err

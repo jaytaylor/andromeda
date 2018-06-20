@@ -15,7 +15,7 @@ message Package {
   string owner = 5;
   string vcs = 6 [(gogoproto.customname) = "VCS"];
   google.protobuf.Timestamp first_seen_at = 7 [(gogoproto.stdtime) = true];
-  repeated string imported_by = 8;
+  repeated string imported_by = 8; // TODO: Consider making this a type which tracks when the import was first and last seen.
   PackageSnapshot data = 9;
   repeated PackageCrawl history = 10;
 }

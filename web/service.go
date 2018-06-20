@@ -5,18 +5,26 @@ package web
 import (
 	"fmt"
 	"html/template"
+	"net"
 	"net/http"
+	"sync"
 	//"os"
 	//"strings"
 	//"time"
 
 	//"gigawatt.io/errorlib"
+	"gigawatt.io/errorlib"
 	"gigawatt.io/web"
 	"gigawatt.io/web/route"
 	"github.com/nbio/hitch"
 	log "github.com/sirupsen/logrus"
+	"github.com/soheilhy/cmux"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
 
+	"jaytaylor.com/andromeda/crawler"
 	"jaytaylor.com/andromeda/db"
+	"jaytaylor.com/andromeda/domain"
 	"jaytaylor.com/andromeda/web/public"
 )
 
@@ -27,10 +35,14 @@ import (
 type Config struct {
 	Addr    string
 	DevMode bool
+	Master  *crawler.Master
 }
 
 type WebService struct {
-	*web.WebServer
+	listener net.Listener
+	handler  http.Handler
+	server   *http.Server
+	mu       sync.Mutex
 
 	Config *Config
 	DB     db.Client
@@ -41,11 +53,7 @@ func New(db db.Client, cfg *Config) *WebService {
 		Config: cfg,
 		DB:     db,
 	}
-	options := web.WebServerOptions{
-		Addr:    service.Config.Addr,
-		Handler: service.activateRoutes().Handler(),
-	}
-	service.WebServer = web.NewWebServer(options)
+	service.handler = service.activateRoutes().Handler()
 	return service
 }
 
@@ -118,74 +126,65 @@ func (service *WebService) staticFilesAssetProvider() (assetProvider web.AssetPr
 	return
 }
 
-/*func (service *WebService) txt(w http.ResponseWriter, req *http.Request) {
-	url := hitch.Params(req).ByName("url")
-	fmt.Println(url)
-
-	if len(url) == 1 {
-		web.RespondWithHtml(w, 200, `<html><head><title>TXT-Web</title></head><body>Welcome to TXT-Web!</body></html>`)
-		return
+func (service *WebService) Start() error {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	/*if err := service.WebServer.Start(); err != nil {
+		return err
+	}*/
+	if service.Config.Master == nil {
+		return fmt.Errorf("Missing Master!!!!")
 	}
 
-	if len(url) > 0 {
-		url = url[1:]
-	}
-	url = normalizeURL(url)
+	var err error
 
-	var (
-		ch = asyncTXT(url)
-		r  result
-	)
-
-	select {
-	case r = <-ch:
-	case <-time.After(AsyncRequestHandlerTimeout):
-		r = result{"", fmt.Errorf("timed out after %v", AsyncRequestHandlerTimeout)}
+	if service.listener, err = net.Listen("tcp", service.Config.Addr); err != nil {
+		return err
 	}
 
-	if r.err != nil {
-		web.RespondWithText(w, http.StatusInternalServerError, r.err.Error())
-		return
+	grpcServer := grpc.NewServer()
+	domain.RegisterRemoteCrawlerServiceServer(grpcServer, service.Config.Master)
+
+	m := cmux.New(service.listener)
+	grpcListener := m.Match(cmux.HTTP2HeaderField("content-type", "application/grpc"))
+	httpListener := m.Match(cmux.HTTP1Fast())
+
+	service.server = &http.Server{
+		Handler: service.handler,
+		// ReadTimeout:    ReadTimeout,
+		// WriteTimeout:   WriteTimeout,
+		// MaxHeaderBytes: ws.Options.MaxHeaderBytes,
+		// TLSConfig:      ws.Options.TLSConfig,
+		// ErrorLog:       ws.Options.ErrorLog,
 	}
-	web.RespondWithText(w, http.StatusOK, r.content)
-}
 
-type result struct {
-	content string
-	err     error
-}
+	g := errgroup.Group{}
+	g.Go(func() error { return grpcServer.Serve(grpcListener) })
+	g.Go(func() error { return service.server.Serve(httpListener) })
+	g.Go(func() error { return m.Serve() })
 
-func asyncTXT(url string) chan result {
-	ch := make(chan result)
 	go func() {
-		r := gorequest.New()
-		resp, data, errs := r.Get(url).End()
-		if err := errorlib.Merge(errs); err != nil {
-			ch <- result{"", err}
-			return
-		}
-		if resp.StatusCode/100 != 2 {
-			err := fmt.Errorf("expected status code 2xx but actual=%v", resp.StatusCode)
-			ch <- result{"", err}
-			return
-		}
-		txt, err := html2text.FromString(data, html2text.Options{PrettyTables: true})
-		if err != nil {
-			ch <- result{"", err}
-			return
-		}
-		ch <- result{txt, nil}
-		return
+		log.Infof("run server result: %s", g.Wait())
 	}()
-	return ch
+
+	return nil
 }
 
-func normalizeURL(url string) string {
-	if strings.HasPrefix(url, "//") {
-		url = "http:" + url
+func (service *WebService) Stop() error {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	if service.listener == nil {
+		return errorlib.NotRunningError
 	}
-	if !strings.HasPrefix(strings.ToLower(url), "http://") && !strings.HasPrefix(strings.ToLower(url), "https://") {
-		url = "http://" + url
+	service.server.Close()
+	return nil
+}
+
+func (service *WebService) Addr() net.Addr {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	if service.listener != nil {
+		return service.listener.Addr()
 	}
-	return url
-}*/
+	return nil
+}

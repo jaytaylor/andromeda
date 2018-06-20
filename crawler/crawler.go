@@ -81,6 +81,7 @@ func (ctx *crawlerContext) shouldStop() bool {
 // New creates and returns a new crawler instance with the supplied db client
 // and configuration.
 func New(cfg *Config) *Crawler {
+	log.Debugf("New crawler with config=%# v", cfg)
 	c := &Crawler{
 		Config: cfg,
 	}

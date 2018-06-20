@@ -37,9 +37,14 @@ option (gogoproto.goproto_registration) = true;
 // Enable generation of XXX_MessageName methods for grpc-go/status.
 option (gogoproto.messagename_all) = true;
 
+message CrawlResult {
+  Package Package = 1;
+  string Error = 2;
+}
+
 service RemoteCrawlerService {
   // rpc Next() returns (ToCrawlEntry) {}
-  rpc Attach(stream Package) returns (stream ToCrawlEntry) {
+  rpc Attach(stream CrawlResult) returns (stream ToCrawlEntry) {
     option (google.api.http) = {
       post: "/api/v1/attach"
       body: "*"
