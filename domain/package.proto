@@ -11,7 +11,15 @@ message Package {
   uint64 id = 1 [(gogoproto.customname) = "ID"];
   string name = 2;
   string path = 3;
-  string url = 4 [(gogoproto.customname) = "URL"];
+  string url = 4 [(gogoproto.customname) = "URL"]; // TODO: Rename to Repo, and auto calc the URL if possible..
+  // TODO: Add docs_url field.
+  //string docs_url = 5;
+  //string owner = 6;
+  //string vcs = 7 [(gogoproto.customname) = "VCS"];
+  //google.protobuf.Timestamp first_seen_at = 8 [(gogoproto.stdtime) = true];
+  //repeated string imported_by = 9; // TODO: Consider making this a type which tracks when the import was first and last seen.
+  //PackageSnapshot data = 10;
+  //repeated PackageCrawl history = 11;
   string owner = 5;
   string vcs = 6 [(gogoproto.customname) = "VCS"];
   google.protobuf.Timestamp first_seen_at = 7 [(gogoproto.stdtime) = true];

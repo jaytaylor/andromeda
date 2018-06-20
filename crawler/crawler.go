@@ -215,6 +215,9 @@ func (c *Crawler) get(rr *vcs.RepoRoot) error {
 	}
 
 	dst := filepath.Join(c.Config.SrcPath, rr.Root)
+
+	// TODO: If $dst/.git already exists, try just running "git pull origin master" on it rather than re-downloading entire thing!
+
 	if err := rr.VCS.Create(dst, rr.Repo); err != nil {
 		if err := os.RemoveAll(dst); err != nil {
 			return err
@@ -241,9 +244,14 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 	testImportsMap := map[string]struct{}{}
 
 	scanDir := func(dir string) error {
-		log.Infof("dir=%v b=%v", dir, fmt.Sprintf("%v%v", c.Config.SrcPath, string(os.PathSeparator)))
-		var goPkg *load.Package
+		// TODO: Determine if this should really be os.PathSeparator or "/".
+		//       Needs testing on windows.
+
+		// Calculate the package import path by removing the first matching occurrence
+		// of the configured src-path + a slash string.
 		pkgPath := strings.Replace(dir, fmt.Sprintf("%v%v", c.Config.SrcPath, string(os.PathSeparator)), "", 1)
+		log.WithField("candidate-pkg-path", pkgPath).Debugf("Scanning for go package and imports")
+		var goPkg *load.Package
 		goPkg, err := loadPackageDynamic(c.Config.SrcPath, pkgPath)
 		if err != nil {
 			pkg.LatestCrawl().AddMessage(fmt.Sprintf("loading %v: %s", pkgPath, err))

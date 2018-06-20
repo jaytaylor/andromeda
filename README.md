@@ -25,6 +25,10 @@ go get jaytaylor.com/andromeda/...
 - [ ] Fix `-s` strangeness, should only specify the base path and auto-append "/src".
 - [ ] Handle relative imports.
 
+To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`
+
+Some of them are only noted in the relevant code region :)
+
 ## Development
 
 ### Requirements
