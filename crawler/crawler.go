@@ -143,11 +143,11 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.Package
 		select {
 		case err = <-pCh:
 			if err != nil {
-				if !c.errorShouldInterruptExecution(err) {
-					log.WithField("pkg", ctx.pkg.Path).Warnf("Ignoring non-fatal error: %s", err)
-					return ctx.pkg, nil
+				if c.errorShouldInterruptExecution(err) {
+					return ctx.pkg, err
 				}
-				return ctx.pkg, err
+				log.WithField("pkg", ctx.pkg.Path).Warnf("Ignoring non-fatal error: %s", err)
+				return ctx.pkg, nil
 			}
 		case <-ctx.stopCh:
 			return nil, ErrStopRequested
