@@ -417,10 +417,9 @@ func crawl(dbClient db.Client, args ...string) error {
 }
 
 func initLogging() {
-	log.AddHook(filename.NewHook())
-
 	level := log.InfoLevel
 	if Verbose {
+		log.AddHook(filename.NewHook())
 		level = log.DebugLevel
 	}
 	if Quiet {
