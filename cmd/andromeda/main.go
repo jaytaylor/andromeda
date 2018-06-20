@@ -26,21 +26,25 @@ var (
 	BootstrapGoDocPackagesFile string
 
 	WebAddr string
+
+	CrawlServerAddr = "127.0.01:8082"
 )
 
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&Quiet, "quiet", "q", false, "Activate quiet log output")
 	rootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Activate verbose log output")
 	rootCmd.PersistentFlags().StringVarP(&DBFile, "db", "b", DBFile, "Path to BoltDB file")
+	rootCmd.PersistentFlags().StringVarP(&crawler.DefaultSrcPath, "src-path", "s", crawler.DefaultSrcPath, "Path to checkout source code to")
+	rootCmd.PersistentFlags().BoolVarP(&crawler.DefaultDeleteAfter, "delete-after", "d", crawler.DefaultDeleteAfter, "Delete source code after analysis")
 
 	bootstrapCmd.Flags().StringVarP(&BootstrapGoDocPackagesFile, "godoc-packages-file", "g", "", "Path to local api.godoc.org/packages file to use")
 	bootstrapCmd.Flags().IntVarP(&discovery.AddBatchSize, "batch-size", "s", discovery.AddBatchSize, "Batch group size per DB transaction")
 
 	crawlCmd.Flags().IntVarP(&crawler.DefaultMaxItems, "max-items", "m", crawler.DefaultMaxItems, "Maximum number of package items to crawl (<=0 signifies unlimited)")
-	crawlCmd.Flags().StringVarP(&crawler.DefaultSrcPath, "src-path", "s", crawler.DefaultSrcPath, "Path to checkout source code to")
-	crawlCmd.Flags().BoolVarP(&crawler.DefaultDeleteAfter, "delete-after", "d", crawler.DefaultDeleteAfter, "Delete source code after analysis")
 
 	webCmd.Flags().StringVarP(&WebAddr, "addr", "a", "", "Interface bind address:port spec")
+
+	remoteCrawlerCmd.Flags().StringVarP(&CrawlServerAddr, "addr", "a", CrawlServerAddr, "Crawl server host:port address spec")
 
 	rootCmd.AddCommand(bootstrapCmd)
 	rootCmd.AddCommand(crawlCmd)
@@ -49,6 +53,7 @@ func init() {
 	rootCmd.AddCommand(getCmd)
 	rootCmd.AddCommand(lsCmd)
 	rootCmd.AddCommand(webCmd)
+	rootCmd.AddCommand(remoteCrawlerCmd)
 }
 
 func main() {
@@ -290,9 +295,11 @@ var webCmd = &cobra.Command{
 		dbCfg := db.NewBoltConfig(DBFile)
 		dbCfg.BoltOptions.Timeout = 5 * time.Second
 		if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
+			master := crawler.NewMaster(dbClient, crawler.NewConfig())
 			cfg := &web.Config{
 				Addr: WebAddr,
 				// TODO: DevMode
+				Master: master,
 			}
 			ws := web.New(dbClient, cfg)
 			if err := ws.Start(); err != nil {
@@ -311,6 +318,29 @@ var webCmd = &cobra.Command{
 			return nil
 		}); err != nil {
 			log.Fatalf("main: %s", err)
+		}
+	},
+}
+
+var remoteCrawlerCmd = &cobra.Command{
+	Use:   "remote-crawler",
+	Short: ".. jay will fill this long one out sometime ..",
+	Long:  ".. jay will fill this long one out sometime ..",
+	PreRun: func(_ *cobra.Command, _ []string) {
+		initLogging()
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg := crawler.NewConfig()
+		r := crawler.NewRemote(CrawlServerAddr, cfg)
+		stopCh := make(chan struct{})
+		go r.Run(stopCh)
+
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		select {
+		case s := <-sigCh:
+			log.WithField("sig", s).Info("Received signal, shutting down remote crawler")
+			stopCh <- struct{}{}
 		}
 	},
 }
@@ -349,7 +379,7 @@ func crawl(dbClient db.Client, args ...string) error {
 	select {
 	case err = <-errCh:
 	case s := <-sigCh:
-		log.WithField("sig", s).Info("Received signa, shutting down crawlerl")
+		log.WithField("sig", s).Info("Received signal, shutting down crawler")
 		select {
 		case stopCh <- struct{}{}:
 		case err = <-errCh:

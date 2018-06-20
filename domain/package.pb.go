@@ -13,6 +13,7 @@
 		Package
 		PackageCrawl
 		PackageSnapshot
+		CrawlResult
 		ToCrawlEntry
 */
 package domain

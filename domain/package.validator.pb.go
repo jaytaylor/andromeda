@@ -13,6 +13,7 @@ It has these top-level messages:
 	Package
 	PackageCrawl
 	PackageSnapshot
+	CrawlResult
 	ToCrawlEntry
 */
 package domain

@@ -67,11 +67,12 @@ func (m *Master) Resolve(pkgPath string) (*vcs.RepoRoot, error) {
 // stream back results which the master is responsible for merging and storing
 // in the database.
 func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
+	log.Debug("Attach invoked")
 	for {
 		var (
-			entry *domain.ToCrawlEntry
-			pkg   *domain.Package
-			err   error
+			entry  *domain.ToCrawlEntry
+			result *domain.CrawlResult
+			err    error
 		)
 
 		if entry, err = m.db.ToCrawlDequeue(); err != nil {
@@ -91,33 +92,41 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			return err
 		}
 
-		if pkg, err = stream.Recv(); err != nil {
+		if result, err = stream.Recv(); err != nil {
 			if err2 := m.requeue(entry, err); err2 != nil {
+				log.WithField("pkg", entry.PackagePath).Errorf("Re-queueing due to crawl error failed: %s (note: this is quite undesirable)", err)
 				return errorlib.Merge([]error{err, err2})
 			}
 			if err == ErrStopRequested {
 				return nil
 			}
+			log.Errorf("Received error with crawl result: %s", err)
+			return err
 		}
 
 		return func() error {
+			// Lock to guard against data clobbering.
 			m.mu.Lock()
 			defer m.mu.Unlock()
 
-			if err = m.CatalogImporters(pkg); err != nil {
+			var existing *domain.Package
+			if existing, err = m.db.Package(entry.PackagePath); err != nil && err != db.ErrKeyNotFound {
 				return err
+			} else if existing != nil {
+				result.Package = existing.Merge(result.Package)
 			}
 
-			extra := ""
-			if err != nil {
-				extra = fmt.Sprintf("; err=%s", err)
+			if err = m.CatalogImporters(result.Package); err != nil {
+				return err
 			}
-			log.WithField("pkg", entry.PackagePath).Debugf("Package crawl received%v", extra)
-			if pkg == nil {
+			log.WithField("pkg", result.Package.Path).Debug("Index updated with crawl result")
+			m.logStats()
+
+			/*if pkg == nil {
 				log.WithField("pkg", entry.PackagePath).Debug("Save skipped because pkg==nil")
 			} else if err = m.db.PackageSave(pkg); err != nil {
 				return err
-			}
+			}*/
 			return nil
 		}()
 	}
@@ -267,10 +276,6 @@ func (m *Master) CatalogImporters(pkg *domain.Package) error {
 	// log.WithField("pkg", pkg.Path).Infof("catalog starting: %# v", pkg)
 	// log.WithField("pkg", pkg.Path).WithField("imports", pkg.Data.AllImports()).Info("catalog starting")
 
-	// Lock to guard against data clobbering.
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	var (
 		updatedPkgs = map[string]*domain.Package{}
 		discoveries = map[string]*domain.ToCrawlEntry{}
@@ -312,6 +317,10 @@ func (m *Master) CatalogImporters(pkg *domain.Package) error {
 // buildAssociations updates referenced packages for the "imported_by" portion
 // of the graph.
 func (m *Master) buildAssociations(rr *vcs.RepoRoot, usedPkg *domain.Package, consumerPkg *domain.Package, updatedPkgs map[string]*domain.Package, discoveries map[string]*domain.ToCrawlEntry) error {
+	if rr.Root == consumerPkg.RepoRoot().Root {
+		log.Debugf("Skipping association between consumerPkg=%v and %v", consumerPkg.Path, rr.Root)
+		return nil
+	}
 	var (
 		ok  bool
 		err error
@@ -333,7 +342,7 @@ func (m *Master) buildAssociations(rr *vcs.RepoRoot, usedPkg *domain.Package, co
 	if !reflect.DeepEqual(usedPkg.ImportedBy, newImportedBy) {
 		usedPkg.ImportedBy = newImportedBy
 		updatedPkgs[rr.Root] = usedPkg
-		log.WithField("consumer-pkg", consumerPkg).WithField("imported-pkg", usedPkg.Path).Debug("Discovered new association")
+		log.WithField("consumer-pkg", consumerPkg.Path).WithField("imported-pkg", usedPkg.Path).Debug("Discovered one or more new associations")
 	}
 	return nil
 }
