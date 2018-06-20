@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/onrik/logrus/filename"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
@@ -396,6 +397,8 @@ func crawl(dbClient db.Client, args ...string) error {
 }
 
 func initLogging() {
+	log.AddHook(filename.NewHook())
+
 	level := log.InfoLevel
 	if Verbose {
 		level = log.DebugLevel
