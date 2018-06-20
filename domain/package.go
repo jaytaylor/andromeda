@@ -79,13 +79,6 @@ func (pkg *Package) Merge(other *Package) *Package {
 	return pkg
 }
 
-func (pc *PackageCrawl) AddMessage(msg string) {
-	if pc.JobMessages == nil {
-		pc.JobMessages = []string{}
-	}
-	pc.JobMessages = append(pc.JobMessages, msg)
-}
-
 func (snap *PackageSnapshot) AllImports() []string {
 	impsMap := map[string]struct{}{}
 	for _, imp := range append(snap.Imports, snap.TestImports...) {
@@ -136,4 +129,19 @@ func (snap *PackageSnapshot) Merge(other *PackageSnapshot) *PackageSnapshot {
 	}
 
 	return snap
+}
+
+func (pc *PackageCrawl) AddMessage(msg string) {
+	if pc.JobMessages == nil {
+		pc.JobMessages = []string{}
+	}
+	pc.JobMessages = append(pc.JobMessages, msg)
+}
+
+func (pc PackageCrawl) Duration() time.Duration {
+	if pc.JobStartedAt == nil || pc.JobFinishedAt == nil {
+		return time.Duration(0)
+	}
+	d := pc.JobFinishedAt.Sub(*pc.JobStartedAt)
+	return d
 }

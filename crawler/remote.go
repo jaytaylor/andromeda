@@ -25,10 +25,18 @@ func NewRemote(addr string, cfg *Config) *Remote {
 }
 
 func (r *Remote) Run(stopCh chan struct{}) {
-	var result *domain.CrawlResult
+	var (
+		result *domain.CrawlResult
+		crawls int
+	)
 
 	for {
 		err := func() error {
+			if r.crawler.Config.MaxItems > 0 && crawls >= r.crawler.Config.MaxItems {
+				log.WithField("session-crawls", crawls).WithField("max-items", r.crawler.Config.MaxItems).Info("Limit reached, crawl session finihsed")
+				return ErrStopRequested
+			}
+
 			conn, err := grpc.Dial(r.Addr, grpc.WithInsecure())
 			if err != nil {
 				return fmt.Errorf("Dialing %v: %s", r.Addr, err)
@@ -38,7 +46,7 @@ func (r *Remote) Run(stopCh chan struct{}) {
 			rcsc := domain.NewRemoteCrawlerServiceClient(conn)
 			ac, err := rcsc.Attach(context.Background())
 			if err != nil {
-				return fmt.Errorf("Getting AttachClient: %s", r.Addr, err)
+				return fmt.Errorf("attaching: %s", r.Addr, err)
 			}
 
 			if result != nil {
@@ -47,30 +55,38 @@ func (r *Remote) Run(stopCh chan struct{}) {
 					// TODO: Requeue locally.
 					return err
 				}
+				result = nil
+				crawls++
 			}
 
 			for {
+				if r.crawler.Config.MaxItems > 0 && crawls >= r.crawler.Config.MaxItems {
+					log.WithField("session-crawls", crawls).WithField("max-items", r.crawler.Config.MaxItems).Info("Limit reached, crawl session finihsed")
+					return ErrStopRequested
+				}
+
 				select {
 				case <-stopCh:
 					return ErrStopRequested
 				default:
 				}
 
+				log.WithField("session-crawls", crawls).Debug("Ready to receive next entry")
 				entry, err := ac.Recv()
 				if err != nil {
-					return fmt.Errorf("receiving ToCrawlEntry: %s", err)
+					return fmt.Errorf("receiving entry: %s", err)
 				}
 				pkg, err := r.crawler.Do(&domain.Package{Path: entry.PackagePath}, stopCh)
-				if err != nil {
-				}
 				result = domain.NewCrawlResult(pkg, err)
 				if err = ac.Send(result); err != nil {
 					// TODO: Requeue locally.
 					return err
 				}
 				result = nil
+				crawls++
 			}
 		}()
+
 		if err != nil {
 			if err == ErrStopRequested {
 				log.WithField("addr", r.Addr).Debug("Remote shutting down")

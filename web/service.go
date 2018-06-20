@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	//"os"
 	//"strings"
@@ -55,75 +56,6 @@ func New(db db.Client, cfg *Config) *WebService {
 	}
 	service.handler = service.activateRoutes().Handler()
 	return service
-}
-
-func (service *WebService) activateRoutes() *hitch.Hitch {
-	assetProvider := service.staticFilesAssetProvider()
-
-	routes := []route.RouteMiddlewareBundle{
-		route.RouteMiddlewareBundle{
-			Middlewares: []func(http.Handler) http.Handler{
-				service.LoggerMiddleware,
-				web.StaticFilesMiddleware(assetProvider),
-			},
-			RouteData: []route.RouteDatum{
-				{"get", "/", service.tplAssetEndpoint("index.tpl")},
-			},
-		},
-	}
-	h := route.Activate(routes)
-	return h
-}
-
-func (service *WebService) tplAssetEndpoint(asset string) func(w http.ResponseWriter, req *http.Request) {
-	// TODO: consider moving this outside of closure?  any benefit?
-	log.Infof("NAMES: %s", public.AssetNames())
-	content, err := service.staticFilesAssetProvider()(asset)
-	if err != nil {
-		panic(fmt.Errorf("problem with asset %q: %v", asset, err))
-	}
-	tpl := template.Must(template.New(asset).Parse(string(content)))
-
-	return func(w http.ResponseWriter, req *http.Request) {
-		if err := tpl.Execute(w, service); err != nil {
-			web.RespondWithHtml(w, 500, err.Error())
-			return
-		}
-	}
-}
-
-func (service *WebService) LoggerMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		log.Infof("method=%s url=%s remoteAddr=%s referer=%s\n", req.Method, req.URL.String(), req.RemoteAddr, req.Referer())
-		next.ServeHTTP(w, req)
-	})
-}
-
-// staticFilesMiddleware returns the appropriate middleware depending on what
-// mode we're running in.
-func (service *WebService) staticFilesAssetProvider() (assetProvider web.AssetProvider) {
-	/*switch config.Mode {
-	case "prod":
-	*/
-	assetProvider = public.Asset
-	/*
-
-		case "dev": // Serve static files from disk.
-			// Calculate the base public path only once to avoid unnecessary redundant computation.
-	*/
-	/*
-		pieces := strings.Split(os.Args[0], "/")
-		publicPath := strings.Join(append(pieces[0:len(pieces)-1], "public"), "/")
-		log.Warnf("Dev disk-based static file asset provider activated, publicPath=%s", publicPath)
-		assetProvider = web.DiskBasedAssetProvider(publicPath)
-	*/
-	/*
-		default:
-			panic(fmt.Errorf("unrecognized config.Mode: %v", config.Mode))
-		}
-		return
-	*/
-	return
 }
 
 func (service *WebService) Start() error {
@@ -187,4 +119,105 @@ func (service *WebService) Addr() net.Addr {
 		return service.listener.Addr()
 	}
 	return nil
+}
+
+func (service *WebService) activateRoutes() *hitch.Hitch {
+	assetProvider := service.staticFilesAssetProvider()
+
+	routes := []route.RouteMiddlewareBundle{
+		route.RouteMiddlewareBundle{
+			Middlewares: []func(http.Handler) http.Handler{
+				service.LoggerMiddleware,
+				web.StaticFilesMiddleware(assetProvider),
+			},
+			RouteData: []route.RouteDatum{
+				// {"get", "/", service.tplAsset("index.tpl")},
+				{"get", "/*package", service.pkg},
+			},
+		},
+	}
+	h := route.Activate(routes)
+	return h
+}
+
+func (service *WebService) LoggerMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		log.Infof("method=%s url=%s remoteAddr=%s referer=%s\n", req.Method, req.URL.String(), req.RemoteAddr, req.Referer())
+		next.ServeHTTP(w, req)
+	})
+}
+
+// staticFilesMiddleware returns the appropriate middleware depending on what
+// mode we're running in.
+func (service *WebService) staticFilesAssetProvider() (assetProvider web.AssetProvider) {
+	/*switch config.Mode {
+	case "prod":
+	*/
+	assetProvider = public.Asset
+	/*
+
+		case "dev": // Serve static files from disk.
+			// Calculate the base public path only once to avoid unnecessary redundant computation.
+	*/
+	/*
+		pieces := strings.Split(os.Args[0], "/")
+		publicPath := strings.Join(append(pieces[0:len(pieces)-1], "public"), "/")
+		log.Warnf("Dev disk-based static file asset provider activated, publicPath=%s", publicPath)
+		assetProvider = web.DiskBasedAssetProvider(publicPath)
+	*/
+	/*
+		default:
+			panic(fmt.Errorf("unrecognized config.Mode: %v", config.Mode))
+		}
+		return
+	*/
+	return
+}
+
+func (service *WebService) tplAsset(asset string) func(w http.ResponseWriter, req *http.Request) {
+	// TODO: consider moving this outside of closure?  any benefit?
+	//log.Infof("NAMES: %s", public.AssetNames())
+	content, err := service.staticFilesAssetProvider()(asset)
+	if err != nil {
+		panic(fmt.Errorf("problem with asset %q: %v", asset, err))
+	}
+	tpl := template.Must(template.New(asset).Parse(string(content)))
+
+	return func(w http.ResponseWriter, req *http.Request) {
+		if err := tpl.Execute(w, service); err != nil {
+			web.RespondWithHtml(w, 500, err.Error())
+			return
+		}
+	}
+}
+
+func (service *WebService) pkg(w http.ResponseWriter, req *http.Request) {
+	pkgPath := strings.Trim(hitch.Params(req).ByName("package"), "/")
+	if len(pkgPath) == 0 {
+		service.tplAsset("index.tpl")(w, req)
+		return
+	}
+	log.WithField("pkg-path", pkgPath).Info("GET /:package invoked")
+
+	const asset = "package.tpl"
+	content, err := service.staticFilesAssetProvider()(asset)
+	if err != nil {
+		panic(fmt.Errorf("problem with asset %q: %v", asset, err))
+	}
+	tpl := template.Must(template.New(asset).Parse(string(content)))
+
+	pkg, err := service.DB.Package(pkgPath)
+	if err != nil {
+		if err == db.ErrKeyNotFound {
+			web.RespondWithHtml(w, 404, err.Error())
+		} else {
+			web.RespondWithHtml(w, 500, err.Error())
+		}
+		return
+	}
+
+	if err := tpl.Execute(w, pkg); err != nil {
+		web.RespondWithHtml(w, 500, err.Error())
+		return
+	}
 }
