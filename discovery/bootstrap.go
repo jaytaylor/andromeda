@@ -2,15 +2,18 @@ package discovery
 
 import (
 	"os"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/ulikunitz/xz"
 
 	"jaytaylor.com/andromeda/db"
 	"jaytaylor.com/andromeda/domain"
 )
 
 var (
-	AddBatchSize = 25000
+	AddBatchSize           = 25000
+	UseXZFileDecompression bool
 )
 
 type BootstrapConfig struct {
@@ -34,8 +37,20 @@ func Bootstrap(dbClient db.Client, config *BootstrapConfig) error {
 				return err
 			}
 			defer f.Close()
+			if !UseXZFileDecompression && strings.HasSuffix(config.GoDocPackagesInputFile, ".xz") {
+				log.WithField("filename", config.GoDocPackagesInputFile).Debug("XZ file extension detected, automatically activating decompression flag")
+				UseXZFileDecompression = true
+			}
 		}
-		gdp, err = ParseGoDocPackages(f)
+		if UseXZFileDecompression {
+			r, xzErr := xz.NewReader(f)
+			if xzErr != nil {
+				return xzErr
+			}
+			gdp, err = ParseGoDocPackages(r)
+		} else {
+			gdp, err = ParseGoDocPackages(f)
+		}
 	} else {
 		gdp, err = ListGoDocPackages()
 	}

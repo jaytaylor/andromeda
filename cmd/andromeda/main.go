@@ -39,7 +39,8 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&crawler.DefaultDeleteAfter, "delete-after", "d", crawler.DefaultDeleteAfter, "Delete source code after analysis")
 
 	bootstrapCmd.Flags().StringVarP(&BootstrapGoDocPackagesFile, "godoc-packages-file", "g", "", "Path to local api.godoc.org/packages file to use")
-	bootstrapCmd.Flags().IntVarP(&discovery.AddBatchSize, "batch-size", "s", discovery.AddBatchSize, "Batch group size per DB transaction")
+	bootstrapCmd.Flags().IntVarP(&discovery.AddBatchSize, "batch-size", "B", discovery.AddBatchSize, "Batch size per DB transaction when bulk-loading to-crawl entries")
+	bootstrapCmd.Flags().BoolVarP(&discovery.UseXZFileDecompression, "xz", "x", discovery.UseXZFileDecompression, "Activate XZ decompression when reading file-based input (including STDIN)")
 
 	crawlCmd.Flags().IntVarP(&crawler.DefaultMaxItems, "max-items", "m", crawler.DefaultMaxItems, "Maximum number of package items to crawl (<=0 signifies unlimited)")
 

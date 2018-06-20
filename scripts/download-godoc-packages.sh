@@ -6,5 +6,12 @@ set -o nounset
 
 cd "$(dirname "$0")/.."
 
-curl -v -sSL -o "packages.$(date +%Y%m%d)" "https://api.godoc.org/packages"
+mkdir -p archive.godoc.org
+cd archive.godoc.org
+
+filename="packages.$(date +%Y%m%d)"
+
+curl -v -sSL -o "${filename}" "https://api.godoc.org/packages"
+
+xz --compress --extreme "${filename}"
 
