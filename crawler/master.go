@@ -81,7 +81,7 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			}
 			return err
 		}
-		log.WithField("entry", fmt.Sprintf("%# v", entry)).Debug("Processing")
+		log.WithField("entry", fmt.Sprintf("%# v", entry)).Debug("Sending to remote crawler")
 		if err = stream.Send(entry); err != nil {
 			if err2 := m.requeue(entry, err); err2 != nil {
 				return errorlib.Merge([]error{err, err2})
@@ -104,7 +104,7 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			return err
 		}
 
-		return func() error {
+		if err := func() error {
 			// Lock to guard against data clobbering.
 			m.mu.Lock()
 			defer m.mu.Unlock()
@@ -128,7 +128,10 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 				return err
 			}*/
 			return nil
-		}()
+		}(); err != nil {
+			log.WithField("pkg", result.Package.Path).Errorf("Hard error saving: %s", err)
+			return err
+		}
 	}
 }
 
