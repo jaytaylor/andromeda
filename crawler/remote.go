@@ -25,6 +25,7 @@ func NewRemote(addr string, cfg *Config) *Remote {
 }
 
 func (r *Remote) Run(stopCh chan struct{}) {
+	log.WithField("grpc-server-addr", r.Addr).Info("Remote starting")
 	var (
 		result *domain.CrawlResult
 		crawls int
@@ -33,7 +34,7 @@ func (r *Remote) Run(stopCh chan struct{}) {
 	for {
 		err := func() error {
 			if r.crawler.Config.MaxItems > 0 && crawls >= r.crawler.Config.MaxItems {
-				log.WithField("session-crawls", crawls).WithField("max-items", r.crawler.Config.MaxItems).Info("Limit reached, crawl session finihsed")
+				log.WithField("session-crawls", crawls).WithField("max-items", r.crawler.Config.MaxItems).Info("Limit reached, crawl session ending")
 				return ErrStopRequested
 			}
 
@@ -61,7 +62,7 @@ func (r *Remote) Run(stopCh chan struct{}) {
 
 			for {
 				if r.crawler.Config.MaxItems > 0 && crawls >= r.crawler.Config.MaxItems {
-					log.WithField("session-crawls", crawls).WithField("max-items", r.crawler.Config.MaxItems).Info("Limit reached, crawl session finihsed")
+					log.WithField("session-crawls", crawls).WithField("max-items", r.crawler.Config.MaxItems).Info("Limit reached, crawl session ending")
 					return ErrStopRequested
 				}
 

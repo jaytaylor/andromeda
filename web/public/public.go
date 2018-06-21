@@ -105,7 +105,7 @@ func listTpl() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "list.tpl", size: 381, mode: os.FileMode(436), modTime: time.Unix(1529560984, 0)}
+	info := bindataFileInfo{name: "list.tpl", size: 381, mode: os.FileMode(436), modTime: time.Unix(1529561082, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }
@@ -125,7 +125,7 @@ func packageTpl() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "package.tpl", size: 1463, mode: os.FileMode(436), modTime: time.Unix(1529560659, 0)}
+	info := bindataFileInfo{name: "package.tpl", size: 1463, mode: os.FileMode(436), modTime: time.Unix(1529561080, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }

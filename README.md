@@ -25,6 +25,7 @@ go get jaytaylor.com/andromeda/...
 - [ ] Fix `-s` strangeness, should only specify the base path and auto-append "/src".
 - [ ] Handle relative imports.
 - [ ] Add analysis of RepoRoot sub-package paths and import names.
+- [ ] Remote enqueue
 
 To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`
 

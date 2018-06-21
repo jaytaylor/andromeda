@@ -34,6 +34,8 @@ func (pkg *Package) MostlyEmpty() bool {
 	return len(pkg.URL) == 0 && len(pkg.VCS) == 0 && pkg.Data == nil
 }
 
+// RepoRoot constructs a "fake" repository root, which may be adequate in some
+// cases.
 func (pkg Package) RepoRoot() *vcs.RepoRoot {
 	rr := &vcs.RepoRoot{
 		Repo: pkg.URL,
@@ -44,6 +46,14 @@ func (pkg Package) RepoRoot() *vcs.RepoRoot {
 	}
 	return rr
 }
+
+// func NewSubPackage(path string, name string) {
+// 	subPkg := &SubPackage{
+// 		Path: path,
+// 		Name: name,
+// 	}
+// 	return subPkg
+// }
 
 func (pkg *Package) Merge(other *Package) *Package {
 	if pkg == nil {
@@ -102,17 +112,20 @@ func (snap *PackageSnapshot) Merge(other *PackageSnapshot) *PackageSnapshot {
 	// 	snap = &PackageSnapshot{}
 	// }
 
+	if snap.CreatedAt == nil && other.CreatedAt != nil {
+		snap.CreatedAt = other.CreatedAt
+	}
 	if other.Repo != "" {
 		snap.Repo = other.Repo
+	}
+	if !reflect.DeepEqual(snap.SubPackages, other.SubPackages) {
+		snap.SubPackages = other.SubPackages
 	}
 	if !reflect.DeepEqual(snap.Imports, other.Imports) {
 		snap.Imports = other.Imports
 	}
 	if !reflect.DeepEqual(snap.TestImports, other.TestImports) {
 		snap.TestImports = other.TestImports
-	}
-	if !reflect.DeepEqual(snap.Deps, other.Deps) {
-		snap.Deps = other.Deps
 	}
 	if other.Commits != int32(0) {
 		snap.Commits = other.Commits

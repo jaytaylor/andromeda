@@ -94,7 +94,7 @@ func New(cfg *Config) *Crawler {
 
 // Resolve implements the PackageResolver interface.
 func (c *Crawler) Resolve(pkgPath string) (*vcs.RepoRoot, error) {
-	return importToRepoRoot(pkgPath)
+	return PackagePathToRepoRoot(pkgPath)
 }
 
 func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.Package, error) {
@@ -109,7 +109,7 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.Package
 		return nil, ErrStopRequested
 	}
 
-	rr, err := importToRepoRoot(pkg.Path)
+	rr, err := PackagePathToRepoRoot(pkg.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,10 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.Package
 
 	pc := &domain.PackageCrawl{
 		JobStartedAt: &now,
-		Data:         &domain.PackageSnapshot{},
+		Data: &domain.PackageSnapshot{
+			CreatedAt:   &now,
+			SubPackages: map[string]string{},
+		},
 	}
 
 	pkg.History = append(pkg.History, pc)
@@ -261,6 +264,7 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 			}
 			log.WithField("candidate-pkg-path", goPkg.Root).Debugf("Ignoring non-fatal error=%s because still got some data back", err)
 		}
+		pc.Data.SubPackages[goPkg.ImportPath] = goPkg.Name
 		// log.Infof("%# v", *goPkg)
 		for _, imp := range goPkg.Imports {
 			if pieces := strings.SplitN(imp, "/vendor/", 2); len(pieces) > 1 {
@@ -286,7 +290,7 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 		errs = append(errs, err)
 	}
 
-	dirs, err := subdirs(localPath)
+	dirs, err := subDirs(localPath)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -351,7 +355,8 @@ func loadPackageDynamic(parentDir string, pkgPath string) (*load.Package, error)
 	return nil, fmt.Errorf("no pkg found")
 }
 
-func subdirs(path string) ([]string, error) {
+// subDirs returns a list of subdirectories under the specified path.
+func subDirs(path string) ([]string, error) {
 	dirs := []string{}
 	err := filepath.Walk(path, func(p string, info os.FileInfo, _ error) error {
 		if info != nil && info.IsDir() {
@@ -435,7 +440,7 @@ func newPackage(rr *vcs.RepoRoot, now ...*time.Time) *domain.Package {
 	return pkg
 }
 
-// importToRepoRoot isolates and returns a corresponding *vcs.RepoRoot for the
+// PackagePathToRepoRoot isolates and returns a corresponding *vcs.RepoRoot for the
 // named package.
 //
 // There are a few special rules which are applied:
@@ -451,7 +456,7 @@ func newPackage(rr *vcs.RepoRoot, now ...*time.Time) *domain.Package {
 //
 //        Note: I have not yet gone back to re-verify this since adding the git
 //        interactive prompt disablements to the init() function at the top of this file.
-func importToRepoRoot(pkgPath string) (*vcs.RepoRoot, error) {
+func PackagePathToRepoRoot(pkgPath string) (*vcs.RepoRoot, error) {
 	var (
 		rr      *vcs.RepoRoot
 		err     error

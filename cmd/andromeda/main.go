@@ -55,6 +55,7 @@ func init() {
 	rootCmd.AddCommand(bootstrapCmd)
 	rootCmd.AddCommand(crawlCmd)
 	rootCmd.AddCommand(enqueueCmd)
+	rootCmd.AddCommand(repoRootCmd)
 	rootCmd.AddCommand(purgeTableCmd)
 	rootCmd.AddCommand(statsCmd)
 	rootCmd.AddCommand(getCmd)
@@ -153,6 +154,28 @@ var enqueueCmd = &cobra.Command{
 		}); err != nil {
 			log.Fatalf("main: %s", err)
 		}
+	},
+}
+
+var repoRootCmd = &cobra.Command{
+	Use:     "repo-root",
+	Aliases: []string{"reporoot", "rr"},
+	Short:   "Package repository root lookup",
+	Long:    "Administrative utilithy to lookup the repository root for a package",
+	Args:    cobra.MinimumNArgs(1),
+	PreRun: func(_ *cobra.Command, _ []string) {
+		initLogging()
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		rr, err := crawler.PackagePathToRepoRoot(args[0])
+		if err != nil {
+			log.Fatalf("%s", err)
+		}
+		bs, err := json.MarshalIndent(rr, "", "    ")
+		if err != nil {
+			log.Fatalf("%s", err)
+		}
+		fmt.Printf("%v\n", string(bs))
 	},
 }
 
