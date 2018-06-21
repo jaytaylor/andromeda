@@ -46,7 +46,7 @@ message PackageSnapshot {
   int32 commits = 6;
   int32 branches = 7;
   int32 tags = 8;
-  int64 bytes = 9;
+  uint64 bytes = 9;
   int32 forks = 10;
   int32 stars = 11;
   string readme = 12;

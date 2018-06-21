@@ -199,6 +199,23 @@ func (service *WebService) pkg(w http.ResponseWriter, req *http.Request) {
 	}
 	log.WithField("pkg-path", pkgPath).Info("GET /:package invoked")
 
+	// Handle API request.
+	// TODO: This is not good structure, clean it up with a proper mux.
+	if strings.HasPrefix(pkgPath, "v1/") {
+		pkgPath = strings.SplitN(pkgPath, "v1/", 2)[1]
+		pkg, err := service.DB.Package(pkgPath)
+		if err != nil {
+			if err == db.ErrKeyNotFound {
+				web.RespondWithHtml(w, 404, err.Error())
+			} else {
+				web.RespondWithHtml(w, 500, err.Error())
+			}
+			return
+		}
+		web.RespondWithJson(w, 200, pkg)
+		return
+	}
+
 	const asset = "package.tpl"
 	content, err := service.staticFilesAssetProvider()(asset)
 	if err != nil {
@@ -208,6 +225,10 @@ func (service *WebService) pkg(w http.ResponseWriter, req *http.Request) {
 
 	pkg, err := service.DB.Package(pkgPath)
 	if err != nil {
+		if err == db.ErrKeyNotFound {
+			service.pkgFallback(w, req, pkgPath)
+			return
+		}
 		if err == db.ErrKeyNotFound {
 			web.RespondWithHtml(w, 404, err.Error())
 		} else {
@@ -220,4 +241,29 @@ func (service *WebService) pkg(w http.ResponseWriter, req *http.Request) {
 		web.RespondWithHtml(w, 500, err.Error())
 		return
 	}
+}
+
+func (service *WebService) pkgFallback(w http.ResponseWriter, req *http.Request, path string) {
+	const asset = "list.tpl"
+	content, err := service.staticFilesAssetProvider()(asset)
+	if err != nil {
+		panic(fmt.Errorf("problem with asset %q: %v", asset, err))
+	}
+	tpl := template.Must(template.New(asset).Parse(string(content)))
+
+	// Try a prefix search.
+	var pkgs map[string]*domain.Package
+	if pkgs, err = service.DB.PathPrefixSearch(path); err == nil {
+		if err := tpl.Execute(w, pkgs); err != nil {
+			web.RespondWithHtml(w, 500, err.Error())
+		}
+		return
+	}
+
+	if err == db.ErrKeyNotFound {
+		web.RespondWithHtml(w, 404, err.Error())
+	} else {
+		web.RespondWithHtml(w, 500, err.Error())
+	}
+
 }

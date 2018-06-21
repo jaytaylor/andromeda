@@ -24,6 +24,7 @@ go get jaytaylor.com/andromeda/...
 - [ ] Add a monitor and require that the disk where the DB is stored always has at least X GB free, where X is based on a multiple of the Bolt database file.  This is to ensure safety that things don't get into a state where data cannot be written to the DB or even worse it gets corrupt.  Remember that DB size may grow non-linearly (need to double check this, but this is what I recall observing).
 - [ ] Fix `-s` strangeness, should only specify the base path and auto-append "/src".
 - [ ] Handle relative imports.
+- [ ] Add analysis of RepoRoot sub-package paths and import names.
 
 To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`
 

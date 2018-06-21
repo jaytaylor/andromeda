@@ -357,15 +357,15 @@ func subdirs(path string) ([]string, error) {
 	return dirs, nil
 }
 
-func dirSize(path string) (int64, error) {
-	var size int64
+func dirSize(path string) (uint64, error) {
+	var size uint64
 	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if info != nil {
 			if info.IsDir() && info.Name() == ".git" {
 				return filepath.SkipDir
 			}
 			if !info.IsDir() {
-				size += info.Size()
+				size += uint64(info.Size())
 			}
 		}
 		return nil
