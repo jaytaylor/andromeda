@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"gigawatt.io/errorlib"
 	"github.com/coreos/bbolt"
 	"github.com/gogo/protobuf/proto"
 	log "github.com/sirupsen/logrus"
@@ -245,6 +246,34 @@ func (client *BoltClient) hierarchicalKeySearch(b *bolt.Bucket, key []byte, spli
 		}
 	}
 	return nil
+}
+
+func (client *BoltClient) PathPrefixSearch(prefix string) (map[string]*domain.Package, error) {
+	pkgs := map[string]*domain.Package{}
+	err := client.db.View(func(tx *bolt.Tx) error {
+		var (
+			b        = tx.Bucket([]byte(TablePackages))
+			prefixBs = []byte(prefix)
+			c        = b.Cursor()
+			errs     = []error{}
+		)
+		for k, v := c.Seek(prefixBs); k != nil && bytes.HasPrefix(k, prefixBs); k, v = c.Next() {
+			pkg := &domain.Package{}
+			if err := proto.Unmarshal(v, pkg); err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			pkgs[pkg.Path] = pkg
+		}
+		return errorlib.Merge(errs)
+	})
+	if err != nil {
+		return pkgs, err
+	}
+	if len(pkgs) == 0 {
+		return nil, ErrKeyNotFound
+	}
+	return pkgs, nil
 }
 
 func (client *BoltClient) EachPackage(fn func(pkg *domain.Package)) error {

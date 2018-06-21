@@ -54,6 +54,7 @@ func init() {
 
 	rootCmd.AddCommand(bootstrapCmd)
 	rootCmd.AddCommand(crawlCmd)
+	rootCmd.AddCommand(enqueueCmd)
 	rootCmd.AddCommand(purgeTableCmd)
 	rootCmd.AddCommand(statsCmd)
 	rootCmd.AddCommand(getCmd)
@@ -118,6 +119,37 @@ var crawlCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
 			return crawl(dbClient, args...)
+		}); err != nil {
+			log.Fatalf("main: %s", err)
+		}
+	},
+}
+
+var enqueueCmd = &cobra.Command{
+	Use:   "enqueue",
+	Short: "Add packages to the to-crawl queue",
+	Long:  "Add one or more packages to the to-crawl queue",
+	Args:  cobra.MinimumNArgs(1),
+	PreRun: func(_ *cobra.Command, _ []string) {
+		initLogging()
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
+			now := time.Now()
+			entries := make([]*domain.ToCrawlEntry, len(args))
+			for i, arg := range args {
+				entries[i] = &domain.ToCrawlEntry{
+					PackagePath: arg,
+					Reason:      "added by command-line",
+					SubmittedAt: &now,
+				}
+			}
+			n, err := dbClient.ToCrawlAdd(entries...)
+			if err != nil {
+				return err
+			}
+			log.WithField("added", n).WithField("supplied", len(args)).Infof("Enqueue operation finished")
+			return nil
 		}); err != nil {
 			log.Fatalf("main: %s", err)
 		}

@@ -22,6 +22,7 @@
 <div>Data.Commits: {{ .Data.Commits }}</div>
 <div>Data.Branches: {{ .Data.Branches }}</div>
 <div>Data.Tags: {{ .Data.Tags }}</div>
+<div>Data.Bytes: {{ .Data.Bytes }}</div>
 <div>Data.Forks: {{ .Data.Forks }}</div>
 <div>Data.Readme: <pre>{{ .Data.Readme }}</pre></div>
 <hr>

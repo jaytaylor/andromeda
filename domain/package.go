@@ -5,6 +5,7 @@ import (
 	"sort"
 	"time"
 
+	humanize "github.com/dustin/go-humanize"
 	"golang.org/x/tools/go/vcs"
 
 	"jaytaylor.com/andromeda/pkg/unique"
@@ -68,7 +69,11 @@ func (pkg *Package) Merge(other *Package) *Package {
 		pkg.VCS = other.VCS
 	}
 	if other.Data != nil {
-		pkg.Data = pkg.Data.Merge(other.Data)
+		if pkg.Data != nil {
+			pkg.Data = pkg.Data.Merge(other.Data)
+		} else {
+			pkg.Data = other.Data
+		}
 	}
 	if len(other.History) > 0 {
 		pkg.History = append(pkg.History, other.History...)
@@ -93,9 +98,9 @@ func (snap *PackageSnapshot) AllImports() []string {
 }
 
 func (snap *PackageSnapshot) Merge(other *PackageSnapshot) *PackageSnapshot {
-	if snap == nil {
-		snap = &PackageSnapshot{}
-	}
+	// if snap == nil {
+	// 	snap = &PackageSnapshot{}
+	// }
 
 	if other.Repo != "" {
 		snap.Repo = other.Repo
@@ -118,7 +123,7 @@ func (snap *PackageSnapshot) Merge(other *PackageSnapshot) *PackageSnapshot {
 	if other.Tags != int32(0) {
 		snap.Tags = other.Tags
 	}
-	if other.Bytes != int64(0) {
+	if other.Bytes != uint64(0) {
 		snap.Bytes = other.Bytes
 	}
 	if other.Stars != int32(0) {
@@ -129,6 +134,11 @@ func (snap *PackageSnapshot) Merge(other *PackageSnapshot) *PackageSnapshot {
 	}
 
 	return snap
+}
+
+func (snap PackageSnapshot) PrettyBytes() string {
+	pretty := humanize.Bytes(snap.Bytes)
+	return pretty
 }
 
 func (pc *PackageCrawl) AddMessage(msg string) {

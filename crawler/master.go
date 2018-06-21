@@ -93,7 +93,7 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			if err == io.EOF {
 				return nil
 			}
-			log.WithField("pkg", entry.PackagePath).Errorf("Problem sending entry to remote crawler: %s (attach bailing out)", err)
+			log.WithField("pkg", entry.PackagePath).Warnf("Problem sending entry to remote crawler: %s (attach returning)", err)
 			return err
 		}
 
@@ -115,7 +115,7 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			if err == ErrStopRequested {
 				return nil
 			}
-			log.WithField("pkg", entry.PackagePath).Errorf("Problem receiving rawl result: %s (attach bailing out)", err)
+			log.WithField("pkg", entry.PackagePath).Warnf("Problem receiving crawl result: %s (attach returning)", err)
 			return err
 		} else if len(result.Error) > 0 {
 			log.WithField("pkg", entry.PackagePath).Errorf("Received error inside crawl result: %s", result.Error)
