@@ -309,7 +309,9 @@ func (m *Master) CatalogImporters(pkg *domain.Package) error {
 	// log.WithField("pkg", pkg.Path).WithField("imports", pkg.Data.AllImports()).Info("catalog starting")
 
 	var (
-		updatedPkgs = map[string]*domain.Package{}
+		updatedPkgs = map[string]*domain.Package{
+			pkg.Path: pkg,
+		}
 		discoveries = map[string]*domain.ToCrawlEntry{}
 	)
 	knownPkgs, err := m.db.Packages(pkg.Data.AllImports()...)

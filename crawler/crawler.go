@@ -150,7 +150,7 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.Package
 					return ctx.pkg, err
 				}
 				log.WithField("pkg", ctx.pkg.Path).Warnf("Ignoring non-fatal error: %s", err)
-				return ctx.pkg, nil
+				//return ctx.pkg, nil
 			}
 		case <-ctx.stopCh:
 			return nil, ErrStopRequested
@@ -251,13 +251,17 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 		// Calculate the package import path by removing the first matching occurrence
 		// of the configured src-path + a slash string.
 		pkgPath := strings.Replace(dir, fmt.Sprintf("%v%v", c.Config.SrcPath, string(os.PathSeparator)), "", 1)
-		log.WithField("candidate-pkg-path", pkgPath).Debugf("Scanning for go package and imports")
+		log.WithField("candidate-pkg-path", pkgPath).Debug("Scanning for go package and imports")
 		var goPkg *load.Package
 		goPkg, err := loadPackageDynamic(c.Config.SrcPath, pkgPath)
 		if err != nil {
 			pkg.LatestCrawl().AddMessage(fmt.Sprintf("loading %v: %s", pkgPath, err))
-			return ErrPackageInvalid
+			if goPkg == nil {
+				return ErrPackageInvalid
+			}
+			log.WithField("candidate-pkg-path", goPkg.Root).Debugf("Ignoring non-fatal error=%s because still got some data back", err)
 		}
+		// log.Infof("%# v", *goPkg)
 		for _, imp := range goPkg.Imports {
 			if pieces := strings.SplitN(imp, "/vendor/", 2); len(pieces) > 1 {
 				imp = pieces[1]
@@ -277,18 +281,25 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 		return nil
 	}
 
+	errs := []error{}
 	if err := scanDir(localPath); err != nil {
-		return err
+		errs = append(errs, err)
 	}
 
 	dirs, err := subdirs(localPath)
 	if err != nil {
-		return err
+		errs = append(errs, err)
 	}
 
 	for _, dir := range dirs {
 		if err := scanDir(dir); err != nil {
-			return err
+			errs = append(errs, err)
+		}
+	}
+
+	if len(errs) > 0 {
+		for _, err := range errs {
+			pc.AddMessage(err.Error())
 		}
 	}
 
