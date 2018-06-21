@@ -59,11 +59,11 @@ func New(db db.Client, cfg *Config) *WebService {
 }
 
 func (service *WebService) Start() error {
+	log.Info("WebService starting..")
+
 	service.mu.Lock()
 	defer service.mu.Unlock()
-	/*if err := service.WebServer.Start(); err != nil {
-		return err
-	}*/
+
 	if service.Config.Master == nil {
 		return fmt.Errorf("Missing Master!!!!")
 	}
@@ -99,16 +99,20 @@ func (service *WebService) Start() error {
 		log.Infof("run server result: %s", g.Wait())
 	}()
 
+	log.WithField("addr", service.listener.Addr()).Info("WebService started")
 	return nil
 }
 
 func (service *WebService) Stop() error {
+	log.Info("WebService stopping..")
+
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	if service.listener == nil {
 		return errorlib.NotRunningError
 	}
 	service.server.Close()
+	log.Info("WebService stopped")
 	return nil
 }
 

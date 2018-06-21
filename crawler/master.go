@@ -54,7 +54,7 @@ func NewMaster(dbClient db.Client, cfg *Config) *Master {
 // Resolve implements the PackageResolver interface.
 func (m *Master) Resolve(pkgPath string) (*vcs.RepoRoot, error) {
 	if !strings.Contains(pkgPath, ".") {
-		return importToRepoRoot(pkgPath)
+		return PackagePathToRepoRoot(pkgPath)
 	}
 	pkg, err := m.db.Package(pkgPath)
 	if err != nil {
@@ -323,7 +323,7 @@ func (m *Master) CatalogImporters(pkg *domain.Package) error {
 		usedPkg, ok := updatedPkgs[pkgPath]
 		if !ok {
 			if usedPkg, ok = knownPkgs[pkgPath]; !ok {
-				if rr, err = importToRepoRoot(pkgPath); err != nil {
+				if rr, err = PackagePathToRepoRoot(pkgPath); err != nil {
 					log.WithField("pkg", pkg.Path).Errorf("Failed to resolve repo for import=%v, skipping: %s", pkgPath, err)
 					continue
 				}

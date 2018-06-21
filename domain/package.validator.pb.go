@@ -77,5 +77,6 @@ func (this *PackageSnapshot) Validate() error {
 			return go_proto_validators.FieldError("CreatedAt", err)
 		}
 	}
+	// Validation of proto3 map<> fields is unsupported.
 	return nil
 }
