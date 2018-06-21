@@ -39,7 +39,7 @@ option (gogoproto.messagename_all) = true;
 
 message CrawlResult {
   Package Package = 1;
-  string Error = 2;
+  string ErrMsg = 2;
 }
 
 service RemoteCrawlerService {
