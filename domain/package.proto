@@ -16,14 +16,26 @@ message Package {
   string owner = 6;
   string vcs = 7 [(gogoproto.customname) = "VCS"];
   google.protobuf.Timestamp first_seen_at = 8 [(gogoproto.stdtime) = true];
-  repeated string imported_by = 9; // TODO: Consider making this a type which tracks when the import was first and last seen.
+  map<string, PackageReferences> imported_by = 9; // TODO: Consider making this a type which tracks when the import was first and last seen.
   PackageSnapshot data = 10;
   repeated PackageCrawl history = 11;
+}
+
+message PackageReferences {
+  repeated PackageReference refs = 1;
+}
+
+message PackageReference {
+  string path = 1;
+  bool active = 2;
+  google.protobuf.Timestamp first_seen_at = 3 [(gogoproto.stdtime) = true];
+  google.protobuf.Timestamp last_seen_at = 4 [(gogoproto.stdtime) = true];
 }
 
 // message SubPackage {
 //   string path = 1;
 //   string name = 2;
+//   map<string, string> imported_by = 3;
 // }
 
 // Idea: Perhaps this could simply be inferrred from the crawl history.

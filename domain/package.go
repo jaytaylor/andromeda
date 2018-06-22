@@ -1,24 +1,33 @@
 package domain
 
 import (
+	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	humanize "github.com/dustin/go-humanize"
 	"golang.org/x/tools/go/vcs"
-
-	"jaytaylor.com/andromeda/pkg/unique"
 )
 
-func NewPackage(path string) *Package {
-	now := time.Now()
-
-	pkg := &Package{
-		Path:        path,
-		FirstSeenAt: &now,
+// NewPackage turns a *vcs.RepoRoot into a new *Package.  If now is omitted or
+// nil, the current time will be used.
+func NewPackage(rr *vcs.RepoRoot, now ...*time.Time) *Package {
+	if len(now) == 0 || now[0] == nil {
+		ts := time.Now()
+		now = []*time.Time{&ts}
 	}
-
+	pkg := &Package{
+		FirstSeenAt: now[0],
+		Path:        rr.Root,
+		Name:        "", // TODO: package name(s)???
+		URL:         rr.Repo,
+		VCS:         rr.VCS.Name,
+		Data:        &PackageSnapshot{},
+		ImportedBy:  map[string]*PackageReferences{},
+		History:     []*PackageCrawl{},
+	}
 	return pkg
 }
 
@@ -56,11 +65,15 @@ func (pkg Package) RepoRoot() *vcs.RepoRoot {
 // }
 
 func (pkg *Package) Merge(other *Package) *Package {
+	// TODO: When merging packages, it's going to be important to compare the the
+	// imports this time to the previous imports, and generate some diffs to
+	// update the newly referenced (or no longer referenced) packages.
+
 	if pkg == nil {
 		pkg = &Package{}
 	}
 
-	if pkg.ID <= 0 && other.ID > 0 {
+	if pkg.ID == 0 && other.ID > 0 {
 		pkg.ID = other.ID
 	}
 	if len(other.Name) > 0 {
@@ -89,9 +102,53 @@ func (pkg *Package) Merge(other *Package) *Package {
 		pkg.History = append(pkg.History, other.History...)
 	}
 	if len(other.ImportedBy) > 0 {
-		pkg.ImportedBy = unique.Strings(append(pkg.ImportedBy, other.ImportedBy...))
+		// pkg.ImportedBy = unique.Strings(append(pkg.ImportedBy, other.ImportedBy...))
+		for subPkgPath, wrapper := range other.ImportedBy {
+			for _, ref := range wrapper.Refs {
+				pkg.UpdateImportedBy(subPkgPath, ref)
+			}
+		}
 	}
 	return pkg
+}
+
+// UpdateImportedBy behaves differently based on whether pkgRef.Active is true or
+// false.
+//
+// When pkgRef.Active is true it adds or updates the timestamp on an importer.
+//
+// When pkgRef.Active is false it will be marked as inactive if the record is
+// found, otherwise it'll be ignored.
+func (pkg *Package) UpdateImportedBy(subPkgPath string, pkgRef *PackageReference) {
+	subPkgPath = SubPackagePathNormalize(pkg.Path, subPkgPath)
+
+	if wrapper, ok := pkg.ImportedBy[subPkgPath]; ok {
+		for _, ref := range wrapper.Refs {
+			if pkgRef.Path == ref.Path {
+				if pkgRef.Active {
+					ref.LastSeenAt = pkgRef.LastSeenAt
+				} else {
+					ref.Active = false
+				}
+				return
+			}
+		}
+		// TODO: Sort alphabetically or by a ranking metric.
+		pkg.ImportedBy[subPkgPath].Refs = append(pkg.ImportedBy[subPkgPath].Refs, pkgRef)
+	} else {
+		pkg.ImportedBy[subPkgPath] = &PackageReferences{Refs: []*PackageReference{pkgRef}}
+	}
+}
+
+func NewPackageReference(path string) *PackageReference {
+	now := time.Now()
+	pr := &PackageReference{
+		Path:        path,
+		Active:      true,
+		FirstSeenAt: &now,
+		LastSeenAt:  &now,
+	}
+	return pr
 }
 
 func (snap *PackageSnapshot) AllImports() []string {
@@ -167,4 +224,21 @@ func (pc PackageCrawl) Duration() time.Duration {
 	}
 	d := pc.JobFinishedAt.Sub(*pc.JobStartedAt)
 	return d
+}
+
+func SubPackagePathNormalize(pkgPath string, subPkgPath string) string {
+	if subPkgPath == pkgPath {
+		// NB: An empty string signifies the root package path.
+		return ""
+	}
+	normalized := strings.Replace(subPkgPath, pkgPath+"/", "", 1)
+	return normalized
+}
+
+func SubPackagePathDenormalize(pkgPath string, subPkgPath string) string {
+	if subPkgPath == "" {
+		return pkgPath
+	}
+	denormalized := fmt.Sprintf("%v/%v", pkgPath, subPkgPath)
+	return denormalized
 }

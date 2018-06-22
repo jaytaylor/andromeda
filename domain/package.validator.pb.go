@@ -11,6 +11,8 @@ It is generated from these files:
 
 It has these top-level messages:
 	Package
+	PackageReferences
+	PackageReference
 	PackageCrawl
 	PackageSnapshot
 	CrawlResult
@@ -39,6 +41,7 @@ func (this *Package) Validate() error {
 			return go_proto_validators.FieldError("FirstSeenAt", err)
 		}
 	}
+	// Validation of proto3 map<> fields is unsupported.
 	if this.Data != nil {
 		if err := go_proto_validators.CallValidatorIfExists(this.Data); err != nil {
 			return go_proto_validators.FieldError("Data", err)
@@ -49,6 +52,29 @@ func (this *Package) Validate() error {
 			if err := go_proto_validators.CallValidatorIfExists(item); err != nil {
 				return go_proto_validators.FieldError("History", err)
 			}
+		}
+	}
+	return nil
+}
+func (this *PackageReferences) Validate() error {
+	for _, item := range this.Refs {
+		if item != nil {
+			if err := go_proto_validators.CallValidatorIfExists(item); err != nil {
+				return go_proto_validators.FieldError("Refs", err)
+			}
+		}
+	}
+	return nil
+}
+func (this *PackageReference) Validate() error {
+	if this.FirstSeenAt != nil {
+		if err := go_proto_validators.CallValidatorIfExists(this.FirstSeenAt); err != nil {
+			return go_proto_validators.FieldError("FirstSeenAt", err)
+		}
+	}
+	if this.LastSeenAt != nil {
+		if err := go_proto_validators.CallValidatorIfExists(this.LastSeenAt); err != nil {
+			return go_proto_validators.FieldError("LastSeenAt", err)
 		}
 	}
 	return nil

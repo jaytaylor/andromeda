@@ -118,7 +118,7 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.Package
 
 	// If first crawl.
 	if pkg.MostlyEmpty() {
-		pkg = newPackage(rr, &now)
+		pkg = domain.NewPackage(rr, &now)
 	}
 
 	pc := &domain.PackageCrawl{
@@ -418,26 +418,6 @@ func detectReadme(localPath string) string {
 		}
 	}
 	return ""
-}
-
-// newPackage turns a *vcs.RepoRoot into a new *domain.Package.  If now is
-// omitted or nil, the current time will be used.
-func newPackage(rr *vcs.RepoRoot, now ...*time.Time) *domain.Package {
-	if len(now) == 0 || now[0] == nil {
-		ts := time.Now()
-		now = []*time.Time{&ts}
-	}
-	pkg := &domain.Package{
-		FirstSeenAt: now[0],
-		Path:        rr.Root,
-		Name:        "", // TODO: package name(s)???
-		URL:         rr.Repo,
-		VCS:         rr.VCS.Name,
-		Data:        &domain.PackageSnapshot{},
-		ImportedBy:  []string{},
-		History:     []*domain.PackageCrawl{},
-	}
-	return pkg
 }
 
 // PackagePathToRepoRoot isolates and returns a corresponding *vcs.RepoRoot for the

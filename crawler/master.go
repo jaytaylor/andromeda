@@ -364,7 +364,7 @@ func (m *Master) buildAssociations(rr *vcs.RepoRoot, usedPkg *domain.Package, co
 			if usedPkg, err = m.db.Package(rr.Root); err != nil && err != db.ErrKeyNotFound {
 				return err
 			} else if usedPkg == nil {
-				usedPkg = newPackage(rr, nil)
+				usedPkg = domain.NewPackage(rr, nil)
 				discoveries[rr.Root] = &domain.ToCrawlEntry{
 					PackagePath: rr.Root,
 					Reason:      fmt.Sprintf("In use by %v", consumerPkg.Path),
