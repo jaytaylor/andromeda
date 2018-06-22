@@ -39,7 +39,7 @@ option (gogoproto.messagename_all) = true;
 
 message CrawlResult {
   Package Package = 1;
-  map<string, PackageReference> imported_resources = 2; // Root Import Path -> Package Path.
+  map<string, PackageReferences> imported_resources = 2; // Root Import Path -> Package Path.
   string ErrMsg = 3;
 }
 

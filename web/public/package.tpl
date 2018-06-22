@@ -24,7 +24,9 @@
 <div>Data.Tags: {{ .Data.Tags }}</div>
 <div>Data.Bytes: {{ .Data.Bytes }}</div>
 <div>Data.Forks: {{ .Data.Forks }}</div>
-<div>Data.Readme: <pre>{{ .Data.Readme }}</pre></div>
+{{ if (index .Data.SubPackages "") }}
+<div>Data.Readme: <pre>{{ (index .Data.SubPackages "").Readme }}</pre></div>
+{{ end }}
 <hr>
 {{ end }}
 

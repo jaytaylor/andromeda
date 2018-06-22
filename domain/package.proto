@@ -15,10 +15,10 @@ message Package {
   string docs_url = 5 [(gogoproto.customname) = "DocsURL"];
   string owner = 6;
   string vcs = 7 [(gogoproto.customname) = "VCS"];
-  google.protobuf.Timestamp first_seen_at = 8 [(gogoproto.stdtime) = true];
-  map<string, PackageReferences> imported_by = 9; // TODO: Consider making this a type which tracks when the import was first and last seen.
-  PackageSnapshot data = 10;
-  repeated PackageCrawl history = 11;
+  map<string, PackageReferences> imported_by = 8; // TODO: Consider making this a type which tracks when the import was first and last seen.
+  PackageSnapshot data = 9;
+  repeated PackageCrawl history = 10;
+  google.protobuf.Timestamp first_seen_at = 11 [(gogoproto.stdtime) = true];
 }
 
 message PackageReferences {
@@ -31,12 +31,6 @@ message PackageReference {
   google.protobuf.Timestamp first_seen_at = 3 [(gogoproto.stdtime) = true];
   google.protobuf.Timestamp last_seen_at = 4 [(gogoproto.stdtime) = true];
 }
-
-// message SubPackage {
-//   string path = 1;
-//   string name = 2;
-//   map<string, string> imported_by = 3;
-// }
 
 // Idea: Perhaps this could simply be inferrred from the crawl history.
 //
@@ -59,14 +53,22 @@ message PackageCrawl {
 message PackageSnapshot {
   google.protobuf.Timestamp created_at = 1 [(gogoproto.stdtime) = true];
   string repo = 2;
-  map<string, string> sub_packages = 3;
-  repeated string imports = 4;
-  repeated string test_imports = 5;
+  map<string, SubPackage> sub_packages = 3;
   int32 commits = 6;
   int32 branches = 7;
   int32 tags = 8;
   uint64 bytes = 9;
   int32 forks = 10;
-  string readme = 11;
-  int32 stars = 12;
+  int32 stars = 11;
 }
+
+message SubPackage {
+  string name = 1;
+  repeated string imports = 2;
+  repeated string test_imports = 3;
+  string readme = 4;
+  bool active = 5;
+  google.protobuf.Timestamp first_seen_at = 6 [(gogoproto.stdtime) = true];
+  google.protobuf.Timestamp last_seen_at = 7 [(gogoproto.stdtime) = true];
+}
+

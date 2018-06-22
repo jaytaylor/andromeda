@@ -2,24 +2,19 @@ package domain
 
 import (
 	"fmt"
-	"reflect"
-	"sort"
 	"strings"
 	"time"
 
 	humanize "github.com/dustin/go-humanize"
 	"golang.org/x/tools/go/vcs"
+
+	"jaytaylor.com/andromeda/pkg/unique"
 )
 
 // NewPackage turns a *vcs.RepoRoot into a new *Package.  If now is omitted or
 // nil, the current time will be used.
 func NewPackage(rr *vcs.RepoRoot, now ...*time.Time) *Package {
-	if len(now) == 0 || now[0] == nil {
-		ts := time.Now()
-		now = []*time.Time{&ts}
-	}
 	pkg := &Package{
-		FirstSeenAt: now[0],
 		Path:        rr.Root,
 		Name:        "", // TODO: package name(s)???
 		URL:         rr.Repo,
@@ -27,6 +22,7 @@ func NewPackage(rr *vcs.RepoRoot, now ...*time.Time) *Package {
 		Data:        &PackageSnapshot{},
 		ImportedBy:  map[string]*PackageReferences{},
 		History:     []*PackageCrawl{},
+		FirstSeenAt: orNow(now),
 	}
 	return pkg
 }
@@ -101,6 +97,7 @@ func (pkg *Package) Merge(other *Package) *Package {
 	if len(other.History) > 0 {
 		pkg.History = append(pkg.History, other.History...)
 	}
+	/* DISABLED: THIS MAKES NO SENSE!!!
 	if len(other.ImportedBy) > 0 {
 		// pkg.ImportedBy = unique.Strings(append(pkg.ImportedBy, other.ImportedBy...))
 		for subPkgPath, wrapper := range other.ImportedBy {
@@ -108,7 +105,7 @@ func (pkg *Package) Merge(other *Package) *Package {
 				pkg.UpdateImportedBy(subPkgPath, ref)
 			}
 		}
-	}
+	}*/
 	return pkg
 }
 
@@ -123,6 +120,7 @@ func (pkg *Package) UpdateImportedBy(subPkgPath string, pkgRef *PackageReference
 	subPkgPath = SubPackagePathNormalize(pkg.Path, subPkgPath)
 
 	if wrapper, ok := pkg.ImportedBy[subPkgPath]; ok {
+		var found bool
 		for _, ref := range wrapper.Refs {
 			if pkgRef.Path == ref.Path {
 				if pkgRef.Active {
@@ -130,85 +128,49 @@ func (pkg *Package) UpdateImportedBy(subPkgPath string, pkgRef *PackageReference
 				} else {
 					ref.Active = false
 				}
-				return
+				found = true
+				break
 			}
 		}
-		// TODO: Sort alphabetically or by a ranking metric.
-		pkg.ImportedBy[subPkgPath].Refs = append(pkg.ImportedBy[subPkgPath].Refs, pkgRef)
+		if !found {
+			pkg.ImportedBy[subPkgPath].Refs = append(pkg.ImportedBy[subPkgPath].Refs, pkgRef)
+		}
 	} else {
 		pkg.ImportedBy[subPkgPath] = &PackageReferences{Refs: []*PackageReference{pkgRef}}
 	}
+	// TODO: Sort alphabetically or by a sensible ranking metric.
 }
 
-func NewPackageReference(path string) *PackageReference {
-	now := time.Now()
-	pr := &PackageReference{
+// NormalizeSubPackageKeys runs the sub-package key normalizer on
+// pkg.Data.SubPackages.
+func (pkg *Package) NormalizeSubPackageKeys() {
+	cleanedSubPkgs := map[string]*SubPackage{}
+	for subPkgPath, subPkg := range pkg.Data.SubPackages {
+		p := SubPackagePathNormalize(pkg.Path, subPkgPath)
+		cleanedSubPkgs[p] = subPkg
+	}
+	pkg.Data.SubPackages = cleanedSubPkgs
+}
+
+func NewPackageReference(path string, now ...*time.Time) *PackageReference {
+	pkgRef := &PackageReference{
 		Path:        path,
 		Active:      true,
-		FirstSeenAt: &now,
-		LastSeenAt:  &now,
+		FirstSeenAt: orNow(now),
 	}
-	return pr
+	pkgRef.LastSeenAt = pkgRef.FirstSeenAt
+	return pkgRef
 }
 
-func (snap *PackageSnapshot) AllImports() []string {
-	impsMap := map[string]struct{}{}
-	for _, imp := range append(snap.Imports, snap.TestImports...) {
-		impsMap[imp] = struct{}{}
+func NewPackageCrawl(now ...*time.Time) *PackageCrawl {
+	pc := &PackageCrawl{
+		JobStartedAt: orNow(now),
+		Data: &PackageSnapshot{
+			SubPackages: map[string]*SubPackage{},
+		},
 	}
-	all := make([]string, 0, len(impsMap))
-	for imp, _ := range impsMap {
-		all = append(all, imp)
-	}
-	sort.Strings(all)
-	return all
-}
-
-func (snap *PackageSnapshot) Merge(other *PackageSnapshot) *PackageSnapshot {
-	// if snap == nil {
-	// 	snap = &PackageSnapshot{}
-	// }
-
-	if snap.CreatedAt == nil && other.CreatedAt != nil {
-		snap.CreatedAt = other.CreatedAt
-	}
-	if other.Repo != "" {
-		snap.Repo = other.Repo
-	}
-	if !reflect.DeepEqual(snap.SubPackages, other.SubPackages) {
-		snap.SubPackages = other.SubPackages
-	}
-	if !reflect.DeepEqual(snap.Imports, other.Imports) {
-		snap.Imports = other.Imports
-	}
-	if !reflect.DeepEqual(snap.TestImports, other.TestImports) {
-		snap.TestImports = other.TestImports
-	}
-	if other.Commits != int32(0) {
-		snap.Commits = other.Commits
-	}
-	if other.Branches != int32(0) {
-		snap.Branches = other.Branches
-	}
-	if other.Tags != int32(0) {
-		snap.Tags = other.Tags
-	}
-	if other.Bytes != uint64(0) {
-		snap.Bytes = other.Bytes
-	}
-	if other.Stars != int32(0) {
-		snap.Stars = other.Stars
-	}
-	if other.Readme != "" {
-		snap.Readme = other.Readme
-	}
-
-	return snap
-}
-
-func (snap PackageSnapshot) PrettyBytes() string {
-	pretty := humanize.Bytes(snap.Bytes)
-	return pretty
+	pc.Data.CreatedAt = pc.JobStartedAt
+	return pc
 }
 
 func (pc *PackageCrawl) AddMessage(msg string) {
@@ -226,6 +188,103 @@ func (pc PackageCrawl) Duration() time.Duration {
 	return d
 }
 
+func (snap *PackageSnapshot) AllImports() []string {
+	imports := []string{}
+	for _, subPkg := range snap.SubPackages {
+		imports = append(imports, subPkg.AllImports()...)
+	}
+	imports = unique.Strings(imports)
+	return imports
+}
+
+// Merge combines the information from a newer package snapshot into this one.
+func (snap *PackageSnapshot) Merge(other *PackageSnapshot) *PackageSnapshot {
+	// if snap == nil {
+	// 	snap = &PackageSnapshot{}
+	// }
+
+	if snap.CreatedAt == nil && other.CreatedAt != nil {
+		snap.CreatedAt = other.CreatedAt
+	}
+	if other.Repo != "" {
+		snap.Repo = other.Repo
+	}
+	if other.SubPackages != nil {
+		// Search for sub-packages which no longer exist.
+		for subPkgPath, subPkg := range snap.SubPackages {
+			if otherSubPkg, ok := other.SubPackages[subPkgPath]; ok {
+				// Accept updated fields.
+				subPkg.LastSeenAt = otherSubPkg.LastSeenAt
+				subPkg.Imports = otherSubPkg.Imports
+				subPkg.TestImports = otherSubPkg.TestImports
+				subPkg.Readme = otherSubPkg.Readme // TODO: Implement a de-duping method to avoid duplication.
+			} else {
+				// Sub-package is no longer available.
+				subPkg.Active = false
+			}
+		}
+		// Search and add new sub-packages.
+		for otherSubPkgPath, otherSubPkg := range other.SubPackages {
+			if _, ok := snap.SubPackages[otherSubPkgPath]; !ok {
+				// Add new sub-package.
+				snap.SubPackages[otherSubPkgPath] = otherSubPkg
+			}
+		}
+	}
+	if other.Commits != int32(0) {
+		snap.Commits = other.Commits
+	}
+	if other.Branches != int32(0) {
+		snap.Branches = other.Branches
+	}
+	if other.Tags != int32(0) {
+		snap.Tags = other.Tags
+	}
+	if other.Bytes != uint64(0) {
+		snap.Bytes = other.Bytes
+	}
+	if other.Stars != int32(0) {
+		snap.Stars = other.Stars
+	}
+
+	return snap
+}
+
+func (snap PackageSnapshot) PrettyBytes() string {
+	pretty := humanize.Bytes(snap.Bytes)
+	return pretty
+}
+
+func NewSubPackage(name string, now ...*time.Time) *SubPackage {
+	subPkg := &SubPackage{
+		Name:        name,
+		Imports:     []string{},
+		TestImports: []string{},
+		FirstSeenAt: orNow(now),
+	}
+	subPkg.LastSeenAt = subPkg.FirstSeenAt
+	return subPkg
+}
+
+func (subPkg *SubPackage) AllImports() []string {
+	imports := make([]string, 0, len(subPkg.Imports)+len(subPkg.TestImports))
+	for _, pkgPath := range subPkg.Imports {
+		imports = append(imports, pkgPath)
+	}
+	for _, pkgPath := range subPkg.TestImports {
+		imports = append(imports, pkgPath)
+	}
+	return imports
+}
+
+func (subPkg *SubPackage) MarkSeen(now ...*time.Time) {
+	subPkg.LastSeenAt = orNow(now)
+}
+
+func (pkgRef *PackageReference) MarkSeen(now ...*time.Time) {
+	pkgRef.LastSeenAt = orNow(now)
+}
+
 func SubPackagePathNormalize(pkgPath string, subPkgPath string) string {
 	if subPkgPath == pkgPath {
 		// NB: An empty string signifies the root package path.
@@ -241,4 +300,12 @@ func SubPackagePathDenormalize(pkgPath string, subPkgPath string) string {
 	}
 	denormalized := fmt.Sprintf("%v/%v", pkgPath, subPkgPath)
 	return denormalized
+}
+
+func orNow(now []*time.Time) *time.Time {
+	if len(now) == 0 {
+		ts := time.Now()
+		now = []*time.Time{&ts}
+	}
+	return now[0]
 }
