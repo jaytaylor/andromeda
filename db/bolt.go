@@ -128,6 +128,8 @@ func (client *BoltClient) Purge(tables ...string) error {
 
 func (client *BoltClient) PackageSave(pkgs ...*domain.Package) error {
 	return client.db.Update(func(tx *bolt.Tx) error {
+		// TODO: Detect when package imports have changed, find the deleted ones, and
+		//       go update those packages' imported-by to mark the import as inactive.
 		b := tx.Bucket([]byte(TablePackages))
 		for _, pkg := range pkgs {
 			var (
@@ -174,54 +176,78 @@ func (client *BoltClient) PackageDelete(pkgPaths ...string) error {
 var pkgSepB = []byte{'/'}
 
 func (client *BoltClient) Package(pkgPath string) (*domain.Package, error) {
-	var pkg domain.Package
+	var pkg *domain.Package
 
 	if err := client.db.View(func(tx *bolt.Tx) error {
-		var (
-			b = tx.Bucket([]byte(TablePackages))
-			k = []byte(pkgPath)
-			v = b.Get(k)
-		)
-
-		if len(v) == 0 {
-			// Fallback to hierarchical search.
-			if v = client.hierarchicalKeySearch(b, k, pkgSepB); len(v) == 0 {
-				return ErrKeyNotFound
-			}
+		var err error
+		if pkg, err = client.pkg(tx, pkgPath); err != nil {
+			return err
 		}
-
-		return proto.Unmarshal(v, &pkg)
+		return nil
 	}); err != nil {
 		return nil, err
 	}
-	return &pkg, nil
+	return pkg, nil
+}
+
+func (client *BoltClient) pkg(tx *bolt.Tx, pkgPath string) (*domain.Package, error) {
+	var (
+		b   = tx.Bucket([]byte(TablePackages))
+		k   = []byte(pkgPath)
+		v   = b.Get(k)
+		pkg = &domain.Package{}
+	)
+
+	if len(v) == 0 {
+		// Fallback to hierarchical search.
+		if v = client.hierarchicalKeySearch(b, k, pkgSepB); len(v) == 0 {
+			return nil, ErrKeyNotFound
+		}
+	}
+
+	if err := proto.Unmarshal(v, pkg); err != nil {
+		return nil, err
+	}
+	return pkg, nil
 }
 
 func (client *BoltClient) Packages(pkgPaths ...string) (map[string]*domain.Package, error) {
 	pkgs := map[string]*domain.Package{}
 
 	if err := client.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(TablePackages))
-		for _, pkgPath := range pkgPaths {
-			k := []byte(pkgPath)
-			v := b.Get(k)
-			if len(v) == 0 {
-				// Fallback to hierarchical search.
-				v = client.hierarchicalKeySearch(b, k, pkgSepB)
-			}
-			if len(v) > 0 {
-				pkg := &domain.Package{}
-				if err := proto.Unmarshal(v, pkg); err != nil {
-					return err
-				}
-				pkgs[pkgPath] = pkg
-			}
+		var err error
+		if pkgs, err = client.pkgs(tx, pkgPaths); err != nil {
+			return err
 		}
 		return nil
 	}); err != nil {
 		return pkgs, err
 	}
 	return pkgs, nil
+}
+
+func (client *BoltClient) pkgs(tx *bolt.Tx, pkgPaths []string) (map[string]*domain.Package, error) {
+	var (
+		pkgs = map[string]*domain.Package{}
+		b    = tx.Bucket([]byte(TablePackages))
+	)
+	for _, pkgPath := range pkgPaths {
+		k := []byte(pkgPath)
+		v := b.Get(k)
+		if len(v) == 0 {
+			// Fallback to hierarchical search.
+			v = client.hierarchicalKeySearch(b, k, pkgSepB)
+		}
+		if len(v) > 0 {
+			pkg := &domain.Package{}
+			if err := proto.Unmarshal(v, pkg); err != nil {
+				return pkgs, err
+			}
+			pkgs[pkgPath] = pkg
+		}
+	}
+	return pkgs, nil
+
 }
 
 // hierarchicalKeySearch searches for any keys matching the leading part of the
@@ -282,7 +308,6 @@ func (client *BoltClient) EachPackage(fn func(pkg *domain.Package)) error {
 			b = tx.Bucket([]byte(TablePackages))
 			c = b.Cursor()
 		)
-
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			var pkg domain.Package
 			if err := proto.Unmarshal(v, &pkg); err != nil {
@@ -300,7 +325,6 @@ func (client *BoltClient) EachPackageWithBreak(fn func(pkg *domain.Package) bool
 			b = tx.Bucket([]byte(TablePackages))
 			c = b.Cursor()
 		)
-
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			var pkg domain.Package
 			if err := proto.Unmarshal(v, &pkg); err != nil {
@@ -327,6 +351,65 @@ func (client *BoltClient) PackagesLen() (int, error) {
 		return 0, err
 	}
 	return n, nil
+}
+
+func (client *BoltClient) RecordImportedBy(resources map[string]*domain.PackageReferences) error {
+	entries := []*domain.ToCrawlEntry{}
+
+	if err := client.db.Update(func(tx *bolt.Tx) error {
+		pkgPaths := []string{}
+		for pkgPath, _ := range resources {
+			pkgPaths = append(pkgPaths, pkgPath)
+		}
+		pkgs, err := client.pkgs(tx, pkgPaths)
+		if err != nil {
+			return err
+		}
+
+		for pkgPath, refs := range resources {
+			pkg, ok := pkgs[pkgPath]
+			if !ok {
+				entry := &domain.ToCrawlEntry{
+					PackagePath: pkgPath,
+					Reason:      fmt.Sprintf("imported-by ref path=%v", refs.Refs[0].Path),
+				}
+				entries = append(entries, entry)
+				continue
+			}
+			if pkg.ImportedBy == nil {
+				pkg.ImportedBy = map[string]*domain.PackageReferences{}
+			}
+			for _, ref := range refs.Refs {
+				if pkgRefs, ok := pkg.ImportedBy[ref.Path]; ok {
+					var found bool
+					for _, pkgRef := range pkgRefs.Refs {
+						if pkgRef.Path == ref.Path {
+							pkgRef.MarkSeen()
+							found = true
+							break
+						}
+					}
+					if !found {
+						pkgRefs.Refs = append(pkgRefs.Refs, ref)
+					}
+				} else {
+					pkg.ImportedBy[ref.Path] = &domain.PackageReferences{
+						Refs: []*domain.PackageReference{ref},
+					}
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	// TODO: Put all in a single transaction.
+	if len(entries) > 0 {
+		if _, err := client.ToCrawlAdd(entries...); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (client *BoltClient) ToCrawlAdd(entries ...*domain.ToCrawlEntry) (int, error) {

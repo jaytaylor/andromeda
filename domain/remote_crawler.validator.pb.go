@@ -31,5 +31,6 @@ func (this *CrawlResult) Validate() error {
 			return go_proto_validators.FieldError("Package", err)
 		}
 	}
+	// Validation of proto3 map<> fields is unsupported.
 	return nil
 }
