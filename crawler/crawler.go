@@ -62,11 +62,36 @@ type Crawler struct {
 // insights and hydration work.
 type ProcessorFunc func(ctx *crawlerContext) error
 
+// New creates and returns a new crawler instance with the supplied db client
+// and configuration.
+func New(cfg *Config) *Crawler {
+	log.Debugf("New crawler with config=%# v", cfg)
+	c := &Crawler{
+		Config: cfg,
+	}
+	c.Processors = []ProcessorFunc{
+		c.Collect,
+		c.Hydrate,
+		c.ImportedBy,
+	}
+	return c
+}
+
 type crawlerContext struct {
 	entry  *domain.ToCrawlEntry
 	rr     *vcs.RepoRoot
+	res    *domain.CrawlResult
 	pkg    *domain.Package
 	stopCh chan struct{}
+}
+
+func newCrawlerContext(pkg *domain.Package, stopCh chan struct{}) *crawlerContext {
+	ctx := &crawlerContext{
+		res:    domain.NewCrawlResult(pkg, nil),
+		pkg:    pkg,
+		stopCh: stopCh,
+	}
+	return ctx
 }
 
 func (ctx *crawlerContext) shouldStop() bool {
@@ -78,32 +103,15 @@ func (ctx *crawlerContext) shouldStop() bool {
 	}
 }
 
-// New creates and returns a new crawler instance with the supplied db client
-// and configuration.
-func New(cfg *Config) *Crawler {
-	log.Debugf("New crawler with config=%# v", cfg)
-	c := &Crawler{
-		Config: cfg,
-	}
-	c.Processors = []ProcessorFunc{
-		c.Collect,
-		c.Hydrate,
-	}
-	return c
-}
-
 // Resolve implements the PackageResolver interface.
 func (c *Crawler) Resolve(pkgPath string) (*vcs.RepoRoot, error) {
 	return PackagePathToRepoRoot(pkgPath)
 }
 
-func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.Package, error) {
+func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.CrawlResult, error) {
 	log.WithField("pkg", pkg.Path).Debug("Starting crawl")
 
-	ctx := &crawlerContext{
-		pkg:    pkg,
-		stopCh: stopCh,
-	}
+	ctx := newCrawlerContext(pkg, stopCh)
 
 	if ctx.shouldStop() {
 		return nil, ErrStopRequested
@@ -113,21 +121,18 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.Package
 	if err != nil {
 		return nil, err
 	}
+	ctx.rr = rr
 
 	now := time.Now()
 
 	// If first crawl.
 	if pkg.MostlyEmpty() {
-		pkg = newPackage(rr, &now)
+		pkg = domain.NewPackage(rr, &now)
 	}
+	ctx.pkg = pkg
+	ctx.res.Package = pkg
 
-	pc := &domain.PackageCrawl{
-		JobStartedAt: &now,
-		Data: &domain.PackageSnapshot{
-			CreatedAt:   &now,
-			SubPackages: map[string]string{},
-		},
-	}
+	pc := domain.NewPackageCrawl()
 
 	pkg.History = append(pkg.History, pc)
 
@@ -138,9 +143,6 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.Package
 		defer os.RemoveAll(onePastSrcPath)
 	}
 
-	ctx.pkg = pkg
-	ctx.rr = rr
-
 	for _, pFn := range c.Processors {
 		pCh := make(chan error)
 		go func() {
@@ -150,7 +152,7 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.Package
 		case err = <-pCh:
 			if err != nil {
 				if c.errorShouldInterruptExecution(err) {
-					return ctx.pkg, err
+					return ctx.res, err
 				}
 				log.WithField("pkg", ctx.pkg.Path).Warnf("Ignoring non-fatal error: %s", err)
 				//return ctx.pkg, nil
@@ -159,7 +161,7 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.Package
 			return nil, ErrStopRequested
 		}
 	}
-	return pkg, nil
+	return ctx.res, nil
 }
 
 // errorShouldInterruptExecution returns true if crawler should cease execution
@@ -170,6 +172,85 @@ func (_ *Crawler) errorShouldInterruptExecution(err error) bool {
 	}
 	return false
 }
+
+/*// CatalogImporters resolves and adds the "imported_by" association between a
+// package and 3rd party packages it makes use of.
+func (c *Crawler) CatalogImporters(pkg *domain.Package) error {
+	log.WithField("pkg", pkg.Path).Infof("catalog starting: %# v", pkg)
+	// log.WithField("pkg", pkg.Path).WithField("imports", pkg.Data.AllImports()).Info("catalog starting")
+
+	var (
+		updatedPkgs = map[string]*domain.Package{
+			pkg.Path: pkg,
+		}
+		discoveries = map[string]*domain.ToCrawlEntry{}
+	)
+	knownPkgs, err := m.db.Packages(pkg.Data.AllImports()...)
+	if err != nil {
+		return err
+	}
+	for _, pkgPath := range pkg.Data.AllImports() {
+		var rr *vcs.RepoRoot
+		usedPkg, ok := updatedPkgs[pkgPath]
+		if !ok {
+			if usedPkg, ok = knownPkgs[pkgPath]; !ok {
+				if rr, err = PackagePathToRepoRoot(pkgPath); err != nil {
+					log.WithField("pkg", pkg.Path).Errorf("Failed to resolve repo for import=%v, skipping: %s", pkgPath, err)
+					continue
+				}
+			}
+		}
+		if rr == nil {
+			rr = usedPkg.RepoRoot()
+		}
+		if err = m.buildAssociations(rr, usedPkg, pkg, updatedPkgs, discoveries); err != nil {
+			return err
+		}
+	}
+	// Save updated packages.
+	if err := m.savePackagesMap(updatedPkgs); err != nil {
+		return err
+	}
+	// Enqueue newly discovered packages.
+	if err := m.enqueueToCrawlsMap(discoveries); err != nil {
+		return err
+	}
+	//log.Infof("done finding rr's for pkg=%v", pkg.Path)
+	return nil
+}
+
+// buildAssociations updates referenced packages for the "imported_by" portion
+// of the graph.
+func (c *Crawler) buildAssociations(rr *vcs.RepoRoot, usedPkg *domain.Package, consumerPkg *domain.Package, updatedPkgs map[string]*domain.Package, discoveries map[string]*domain.ToCrawlEntry) error {
+	if rr.Root == consumerPkg.RepoRoot().Root {
+		log.Debugf("Skipping association between consumerPkg=%v and %v", consumerPkg.Path, rr.Root)
+		return nil
+	}
+	var (
+		ok  bool
+		err error
+	)
+	if usedPkg == nil {
+		if usedPkg, ok = updatedPkgs[rr.Root]; !ok {
+			if usedPkg, err = m.db.Package(rr.Root); err != nil && err != db.ErrKeyNotFound {
+				return err
+			} else if usedPkg == nil {
+				usedPkg = domain.NewPackage(rr, nil)
+				discoveries[rr.Root] = &domain.ToCrawlEntry{
+					PackagePath: rr.Root,
+					Reason:      fmt.Sprintf("In use by %v", consumerPkg.Path),
+				}
+			}
+		}
+	}
+	newImportedBy := unique.Strings(append(usedPkg.ImportedBy, consumerPkg.Path))
+	if !reflect.DeepEqual(usedPkg.ImportedBy, newImportedBy) {
+		usedPkg.ImportedBy = newImportedBy
+		updatedPkgs[rr.Root] = usedPkg
+		log.WithField("consumer-pkg", consumerPkg.Path).WithField("imported-pkg", usedPkg.Path).Debug("Discovered one or more new associations")
+	}
+	return nil
+}*/
 
 // Collect phase fetches information so a package can be analyzed.
 func (c *Crawler) Collect(ctx *crawlerContext) error {
@@ -212,6 +293,24 @@ func (c *Crawler) Hydrate(ctx *crawlerContext) error {
 	return nil
 }
 
+// ImportedBy chases down the reverse mappings for the current package.
+func (c *Crawler) ImportedBy(ctx *crawlerContext) error {
+	for subPkgPath, subPkg := range ctx.res.Package.Data.SubPackages {
+		subPkgPath = domain.SubPackagePathDenormalize(ctx.res.Package.Path, subPkgPath)
+		for _, imp := range subPkg.AllImports() {
+			ref := domain.NewPackageReference(subPkgPath, ctx.res.Package.LatestCrawl().JobStartedAt)
+			if _, ok := ctx.res.ImportedResources[imp]; !ok {
+				ctx.res.ImportedResources[imp] = &domain.PackageReferences{}
+			}
+			ctx.res.ImportedResources[imp].Refs = append(ctx.res.ImportedResources[imp].Refs, ref)
+		}
+	}
+	//for _, pkgPath := range ctx.pkg.Data.AllImports() {
+
+	//}
+	return nil
+}
+
 // get emulates `go get`.
 func (c *Crawler) get(rr *vcs.RepoRoot) error {
 	if err := os.MkdirAll(c.Config.SrcPath, os.FileMode(int(0755))); err != nil {
@@ -242,10 +341,9 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 	)
 
 	pc.Data.Repo = rr.Repo
-	pc.Data.Readme = detectReadme(localPath)
 
-	importsMap := map[string]struct{}{}
-	testImportsMap := map[string]struct{}{}
+	// importsMap := map[string]struct{}{}
+	// testImportsMap := map[string]struct{}{}
 
 	scanDir := func(dir string) error {
 		// TODO: Determine if this should really be os.PathSeparator or "/".
@@ -264,14 +362,16 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 			}
 			log.WithField("candidate-pkg-path", goPkg.Root).Debugf("Ignoring non-fatal error=%s because still got some data back", err)
 		}
-		pc.Data.SubPackages[goPkg.ImportPath] = goPkg.Name
+		pc.Data.SubPackages[goPkg.ImportPath] = domain.NewSubPackage(goPkg.Name)
+		pc.Data.SubPackages[goPkg.ImportPath].Readme = detectReadme(dir)
 		// log.Infof("%# v", *goPkg)
 		for _, imp := range goPkg.Imports {
 			if pieces := strings.SplitN(imp, "/vendor/", 2); len(pieces) > 1 {
 				imp = pieces[1]
 			}
 			if c.Config.IncludeStdLib || strings.Contains(imp, ".") {
-				importsMap[imp] = struct{}{}
+				// importsMap[imp] = struct{}{}
+				pc.Data.SubPackages[goPkg.ImportPath].Imports = append(pc.Data.SubPackages[goPkg.ImportPath].Imports, imp)
 			}
 		}
 		for _, imp := range goPkg.TestImports {
@@ -279,7 +379,8 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 				imp = pieces[1]
 			}
 			if c.Config.IncludeStdLib || strings.Contains(imp, ".") {
-				testImportsMap[imp] = struct{}{}
+				// testImportsMap[imp] = struct{}{}
+				pc.Data.SubPackages[goPkg.ImportPath].TestImports = append(pc.Data.SubPackages[goPkg.ImportPath].TestImports, imp)
 			}
 		}
 		return nil
@@ -301,21 +402,23 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 		}
 	}
 
+	pkg.NormalizeSubPackageKeys()
+
 	if len(errs) > 0 {
 		for _, err := range errs {
 			pc.AddMessage(err.Error())
 		}
 	}
 
-	pc.Data.Imports = []string{}
-	pc.Data.TestImports = []string{}
+	// pc.Data.Imports = []string{}
+	// pc.Data.TestImports = []string{}
 
-	for imp, _ := range importsMap {
-		pc.Data.Imports = append(pc.Data.Imports, imp)
-	}
-	for imp, _ := range testImportsMap {
-		pc.Data.TestImports = append(pc.Data.TestImports, imp)
-	}
+	// for imp, _ := range importsMap {
+	//	pc.Data.Imports = append(pc.Data.Imports, imp)
+	// }
+	// for imp, _ := range testImportsMap {
+	// 	pc.Data.TestImports = append(pc.Data.TestImports, imp)
+	// }
 
 	size, err := dirSize(localPath)
 	if err != nil {
@@ -418,26 +521,6 @@ func detectReadme(localPath string) string {
 		}
 	}
 	return ""
-}
-
-// newPackage turns a *vcs.RepoRoot into a new *domain.Package.  If now is
-// omitted or nil, the current time will be used.
-func newPackage(rr *vcs.RepoRoot, now ...*time.Time) *domain.Package {
-	if len(now) == 0 || now[0] == nil {
-		ts := time.Now()
-		now = []*time.Time{&ts}
-	}
-	pkg := &domain.Package{
-		FirstSeenAt: now[0],
-		Path:        rr.Root,
-		Name:        "", // TODO: package name(s)???
-		URL:         rr.Repo,
-		VCS:         rr.VCS.Name,
-		Data:        &domain.PackageSnapshot{},
-		ImportedBy:  []string{},
-		History:     []*domain.PackageCrawl{},
-	}
-	return pkg
 }
 
 // PackagePathToRepoRoot isolates and returns a corresponding *vcs.RepoRoot for the

@@ -6,7 +6,8 @@ import (
 
 func NewCrawlResult(pkg *Package, err error) *CrawlResult {
 	cr := &CrawlResult{
-		Package: pkg,
+		Package:           pkg,
+		ImportedResources: map[string]*PackageReferences{},
 	}
 	if err != nil {
 		cr.ErrMsg = err.Error()

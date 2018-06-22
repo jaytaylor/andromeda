@@ -11,8 +11,11 @@ It is generated from these files:
 
 It has these top-level messages:
 	Package
+	PackageReferences
+	PackageReference
 	PackageCrawl
 	PackageSnapshot
+	SubPackage
 	CrawlResult
 	ToCrawlEntry
 */
@@ -34,11 +37,7 @@ var _ = math.Inf
 var _ = time.Kitchen
 
 func (this *Package) Validate() error {
-	if this.FirstSeenAt != nil {
-		if err := go_proto_validators.CallValidatorIfExists(this.FirstSeenAt); err != nil {
-			return go_proto_validators.FieldError("FirstSeenAt", err)
-		}
-	}
+	// Validation of proto3 map<> fields is unsupported.
 	if this.Data != nil {
 		if err := go_proto_validators.CallValidatorIfExists(this.Data); err != nil {
 			return go_proto_validators.FieldError("Data", err)
@@ -49,6 +48,34 @@ func (this *Package) Validate() error {
 			if err := go_proto_validators.CallValidatorIfExists(item); err != nil {
 				return go_proto_validators.FieldError("History", err)
 			}
+		}
+	}
+	if this.FirstSeenAt != nil {
+		if err := go_proto_validators.CallValidatorIfExists(this.FirstSeenAt); err != nil {
+			return go_proto_validators.FieldError("FirstSeenAt", err)
+		}
+	}
+	return nil
+}
+func (this *PackageReferences) Validate() error {
+	for _, item := range this.Refs {
+		if item != nil {
+			if err := go_proto_validators.CallValidatorIfExists(item); err != nil {
+				return go_proto_validators.FieldError("Refs", err)
+			}
+		}
+	}
+	return nil
+}
+func (this *PackageReference) Validate() error {
+	if this.FirstSeenAt != nil {
+		if err := go_proto_validators.CallValidatorIfExists(this.FirstSeenAt); err != nil {
+			return go_proto_validators.FieldError("FirstSeenAt", err)
+		}
+	}
+	if this.LastSeenAt != nil {
+		if err := go_proto_validators.CallValidatorIfExists(this.LastSeenAt); err != nil {
+			return go_proto_validators.FieldError("LastSeenAt", err)
 		}
 	}
 	return nil
@@ -78,5 +105,18 @@ func (this *PackageSnapshot) Validate() error {
 		}
 	}
 	// Validation of proto3 map<> fields is unsupported.
+	return nil
+}
+func (this *SubPackage) Validate() error {
+	if this.FirstSeenAt != nil {
+		if err := go_proto_validators.CallValidatorIfExists(this.FirstSeenAt); err != nil {
+			return go_proto_validators.FieldError("FirstSeenAt", err)
+		}
+	}
+	if this.LastSeenAt != nil {
+		if err := go_proto_validators.CallValidatorIfExists(this.LastSeenAt); err != nil {
+			return go_proto_validators.FieldError("LastSeenAt", err)
+		}
+	}
 	return nil
 }

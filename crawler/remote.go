@@ -27,7 +27,7 @@ func NewRemote(addr string, cfg *Config) *Remote {
 func (r *Remote) Run(stopCh chan struct{}) {
 	log.WithField("grpc-server-addr", r.Addr).Info("Remote starting")
 	var (
-		result *domain.CrawlResult
+		res    *domain.CrawlResult
 		crawls int
 	)
 
@@ -50,13 +50,13 @@ func (r *Remote) Run(stopCh chan struct{}) {
 				return fmt.Errorf("attaching: %s", r.Addr, err)
 			}
 
-			if result != nil {
-				log.Debugf("Sending previously unsent result=%# v", *result)
-				if err = ac.Send(result); err != nil {
+			if res != nil {
+				log.Debugf("Sending previously unsent res=%# v", *res)
+				if err = ac.Send(res); err != nil {
 					// TODO: Requeue locally.
 					return err
 				}
-				result = nil
+				res = nil
 				crawls++
 			}
 
@@ -77,13 +77,17 @@ func (r *Remote) Run(stopCh chan struct{}) {
 				if err != nil {
 					return fmt.Errorf("receiving entry: %s", err)
 				}
-				pkg, err := r.crawler.Do(&domain.Package{Path: entry.PackagePath}, stopCh)
-				result = domain.NewCrawlResult(pkg, err)
-				if err = ac.Send(result); err != nil {
+				res, err := r.crawler.Do(&domain.Package{Path: entry.PackagePath}, stopCh)
+				if res == nil && err != nil {
+					res = domain.NewCrawlResult(nil, err)
+				} else if res.Error() == nil && err != nil {
+					res.ErrMsg = err.Error()
+				}
+				if err = ac.Send(res); err != nil {
 					// TODO: Requeue locally.
 					return err
 				}
-				result = nil
+				res = nil
 				crawls++
 			}
 		}()
