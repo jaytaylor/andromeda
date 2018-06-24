@@ -152,6 +152,54 @@ func (pkg *Package) NormalizeSubPackageKeys() {
 	pkg.Data.SubPackages = cleanedSubPkgs
 }
 
+type PackagePath struct {
+	Name string
+	Path string
+}
+
+// RepoName returns the tail end of the repository name.
+// ".git" suffix will be removed.
+func (pkg Package) RepoName() string {
+	pieces := strings.Split(pkg.URL, "/")
+	if len(pieces) == 0 {
+		pieces = strings.Split(pkg.Path, "/")
+	}
+	name := pieces[len(pieces)-1]
+	name = strings.TrimSuffix(name, ".git")
+	return name
+}
+
+// ParentPaths returns one entry for each parent path of the package.
+func (pkg Package) ParentPaths() []PackagePath {
+	paths := []PackagePath{}
+	pieces := strings.Split(pkg.Path, "/")
+	path := ""
+	for i, piece := range pieces {
+		if len(path) > 0 {
+			path += "/"
+		}
+		path += piece
+		if i < len(pieces)-1 {
+			piece += "/"
+		}
+		pp := PackagePath{
+			Name: piece,
+			Path: path,
+		}
+		paths = append(paths, pp)
+	}
+	return paths
+}
+
+// SubPackagesPretty returns a map with all the sub-package keys denormalized.
+func (pkg Package) SubPackagesPretty() map[string]*SubPackage {
+	pretty := map[string]*SubPackage{}
+	for k, v := range pkg.Data.SubPackages {
+		pretty[SubPackagePathDenormalize(pkg.Path, k)] = v
+	}
+	return pretty
+}
+
 func NewPackageReference(path string, now ...*time.Time) *PackageReference {
 	pkgRef := &PackageReference{
 		Path:        path,

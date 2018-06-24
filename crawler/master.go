@@ -14,6 +14,10 @@ import (
 	"jaytaylor.com/andromeda/domain"
 )
 
+var (
+	MaxNumLatest = 25
+)
+
 // TODO: Need scheme for ensuring a write hasn't occurred to the affected
 //       package since the crawler pulled the item from the queue.
 
@@ -35,6 +39,7 @@ import (
 type Master struct {
 	db         db.Client
 	crawler    *Crawler
+	latest     []*domain.Package
 	numCrawls  int
 	numRemotes int
 	mu         sync.RWMutex
@@ -45,6 +50,7 @@ func NewMaster(dbClient db.Client, cfg *Config) *Master {
 	m := &Master{
 		db:      dbClient,
 		crawler: New(cfg),
+		latest:  []*domain.Package{},
 	}
 	return m
 }
@@ -150,6 +156,10 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			}
 			if err = m.db.RecordImportedBy(res.ImportedResources); err != nil {
 				return err
+			}
+			m.latest = append(m.latest, res.Package)
+			if len(m.latest) > MaxNumLatest {
+				m.latest = m.latest[len(m.latest)-MaxNumLatest:]
 			}
 			return nil
 		}(); err != nil {
@@ -434,4 +444,10 @@ func (m *Master) Stats() map[string]int {
 		"remotes": m.numRemotes,
 	}
 	return stats
+}
+
+func (m *Master) Latest() []*domain.Package {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.latest
 }

@@ -53,7 +53,7 @@ message PackageCrawl {
 message PackageSnapshot {
   google.protobuf.Timestamp created_at = 1 [(gogoproto.stdtime) = true];
   string repo = 2;
-  map<string, SubPackage> sub_packages = 3;
+  map<string, SubPackage> sub_packages = 3; // TODO: Implement a strategy to avoid duplicating this field every crawl.  Only want to store the diffs here.
   int32 commits = 6;
   int32 branches = 7;
   int32 tags = 8;

@@ -17,6 +17,7 @@ import (
 	"gigawatt.io/errorlib"
 	"gigawatt.io/web"
 	"gigawatt.io/web/route"
+	"github.com/Masterminds/sprig"
 	"github.com/nbio/hitch"
 	log "github.com/sirupsen/logrus"
 	"github.com/soheilhy/cmux"
@@ -185,7 +186,7 @@ func (service *WebService) tplAsset(asset string) func(w http.ResponseWriter, re
 	if err != nil {
 		panic(fmt.Errorf("problem with asset %q: %v", asset, err))
 	}
-	tpl := template.Must(template.New(asset).Parse(string(content)))
+	tpl := template.Must(template.New(asset).Funcs(sprig.FuncMap()).Parse(string(content)))
 
 	return func(w http.ResponseWriter, req *http.Request) {
 		if err := tpl.Execute(w, service); err != nil {
@@ -225,7 +226,7 @@ func (service *WebService) pkg(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		panic(fmt.Errorf("problem with asset %q: %v", asset, err))
 	}
-	tpl := template.Must(template.New(asset).Parse(string(content)))
+	tpl := template.Must(template.New(asset).Funcs(sprig.FuncMap()).Parse(string(content)))
 
 	pkg, err := service.DB.Package(pkgPath)
 	if err != nil {
@@ -253,7 +254,7 @@ func (service *WebService) pkgFallback(w http.ResponseWriter, req *http.Request,
 	if err != nil {
 		panic(fmt.Errorf("problem with asset %q: %v", asset, err))
 	}
-	tpl := template.Must(template.New(asset).Parse(string(content)))
+	tpl := template.Must(template.New(asset).Funcs(sprig.FuncMap()).Parse(string(content)))
 
 	// Try a prefix search.
 	var pkgs map[string]*domain.Package
