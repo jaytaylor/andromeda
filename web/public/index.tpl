@@ -8,7 +8,20 @@
 </head>
 <body>
 <h1>Andromeda</h1>
-<h2>Search the Entire Golang Universe</h2>
+<h2>Search the entire visible Golang Universe</h2>
+<br>
+{{ with $latest := .Config.Master.Latest }}
+{{ if $latest }}
+<div>
+    <h3>Latest Crawled Packages</h3>
+    <ul style="list-style-type: none">
+{{ range $pkg := $latest }}
+        <li>{{ $pkg.Data.CreatedAt }} <a href="/{{ $pkg.Path }}">{{ $pkg.Path }}</a></li>
+{{ end }}
+    </ul>
+</div>
+{{ end }}
+{{ end }}
 Number of packages in index: {{ .DB.PackagesLen }}
 <br>
 Crawl queue length: {{ .DB.ToCrawlsLen }}

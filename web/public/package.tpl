@@ -8,15 +8,28 @@
 </head>
 <body>
 
+<h1>{{ .RepoName }}</h1>
+
+<div>
+<a href="/">/</a>
+{{ range $parentPath := .ParentPaths }}
+<a href="/{{ $parentPath.Path }}">{{ $parentPath.Name }}</a>
+{{ end }}
+</div>
+<hr>
+
 <div>ID: {{ .ID }}</div>
-<h3>Package Root: {{ .Path }}</h3>
+<!--<h3>Package Root: {{ .Path }}</h3>-->
 <div>URL: <a href="{{ .URL }}" ref="nofollow">{{ .URL }}</a></div>
 <!-- <div>Name: {{ .Name }}</div> -->
 <!-- <div>Owner: {{ .Owner }}</div> -->
 <div>VCS: {{ .VCS }}</div>
 <div>First seen: {{ .FirstSeenAt }}</div>
+<div><a href="/v1/{{ .Path }}">JSON</a></div>
+<div><a href="https://godoc.org/{{ .Path }}">Documentation</a></div>
 <hr>
 
+<h3>Package Information</h3>
 {{ if .Data }}
 <div>Data.Repo: {{ .Data.Repo }}</div>
 <div>Data.Commits: {{ .Data.Commits }}</div>
@@ -24,10 +37,21 @@
 <div>Data.Tags: {{ .Data.Tags }}</div>
 <div>Data.Bytes: {{ .Data.Bytes }}</div>
 <div>Data.Forks: {{ .Data.Forks }}</div>
-{{ if (index .Data.SubPackages "") }}
-<div>Data.Readme: <pre>{{ (index .Data.SubPackages "").Readme }}</pre></div>
+{{ with $subPkg := index .Data.SubPackages "" }}
+{{ if and $subPkg $subPkg.Readme }}
+<hr>
+<div>Data.Readme: <pre>{{ $subPkg.Readme }}</pre></div>
+{{ end }}
+{{ end }}
 {{ end }}
 <hr>
+
+{{ if .Data.SubPackages }}
+<h3>{{ len .Data.SubPackages }} Nested Packages:</h3>
+{{ range $subPkgPath, $subPkg := .SubPackagesPretty }}
+{{ $subPkgPath }}
+<br>
+{{ end }}
 {{ end }}
 
 {{ if .ImportedBy }}
