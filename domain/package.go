@@ -210,6 +210,9 @@ func (snap *PackageSnapshot) Merge(other *PackageSnapshot) *PackageSnapshot {
 		snap.Repo = other.Repo
 	}
 	if other.SubPackages != nil {
+		if snap.SubPackages == nil {
+			snap.SubPackages = map[string]*SubPackage{}
+		}
 		// Search for sub-packages which no longer exist.
 		for subPkgPath, subPkg := range snap.SubPackages {
 			if otherSubPkg, ok := other.SubPackages[subPkgPath]; ok {
