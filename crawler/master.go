@@ -167,7 +167,7 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			} else if err = m.db.PackageSave(res.Package); err != nil {
 				return err
 			}
-			if err = m.db.RecordImportedBy(res.ImportedResources); err != nil {
+			if err = m.db.RecordImportedBy(res.Package, res.ImportedResources); err != nil {
 				return err
 			}
 			m.latest = append(m.latest, res.Package)

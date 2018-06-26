@@ -298,11 +298,14 @@ func (c *Crawler) ImportedBy(ctx *crawlerContext) error {
 	for subPkgPath, subPkg := range ctx.res.Package.Data.SubPackages {
 		subPkgPath = domain.SubPackagePathDenormalize(ctx.res.Package.Path, subPkgPath)
 		for _, imp := range subPkg.AllImports() {
-			ref := domain.NewPackageReference(subPkgPath, ctx.res.Package.LatestCrawl().JobStartedAt)
-			if _, ok := ctx.res.ImportedResources[imp]; !ok {
-				ctx.res.ImportedResources[imp] = &domain.PackageReferences{}
+			// Dont include self-references.
+			if !strings.HasPrefix(imp, ctx.pkg.Path) {
+				ref := domain.NewPackageReference(subPkgPath, ctx.res.Package.LatestCrawl().JobStartedAt)
+				if _, ok := ctx.res.ImportedResources[imp]; !ok {
+					ctx.res.ImportedResources[imp] = &domain.PackageReferences{}
+				}
+				ctx.res.ImportedResources[imp].Refs = append(ctx.res.ImportedResources[imp].Refs, ref)
 			}
-			ctx.res.ImportedResources[imp].Refs = append(ctx.res.ImportedResources[imp].Refs, ref)
 		}
 	}
 	//for _, pkgPath := range ctx.pkg.Data.AllImports() {
