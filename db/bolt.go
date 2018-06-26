@@ -365,7 +365,7 @@ func (client *BoltClient) PackagesLen() (int, error) {
 	return n, nil
 }
 
-func (client *BoltClient) RecordImportedBy(resources map[string]*domain.PackageReferences) error {
+func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map[string]*domain.PackageReferences) error {
 	entries := []*domain.ToCrawlEntry{}
 
 	if err := client.db.Update(func(tx *bolt.Tx) error {
@@ -383,7 +383,7 @@ func (client *BoltClient) RecordImportedBy(resources map[string]*domain.PackageR
 			if !ok {
 				entry := &domain.ToCrawlEntry{
 					PackagePath: pkgPath,
-					Reason:      fmt.Sprintf("imported-by ref path=%v", refs.Refs[0].Path),
+					Reason:      fmt.Sprintf("imported-by ref path=%v", refPkg.Path),
 				}
 				entries = append(entries, entry)
 				continue
