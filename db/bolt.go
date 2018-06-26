@@ -130,33 +130,37 @@ func (client *BoltClient) PackageSave(pkgs ...*domain.Package) error {
 	return client.db.Update(func(tx *bolt.Tx) error {
 		// TODO: Detect when package imports have changed, find the deleted ones, and
 		//       go update those packages' imported-by to mark the import as inactive.
-		b := tx.Bucket([]byte(TablePackages))
-		for _, pkg := range pkgs {
-			var (
-				k   = []byte(pkg.Path)
-				v   = b.Get(k)
-				err error
-			)
-			if v == nil || pkg.ID == 0 {
-				id, err := b.NextSequence()
-				if err != nil {
-					return fmt.Errorf("getting next ID for new package %q: %s", pkg.Path, err)
-				}
+		return client.packageSave(tx, pkgs)
+	})
+}
 
-				pkg.ID = id
+func (client *BoltClient) packageSave(tx *bolt.Tx, pkgs []*domain.Package) error {
+	b := tx.Bucket([]byte(TablePackages))
+	for _, pkg := range pkgs {
+		var (
+			k   = []byte(pkg.Path)
+			v   = b.Get(k)
+			err error
+		)
+		if v == nil || pkg.ID == 0 {
+			id, err := b.NextSequence()
+			if err != nil {
+				return fmt.Errorf("getting next ID for new package %q: %s", pkg.Path, err)
 			}
 
-			if v, err = proto.Marshal(pkg); err != nil {
-				return fmt.Errorf("marshalling Package %q: %s", pkg.Path, err)
-			}
-
-			if err = b.Put(k, v); err != nil {
-				return fmt.Errorf("saving Package %q: %s", pkg.Path, err)
-			}
+			pkg.ID = id
 		}
 
-		return nil
-	})
+		if v, err = proto.Marshal(pkg); err != nil {
+			return fmt.Errorf("marshalling Package %q: %s", pkg.Path, err)
+		}
+
+		if err = b.Put(k, v); err != nil {
+			return fmt.Errorf("saving Package %q: %s", pkg.Path, err)
+		}
+	}
+
+	return nil
 }
 
 // PackageDelete N.B. no existence check is performed.
@@ -596,4 +600,59 @@ func (client *BoltClient) Meta(key string, dst interface{}) error {
 
 func (client *BoltClient) Search(q string) (*domain.Package, error) {
 	return nil, fmt.Errorf("not yet implemented")
+}
+
+type BatchUpdateFunc func(pkg *domain.Package) (changed bool, err error)
+
+func (client *BoltClient) NormalizeSubPackageKeys() error {
+	fixFn := func(pkg *domain.Package) (bool, error) {
+		pkg.NormalizeSubPackageKeys()
+		return true, nil
+	}
+	return client.applyBatchUpdate(fixFn)
+}
+
+func (client *BoltClient) applyBatchUpdate(fn BatchUpdateFunc) error {
+	return client.db.Update(func(tx *bolt.Tx) error {
+		var (
+			n         = 0
+			b         = tx.Bucket([]byte(TablePackages))
+			c         = b.Cursor()
+			batchSize = 1000
+			batch     = make([]*domain.Package, 0, batchSize)
+			// batch     = []*domain.Package{} // make([]*domain.Package, 0, batchSize)
+			i = 0
+		)
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			if i%1000 == 0 {
+				log.Debugf("i=%v", i)
+			}
+			i++
+			pkg := &domain.Package{}
+			if err := proto.Unmarshal(v, pkg); err != nil {
+				return err
+			}
+			if changed, err := fn(pkg); err != nil {
+				return err
+			} else if changed {
+				batch = append(batch, pkg)
+				if len(batch) >= batchSize {
+					log.WithField("this-batch", len(batch)).WithField("total-so-far", n).Debug("Saving batch")
+					if err := client.packageSave(tx, batch); err != nil {
+						return err
+					}
+					n += len(batch)
+					batch = make([]*domain.Package, 0, batchSize)
+					// batch = []*domain.Package{} // make([]*domain.Package, 0, batchSize)
+				}
+			}
+		}
+		if len(batch) > 0 {
+			log.WithField("this-batch", len(batch)).WithField("total-so-far", n).Debug("Saving batch (final)")
+			if err := client.PackageSave(batch...); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

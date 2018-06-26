@@ -62,6 +62,7 @@ func init() {
 	rootCmd.AddCommand(lsCmd)
 	rootCmd.AddCommand(webCmd)
 	rootCmd.AddCommand(remoteCrawlerCmd)
+	rootCmd.AddCommand(normalizeSubPackageKeysCmd)
 }
 
 func main() {
@@ -417,6 +418,23 @@ var remoteCrawlerCmd = &cobra.Command{
 			log.Info("Remote crawler run finished")
 			log.Info("Exiting")
 			return
+		}
+	},
+}
+
+var normalizeSubPackageKeysCmd = &cobra.Command{
+	Use:   "normalize-sub-pkg-keys",
+	Short: ".. jay will fill this long one out sometime ..",
+	Long:  ".. jay will fill this long one out sometime ..",
+	PreRun: func(_ *cobra.Command, _ []string) {
+		initLogging()
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		dbCfg := db.NewBoltConfig(DBFile)
+		if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
+			return dbClient.NormalizeSubPackageKeys()
+		}); err != nil {
+			log.Fatal(err)
 		}
 	},
 }

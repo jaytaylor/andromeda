@@ -8,68 +8,52 @@
 </head>
 <body>
 
-<h1>{{ .RepoName }}</h1>
+<h1>{{ .Path }}</h1>
 
 <div>
 <a href="/">/</a>
-{{ range $parentPath := .ParentPaths }}
+{{ range $parentPath := .Pkg.ParentPaths .Path }}
 <a href="/{{ $parentPath.Path }}">{{ $parentPath.Name }}</a>
 {{ end }}
 </div>
 <hr>
 
-<div>ID: {{ .ID }}</div>
-<!--<h3>Package Root: {{ .Path }}</h3>-->
-<div>URL: <a href="{{ .URL }}" ref="nofollow">{{ .URL }}</a></div>
-<!-- <div>Name: {{ .Name }}</div> -->
-<!-- <div>Owner: {{ .Owner }}</div> -->
-<div>VCS: {{ .VCS }}</div>
-<div>First seen: {{ .FirstSeenAt }}</div>
-<div><a href="/v1/{{ .Path }}">JSON</a></div>
+<h3>Parent Package</h3>
+<div>ID: {{ .Pkg.ID }}</div>
+<div>See: <a href="/{{ .Pkg.Path }}">{{ .Pkg.Path }}</a></div>
 <div><a href="https://godoc.org/{{ .Path }}">Documentation</a></div>
 <hr>
 
 <h3>Package Information</h3>
-{{ if .Data }}
-<div>Data.Repo: {{ .Data.Repo }}</div>
-<div>Data.Commits: {{ .Data.Commits }}</div>
-<div>Data.Branches: {{ .Data.Branches }}</div>
-<div>Data.Tags: {{ .Data.Tags }}</div>
-<div>Data.Bytes: {{ .Data.Bytes }}</div>
-<div>Data.Forks: {{ .Data.Forks }}</div>
+{{ if .Pkg.Data }}
+<div>Data.Repo: {{ .Pkg.Data.Repo }}</div>
+<div>Data.Commits: {{ .Pkg.Data.Commits }}</div>
+<div>Data.Branches: {{ .Pkg.Data.Branches }}</div>
+<div>Data.Tags: {{ .Pkg.Data.Tags }}</div>
+<div>Data.Bytes: {{ .Pkg.Data.Bytes }}</div>
+<div>Data.Forks: {{ .Pkg.Data.Forks }}</div>
 
-{{ with $subPkg := index .Data.SubPackages "" }}
-{{ if $subPkg.Imports }}
 <div>
 <h4>Imports</h4>
 <ul style="list-style-type: none">
-{{ range $imp := $subPkg.Imports }}
+{{ range $imp := .Sub.Imports }}
     <li><a href="/{{ $imp }}">{{ $imp }}</a></li>
 {{ end }}
 </ul>
 </div>
 {{ end }}
 
-{{ if and $subPkg $subPkg.Readme }}
+{{ if .Sub.Readme }}
 <hr>
-<div>Data.Readme: <pre>{{ $subPkg.Readme }}</pre></div>
-{{ end }}
-{{ end }}
+<div>Data.Readme: <pre>{{ .Sub.Readme }}</pre></div>
 {{ end }}
 <hr>
 
-{{ if .Data.SubPackages }}
-<h3>{{ len .Data.SubPackages }} Nested Packages:</h3>
-{{ range $subPkgPath, $subPkg := .SubPackagesPretty }}
-<a href="/{{ $subPkgPath }}">{{ $subPkgPath }}</a>
-<br>
-{{ end }}
-{{ end }}
 
-{{ if .ImportedBy }}
+{{ if .Sub.ImportedBy }}
 <h4>Imported By<h4>
 <ul>
-{{ range $imp := .ImportedBy }}
+{{ range $imp := .Sub.ImportedBy }}
     <li><a href="/{{ $imp }}">{{ $imp }}</a></li>
 {{ end }}
 </ul>

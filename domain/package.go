@@ -170,9 +170,23 @@ func (pkg Package) RepoName() string {
 }
 
 // ParentPaths returns one entry for each parent path of the package.
-func (pkg Package) ParentPaths() []PackagePath {
+//
+// Generate the path for a sub-package by passing in it's normalized or
+// denormalized import path (it will be automatically normalized).
+func (pkg Package) ParentPaths(subPkgPath ...string) []PackagePath {
+	if len(subPkgPath) == 0 {
+		subPkgPath = []string{""}
+	} else if strings.HasPrefix(subPkgPath[0], pkg.Path) {
+		subPkgPath[0] = SubPackagePathNormalize(pkg.Path, subPkgPath[0])
+	}
+
 	paths := []PackagePath{}
 	pieces := strings.Split(pkg.Path, "/")
+
+	if len(subPkgPath[0]) > 0 {
+		pieces = append(pieces, strings.Split(subPkgPath[0], "/")...)
+	}
+
 	path := ""
 	for i, piece := range pieces {
 		if len(path) > 0 {
@@ -195,7 +209,8 @@ func (pkg Package) ParentPaths() []PackagePath {
 func (pkg Package) SubPackagesPretty() map[string]*SubPackage {
 	pretty := map[string]*SubPackage{}
 	for k, v := range pkg.Data.SubPackages {
-		pretty[SubPackagePathDenormalize(pkg.Path, k)] = v
+		// pretty[SubPackagePathDenormalize(pkg.Path, k)] = v
+		pretty[k] = v
 	}
 	return pretty
 }
