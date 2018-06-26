@@ -12,6 +12,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"jaytaylor.com/bboltqueue"
+	// "github.com/ulikunitz/xz"
 
 	"jaytaylor.com/andromeda/domain"
 )
@@ -149,6 +150,11 @@ func (client *BoltClient) packageSave(tx *bolt.Tx, pkgs []*domain.Package) error
 			}
 
 			pkg.ID = id
+		}
+
+		if pc := pkg.History[len(pkg.History)-1]; len(pc.JobMessages) > 0 {
+			log.WithField("pkg", pkg.Path).Errorf("Discarding JobMessages: %v", pc.JobMessages)
+			pc.JobMessages = nil
 		}
 
 		if v, err = proto.Marshal(pkg); err != nil {
@@ -656,3 +662,9 @@ func (client *BoltClient) applyBatchUpdate(fn BatchUpdateFunc) error {
 		return nil
 	})
 }
+
+/*func compress(bs []byte) ([]byte, error) {
+}
+
+func decompress(bs []byte) ([]byte, error) {
+}*/
