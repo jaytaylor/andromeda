@@ -30,6 +30,8 @@ var (
 	WebAddr string
 
 	CrawlServerAddr = "127.0.01:8082"
+
+	EnqueuePriority = db.DefaultQueuePriority
 )
 
 func init() {
@@ -47,6 +49,8 @@ func init() {
 	crawlCmd.Flags().BoolVarP(&crawler.DefaultDeleteAfter, "delete-after", "d", crawler.DefaultDeleteAfter, "Delete source code after analysis")
 	crawlCmd.Flags().IntVarP(&crawler.DefaultMaxItems, "max-items", "m", crawler.DefaultMaxItems, "Maximum number of package items to crawl (<=0 signifies unlimited)")
 
+	enqueueCmd.Flags().IntVarP(&EnqueuePriority, "priority", "p", EnqueuePriority, "Queue priority level")
+
 	remoteCrawlerCmd.Flags().StringVarP(&crawler.DefaultSrcPath, "src-path", "s", crawler.DefaultSrcPath, "Path to checkout source code to")
 	remoteCrawlerCmd.Flags().BoolVarP(&crawler.DefaultDeleteAfter, "delete-after", "d", crawler.DefaultDeleteAfter, "Delete source code after analysis")
 	remoteCrawlerCmd.Flags().IntVarP(&crawler.DefaultMaxItems, "max-items", "m", crawler.DefaultMaxItems, "Maximum number of package items to crawl (<=0 signifies unlimited)")
@@ -58,6 +62,7 @@ func init() {
 	rootCmd.AddCommand(bootstrapCmd)
 	rootCmd.AddCommand(crawlCmd)
 	rootCmd.AddCommand(enqueueCmd)
+	rootCmd.AddCommand(queueDeleteCmd)
 	rootCmd.AddCommand(repoRootCmd)
 	rootCmd.AddCommand(purgeTableCmd)
 	rootCmd.AddCommand(statsCmd)
@@ -150,11 +155,40 @@ var enqueueCmd = &cobra.Command{
 					SubmittedAt: &now,
 				}
 			}
-			n, err := dbClient.ToCrawlAdd(entries...)
+			opts := db.NewQueueOptions()
+			opts.Priority = EnqueuePriority
+			n, err := dbClient.ToCrawlAdd(entries, opts)
 			if err != nil {
 				return err
 			}
-			log.WithField("added", n).WithField("supplied", len(args)).Infof("Enqueue operation finished")
+			log.WithField("added", n).WithField("supplied", len(args)).Info("Enqueue operation finished")
+			return nil
+		}); err != nil {
+			log.Fatalf("main: %s", err)
+		}
+	},
+}
+
+var queueDeleteCmd = &cobra.Command{
+	Use:     "queue-delete",
+	Aliases: []string{"queue-del", "queue-remove", "queue-rm"},
+	Short:   "Remove items from the to-crawl queue",
+	Long:    "Remove one or more packages from the to-crawl queue",
+	Args:    cobra.MinimumNArgs(1),
+	PreRun: func(_ *cobra.Command, _ []string) {
+		initLogging()
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
+			n, err := dbClient.ToCrawlRemove(args)
+			if err != nil {
+				return err
+			}
+			plural := ""
+			if len(args) > 1 {
+				plural = "s"
+			}
+			log.WithField("deleted", n).WithField("supplied", len(args)).Infof("Queue item%s removal operation finished", plural)
 			return nil
 		}); err != nil {
 			log.Fatalf("main: %s", err)
