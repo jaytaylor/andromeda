@@ -44,7 +44,7 @@ func TestBoltDBClientToCrawlOperations(t *testing.T) {
 			SubmittedAt: &now,
 		}
 
-		if _, err := client.ToCrawlAdd(entry); err != nil {
+		if _, err := client.ToCrawlAdd([]*domain.ToCrawlEntry{entry}, nil); err != nil {
 			t.Fatal(err)
 		}
 		l, err := client.ToCrawlsLen()
@@ -63,7 +63,7 @@ func TestBoltDBClientToCrawlOperations(t *testing.T) {
 			Reason:      "testing2",
 			SubmittedAt: &now,
 		}
-		if _, err := client.ToCrawlAdd(entry); err != nil {
+		if _, err := client.ToCrawlAdd([]*domain.ToCrawlEntry{entry}, nil); err != nil {
 			t.Fatal(err)
 		}
 		l, err := client.ToCrawlsLen()

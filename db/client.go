@@ -13,6 +13,8 @@ const (
 	TableMetadata = "andromeda-metadata"
 	TablePackages = "packages"
 	TableToCrawl  = "to-crawl"
+
+	DefaultQueuePriority = 3
 )
 
 var (
@@ -21,29 +23,30 @@ var (
 )
 
 type Client interface {
-	Open() error                                                           // Open / start DB client connection.
-	Close() error                                                          // Close / shutdown the DB client connection.
-	Purge(tables ...string) error                                          // Reset a DB table.
-	PackageSave(pkgs ...*domain.Package) error                             // Performs an upsert merge operation on a fully crawled package.
-	PackageDelete(pkgPaths ...string) error                                // Delete a package from the index.  Complete erasure.
-	Package(pkgPath string) (*domain.Package, error)                       // Retrieve a specific package..
-	Packages(pkgPaths ...string) (map[string]*domain.Package, error)       // Retrieve several packages.
-	EachPackage(func(pkg *domain.Package)) error                           // Iterates over all indexed packages and invokes callback on each.
-	EachPackageWithBreak(func(pkg *domain.Package) bool) error             // Iterates over packages until callback returns false.
-	PathPrefixSearch(prefix string) (map[string]*domain.Package, error)    // Search for packages with paths matching a specific prefix.
-	PackagesLen() (int, error)                                             // Number of packages in index.
-	RecordImportedBy(resources map[string]*domain.PackageReferences) error // Save imported-by relationship updates.
-	ToCrawlAdd(entries ...*domain.ToCrawlEntry) (int, error)               // Only adds entries which don't already exist.  Returns number of new items added.
-	ToCrawlDequeue() (*domain.ToCrawlEntry, error)                         // Pop an entry from the crawl queue.
-	EachToCrawl(func(entry *domain.ToCrawlEntry)) error                    // Iterates over all to-crawl entries and invokes callback on each.
-	EachToCrawlWithBreak(func(entry *domain.ToCrawlEntry) bool) error      // Iterates over to-crawl entries until callback returns false.
-	ToCrawlsLen() (int, error)                                             // Number of packages currently awaiting crawl.
-	MetaSave(key string, src interface{}) error                            // Store metadata key/value.  NB: src must be one of raw []byte, string, or proto.Message struct.
-	MetaDelete(key string) error                                           // Delete a metadata key.
-	Meta(key string, dst interface{}) error                                // Retrieve metadata key and populate into dst.  NB: dst must be one of *[]byte, *string, or proto.Message struct.
-	NormalizeSubPackageKeys() error                                        // DB fixer utility.
-	BackupTo(destFile string) error                                        // Create a backup copy of the DB.  Return ErrNotImplemented if not supported.
-	RebuildTo(newDBFile string) error                                      // Rebuild a fresh copy of the DB at destination.  Return ErrNotImplmented if not supported.
+	Open() error                                                                // Open / start DB client connection.
+	Close() error                                                               // Close / shutdown the DB client connection.
+	Purge(tables ...string) error                                               // Reset a DB table.
+	PackageSave(pkgs ...*domain.Package) error                                  // Performs an upsert merge operation on a fully crawled package.
+	PackageDelete(pkgPaths ...string) error                                     // Delete a package from the index.  Complete erasure.
+	Package(pkgPath string) (*domain.Package, error)                            // Retrieve a specific package..
+	Packages(pkgPaths ...string) (map[string]*domain.Package, error)            // Retrieve several packages.
+	EachPackage(func(pkg *domain.Package)) error                                // Iterates over all indexed packages and invokes callback on each.
+	EachPackageWithBreak(func(pkg *domain.Package) bool) error                  // Iterates over packages until callback returns false.
+	PathPrefixSearch(prefix string) (map[string]*domain.Package, error)         // Search for packages with paths matching a specific prefix.
+	PackagesLen() (int, error)                                                  // Number of packages in index.
+	RecordImportedBy(resources map[string]*domain.PackageReferences) error      // Save imported-by relationship updates.
+	ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *QueueOptions) (int, error) // Only adds entries which don't already exist.  Returns number of new items added.
+	ToCrawlRemove(pkgs []string) (int, error)                                   // Scrubs items from queue.
+	ToCrawlDequeue() (*domain.ToCrawlEntry, error)                              // Pop an entry from the crawl queue.
+	EachToCrawl(func(entry *domain.ToCrawlEntry)) error                         // Iterates over all to-crawl entries and invokes callback on each.
+	EachToCrawlWithBreak(func(entry *domain.ToCrawlEntry) bool) error           // Iterates over to-crawl entries until callback returns false.
+	ToCrawlsLen() (int, error)                                                  // Number of packages currently awaiting crawl.
+	MetaSave(key string, src interface{}) error                                 // Store metadata key/value.  NB: src must be one of raw []byte, string, or proto.Message struct.
+	MetaDelete(key string) error                                                // Delete a metadata key.
+	Meta(key string, dst interface{}) error                                     // Retrieve metadata key and populate into dst.  NB: dst must be one of *[]byte, *string, or proto.Message struct.
+	NormalizeSubPackageKeys() error                                             // DB fixer utility.
+	BackupTo(destFile string) error                                             // Create a backup copy of the DB.  Return ErrNotImplemented if not supported.
+	RebuildTo(newDBFile string) error                                           // Rebuild a fresh copy of the DB at destination.  Return ErrNotImplmented if not supported.
 }
 
 type Config interface {
@@ -61,6 +64,17 @@ func NewClient(config Config) Client {
 	default:
 		panic(fmt.Errorf("no client constructor available for db configuration type: %v", typ))
 	}
+}
+
+type QueueOptions struct {
+	Priority int
+}
+
+func NewQueueOptions() *QueueOptions {
+	opts := &QueueOptions{
+		Priority: DefaultQueuePriority,
+	}
+	return opts
 }
 
 // WithClient is a convenience utility which handles DB client construction,

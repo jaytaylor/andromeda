@@ -417,14 +417,18 @@ func (client *BoltClient) RecordImportedBy(resources map[string]*domain.PackageR
 	}
 	// TODO: Put all in a single transaction.
 	if len(entries) > 0 {
-		if _, err := client.ToCrawlAdd(entries...); err != nil {
+		if _, err := client.ToCrawlAdd(entries, nil); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (client *BoltClient) ToCrawlAdd(entries ...*domain.ToCrawlEntry) (int, error) {
+func (client *BoltClient) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *QueueOptions) (int, error) {
+	if opts == nil {
+		opts = NewQueueOptions()
+	}
+
 	candidates := map[string]*domain.ToCrawlEntry{}
 	for _, entry := range entries {
 		candidates[entry.PackagePath] = entry
@@ -463,11 +467,15 @@ func (client *BoltClient) ToCrawlAdd(entries ...*domain.ToCrawlEntry) (int, erro
 		toAdd = append(toAdd, boltqueue.NewMessageB(v))
 	}
 
-	if err := client.q.Enqueue(TableToCrawl, 3, toAdd...); err != nil {
+	if err := client.q.Enqueue(TableToCrawl, opts.Priority, toAdd...); err != nil {
 		return 0, err
 	}
 
 	return numNew, nil
+}
+
+func (client *BoltClient) ToCrawlRemove(pkgs []string) (int, error) {
+	return 0, ErrNotImplemented
 }
 
 // ToCrawlDequeue pops the next *domain.ToCrawlEntry off the from of the crawl queue.

@@ -412,7 +412,7 @@ func (m *Master) enqueueToCrawlsMap(toCrawls map[string]*domain.ToCrawlEntry) er
 	for _, entry := range toCrawls {
 		list = append(list, entry)
 	}
-	if n, err := m.db.ToCrawlAdd(list...); err != nil {
+	if n, err := m.db.ToCrawlAdd(list, nil); err != nil {
 		log.Warnf("Problem enqueueing %v new candidate to-crawl entries: %s", len(toCrawls), err)
 		return err
 	} else if n > 0 {
@@ -427,7 +427,11 @@ func (m *Master) enqueueToCrawlsMap(toCrawls map[string]*domain.ToCrawlEntry) er
 
 func (m *Master) requeue(entry *domain.ToCrawlEntry, cause error) error {
 	log.WithField("pkg", entry.PackagePath).Debugf("Attempting re-queue entry due to: %s", cause)
-	if _, err := m.db.ToCrawlAdd(entry); err != nil {
+
+	opts := db.NewQueueOptions()
+	opts.Priority = db.DefaultQueuePriority + 2
+
+	if _, err := m.db.ToCrawlAdd([]*domain.ToCrawlEntry{entry}, opts); err != nil {
 		log.WithField("pkg", entry.PackagePath).Errorf("Re-queueing failed: %s (highly undesirable, graph integrity compromised)", err)
 		return err
 	}

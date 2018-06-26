@@ -38,7 +38,7 @@ func TestCrawlerRun(t *testing.T) {
 
 	if err := db.WithClient(db.NewBoltConfig(dbFile), func(dbClient db.Client) error {
 		// Add several (3+) to-crawl entries.
-		if _, err := dbClient.ToCrawlAdd(toCrawls...); err != nil {
+		if _, err := dbClient.ToCrawlAdd(toCrawls, nil); err != nil {
 			return err
 		}
 
