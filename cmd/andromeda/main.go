@@ -20,9 +20,10 @@ import (
 )
 
 var (
-	DBFile  = "andromeda.bolt"
-	Quiet   bool
-	Verbose bool
+	DBFile        = "andromeda.bolt"
+	RebuildDBFile string
+	Quiet         bool
+	Verbose       bool
 
 	BootstrapGoDocPackagesFile string
 
@@ -52,6 +53,8 @@ func init() {
 
 	remoteCrawlerCmd.Flags().StringVarP(&CrawlServerAddr, "addr", "a", CrawlServerAddr, "Crawl server host:port address spec")
 
+	rebuildDBCmd.Flags().StringVarP(&RebuildDBFile, "target", "t", RebuildDBFile, "Target destination filename")
+
 	rootCmd.AddCommand(bootstrapCmd)
 	rootCmd.AddCommand(crawlCmd)
 	rootCmd.AddCommand(enqueueCmd)
@@ -63,6 +66,7 @@ func init() {
 	rootCmd.AddCommand(webCmd)
 	rootCmd.AddCommand(remoteCrawlerCmd)
 	rootCmd.AddCommand(normalizeSubPackageKeysCmd)
+	rootCmd.AddCommand(rebuildDBCmd)
 }
 
 func main() {
@@ -423,9 +427,10 @@ var remoteCrawlerCmd = &cobra.Command{
 }
 
 var normalizeSubPackageKeysCmd = &cobra.Command{
-	Use:   "normalize-sub-pkg-keys",
-	Short: ".. jay will fill this long one out sometime ..",
-	Long:  ".. jay will fill this long one out sometime ..",
+	Use:     "normalize-sub-pkg-keys",
+	Aliases: []string{"normalize-subpkg-keys"},
+	Short:   ".. jay will fill this long one out sometime ..",
+	Long:    ".. jay will fill this long one out sometime ..",
 	PreRun: func(_ *cobra.Command, _ []string) {
 		initLogging()
 	},
@@ -433,6 +438,23 @@ var normalizeSubPackageKeysCmd = &cobra.Command{
 		dbCfg := db.NewBoltConfig(DBFile)
 		if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
 			return dbClient.NormalizeSubPackageKeys()
+		}); err != nil {
+			log.Fatal(err)
+		}
+	},
+}
+
+var rebuildDBCmd = &cobra.Command{
+	Use:   "rebuild-db",
+	Short: "Rebuilds the database",
+	Long:  "Rebuilds the entire database",
+	PreRun: func(_ *cobra.Command, _ []string) {
+		initLogging()
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		dbCfg := db.NewBoltConfig(DBFile)
+		if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
+			return dbClient.RebuildTo(RebuildDBFile)
 		}); err != nil {
 			log.Fatal(err)
 		}

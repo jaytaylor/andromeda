@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
 	"gigawatt.io/errorlib"
+	"gigawatt.io/oslib"
 	"github.com/coreos/bbolt"
 	"github.com/gogo/protobuf/proto"
 	log "github.com/sirupsen/logrus"
@@ -643,7 +645,7 @@ func (client *BoltClient) applyBatchUpdate(fn BatchUpdateFunc) error {
 			} else if changed {
 				batch = append(batch, pkg)
 				if len(batch) >= batchSize {
-					log.WithField("this-batch", len(batch)).WithField("total-so-far", n).Debug("Saving batch")
+					log.WithField("this-batch", len(batch)).WithField("total-added", n).Debug("Saving batch")
 					if err := client.packageSave(tx, batch); err != nil {
 						return err
 					}
@@ -654,12 +656,148 @@ func (client *BoltClient) applyBatchUpdate(fn BatchUpdateFunc) error {
 			}
 		}
 		if len(batch) > 0 {
-			log.WithField("this-batch", len(batch)).WithField("total-so-far", n).Debug("Saving batch (final)")
+			log.WithField("this-batch", len(batch)).WithField("total-added", n).Debug("Saving batch (final)")
 			if err := client.PackageSave(batch...); err != nil {
 				return err
 			}
 		}
 		return nil
+	})
+}
+
+func (client *BoltClient) BackupTo(destFile string) error {
+	return client.db.View(func(tx *bolt.Tx) error {
+		if exists, err := oslib.PathExists(destFile); err != nil {
+			return err
+		} else if exists {
+			return errors.New("destination DB file already exists")
+		}
+		file, err := os.OpenFile(destFile, os.O_CREATE|os.O_RDWR, os.FileMode(int(0600)))
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		log.WithField("src-db", client.config.DBFile).WithField("backup-dest", destFile).Info("Backing up DB")
+		n, err := tx.WriteTo(file)
+		if err != nil {
+			return err
+		}
+		log.WithField("new-db", destFile).WithField("bytes-written", n).Info("Backup finished successfully")
+		return nil
+		// newDB, err := bolt.Open(client.config.DBFile, 0600, client.config.BoltOptions)
+		// if err != nil {
+		// 	return err
+		// }
+		// return tx.ForEach(func(name []byte, b *bolt.Bucket) error {
+		// 	log.WithField("bucket", string(name)).Debug("Cloning bucket")
+		// 	if newTx, err = newDB.Begin(); err != nil {
+		// 		return err
+		// 	}
+		// 	tx.WriteTo(
+
+		// 	// newDB.Update(func(tx *bolt.Tx) error {
+		// 	// 	var (
+		// 	// 		c     = b.Cursor()
+		// 	// 		newTx *bolt.Tx
+		// 	// 		newB  *bolt.Bucket
+		// 	// 		err   error
+		// 	// 		n     int // Tracks number of pending items in the current transaction.
+		// 	// 	)
+		// 	// 	if newTx, err = newDB.Begin(); err != nil {
+		// 	// 		return err
+		// 	// 	}
+		// 	// 	if newB, err = newTx.CreateBucketIfNotExists(name); err != nil {
+		// 	// 		return err
+		// 	// 	}
+		// 	// 	for k, v := c.First(); k != nil; k, v = c.Next() {
+		// 	// 		if n >= rebuildBatchSize {
+		// 	// 			newTx.Bucket(
+		// 	// 			if newTx, err = newDB.Begin(); err != nil {
+		// 	// 				return err
+		// 	// 			}
+		// 	// 			n = 0
+		// 	// 		}
+
+		// 	// 	}
+		// 	// })
+		// })
+	})
+}
+
+const rebuildBatchSize = 25000
+
+func (client *BoltClient) RebuildTo(newDBFile string) error {
+	if exists, err := oslib.PathExists(newDBFile); err != nil {
+		return err
+	} else if exists {
+		return errors.New("destination DB file already exists")
+	}
+
+	log.WithField("src-db", client.config.DBFile).WithField("new-db", newDBFile).Info("Rebuilding DB")
+	newDB, err := bolt.Open(newDBFile, 0600, client.config.BoltOptions)
+	if err != nil {
+		log.Error(err.Error())
+		return err
+	}
+	defer newDB.Close()
+
+	return client.db.View(func(tx *bolt.Tx) error {
+		return tx.ForEach(func(name []byte, b *bolt.Bucket) error {
+			log.WithField("bucket", string(name)).Debug("Rebuilding bucket")
+			var (
+				c     = b.Cursor()
+				newTx *bolt.Tx
+				newB  *bolt.Bucket
+				err   error
+				n     int // Tracks number of pending items in the current transaction.
+				t     int // Tracks total number of items copied.
+			)
+			if newTx, err = newDB.Begin(true); err != nil {
+				log.Error(err.Error())
+				return err
+			}
+			if newB, err = newTx.CreateBucket(name); err != nil {
+				log.Error(err.Error())
+				return err
+			}
+			for k, v := c.First(); k != nil; k, v = c.Next() {
+				if n >= rebuildBatchSize {
+					log.WithField("bucket", string(name)).WithField("items-in-tx", n).WithField("total-items-added", t).Debug("Committing batch")
+					if err = newTx.Commit(); err != nil {
+						log.Error(err.Error())
+						return err
+					}
+					n = 0
+					if newTx, err = newDB.Begin(true); err != nil {
+						log.Error(err.Error())
+						return err
+					}
+					if newB, err = newTx.CreateBucketIfNotExists(name); err != nil {
+						log.Error(err.Error())
+						return err
+					}
+				}
+				if err = newB.Put(k, v); err != nil {
+					log.Error(err.Error())
+					return err
+				}
+				n++
+				t++
+			}
+			if n > 0 || t == 0 {
+				if t == 0 {
+					log.WithField("bucket", string(name)).Debug("Bucket was empty")
+				} else {
+					log.WithField("bucket", string(name)).WithField("items-in-tx", n).WithField("total-items-added", t).Debug("Committing batch")
+				}
+				if err = newTx.Commit(); err != nil {
+					log.Error(err.Error())
+					return err
+				}
+				n = 0
+			}
+			return nil
+		})
 	})
 }
 
