@@ -121,6 +121,7 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.CrawlRe
 		return nil, err
 	}
 	ctx.rr = rr
+	pkg.Path = rr.Root
 
 	now := time.Now()
 
