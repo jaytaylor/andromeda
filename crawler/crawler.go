@@ -3,7 +3,6 @@ package crawler
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -363,7 +362,7 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 			log.WithField("candidate-pkg-path", goPkg.Root).Debugf("Ignoring non-fatal error=%s because still got some data back", err)
 		}
 		pc.Data.SubPackages[goPkg.ImportPath] = domain.NewSubPackage(goPkg.Name)
-		pc.Data.SubPackages[goPkg.ImportPath].Readme = detectReadme(dir)
+		// pc.Data.SubPackages[goPkg.ImportPath].Readme = detectReadme(dir)
 		// log.Infof("%# v", *goPkg)
 		for _, imp := range goPkg.Imports {
 			if pieces := strings.SplitN(imp, "/vendor/", 2); len(pieces) > 1 {
@@ -492,7 +491,7 @@ func dirSize(path string) (uint64, error) {
 	return size, err
 }
 
-func detectReadme(localPath string) string {
+/*func detectReadme(localPath string) string {
 	candidates := []string{
 		"README.md",
 		"readme.md",
@@ -521,7 +520,7 @@ func detectReadme(localPath string) string {
 		}
 	}
 	return ""
-}
+}*/
 
 // PackagePathToRepoRoot isolates and returns a corresponding *vcs.RepoRoot for the
 // named package.

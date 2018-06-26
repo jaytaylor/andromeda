@@ -8,13 +8,13 @@ import "google/protobuf/timestamp.proto";
 option go_package = "jaytaylor.com/andromeda/domain";
 
 message Package {
-  uint64 id = 1 [(gogoproto.customname) = "ID"];
-  string name = 2;
-  string path = 3;
-  string url = 4 [(gogoproto.customname) = "URL"]; // TODO: Rename to Repo, and auto calc the URL if possible..
-  string docs_url = 5 [(gogoproto.customname) = "DocsURL"];
-  string owner = 6;
-  string vcs = 7 [(gogoproto.customname) = "VCS"];
+  uint64 id = 1 [(gogoproto.customname) = "ID"]; //, (gogoproto.moretags) = "gorm:\"primary_key;auto_increment\""];
+  string name = 2; // [(gogoproto.moretags) = "gorm:\"type:varchar(64);\""];
+  string path = 3; // [(gogoproto.moretags) = "gorm:\"type:varchar(255);unique_index\""];
+  string url = 4 [(gogoproto.customname) = "URL"]; //, (gogoproto.moretags) = "gorm:\"type:varchar(255);unique\""]; // TODO: Rename to Repo, and auto calc the URL if possible..
+  string docs_url = 5 [(gogoproto.customname) = "DocsURL"]; //, (gogoproto.moretags) = "gorm:\"type:varchar(255)\""];
+  string owner = 6; // [(gogoproto.moretags) = "gorm:\"type:varchar(64)\""];
+  string vcs = 7 [(gogoproto.customname) = "VCS"]; //, (gogoproto.moretags) = "gorm:\"type:varchar(16)\""];
   map<string, PackageReferences> imported_by = 8; // TODO: Consider making this a type which tracks when the import was first and last seen.
   PackageSnapshot data = 9;
   repeated PackageCrawl history = 10;
