@@ -16,7 +16,8 @@ const (
 )
 
 var (
-	ErrKeyNotFound = errors.New("requested key not found")
+	ErrKeyNotFound    = errors.New("requested key not found")
+	ErrNotImplemented = errors.New("function not implemented")
 )
 
 type Client interface {
@@ -34,14 +35,15 @@ type Client interface {
 	RecordImportedBy(resources map[string]*domain.PackageReferences) error // Save imported-by relationship updates.
 	ToCrawlAdd(entries ...*domain.ToCrawlEntry) (int, error)               // Only adds entries which don't already exist.  Returns number of new items added.
 	ToCrawlDequeue() (*domain.ToCrawlEntry, error)                         // Pop an entry from the crawl queue.
-	//ToCrawl(pkgPath string) (*domain.ToCrawlEntry, error)          // Retrieves a single to-crawl entry.
-	EachToCrawl(func(entry *domain.ToCrawlEntry)) error               // Iterates over all to-crawl entries and invokes callback on each.
-	EachToCrawlWithBreak(func(entry *domain.ToCrawlEntry) bool) error // Iterates over to-crawl entries until callback returns false.
-	ToCrawlsLen() (int, error)                                        // Number of packages currently awaiting crawl.
-	MetaSave(key string, src interface{}) error                       // Store metadata key/value.  NB: src must be one of raw []byte, string, or proto.Message struct.
-	MetaDelete(key string) error                                      // Delete a metadata key.
-	Meta(key string, dst interface{}) error                           // Retrieve metadata key and populate into dst.  NB: dst must be one of *[]byte, *string, or proto.Message struct.
-	NormalizeSubPackageKeys() error                                   // DB fixer utility.
+	EachToCrawl(func(entry *domain.ToCrawlEntry)) error                    // Iterates over all to-crawl entries and invokes callback on each.
+	EachToCrawlWithBreak(func(entry *domain.ToCrawlEntry) bool) error      // Iterates over to-crawl entries until callback returns false.
+	ToCrawlsLen() (int, error)                                             // Number of packages currently awaiting crawl.
+	MetaSave(key string, src interface{}) error                            // Store metadata key/value.  NB: src must be one of raw []byte, string, or proto.Message struct.
+	MetaDelete(key string) error                                           // Delete a metadata key.
+	Meta(key string, dst interface{}) error                                // Retrieve metadata key and populate into dst.  NB: dst must be one of *[]byte, *string, or proto.Message struct.
+	NormalizeSubPackageKeys() error                                        // DB fixer utility.
+	BackupTo(destFile string) error                                        // Create a backup copy of the DB.  Return ErrNotImplemented if not supported.
+	RebuildTo(newDBFile string) error                                      // Rebuild a fresh copy of the DB at destination.  Return ErrNotImplmented if not supported.
 }
 
 type Config interface {
