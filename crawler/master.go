@@ -83,13 +83,26 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			err   error
 		)
 
+	Dequeue:
 		if entry, err = m.db.ToCrawlDequeue(); err != nil {
 			if err == io.EOF {
 				return nil
 			}
 			return err
 		}
-		log.WithField("entry", fmt.Sprintf("%# v", entry)).Debug("Sending to remote crawler")
+		var alreadyExists bool
+		if pkg, _ := m.db.Package(entry.PackagePath); pkg != nil {
+			alreadyExists = true
+			if len(pkg.History) > 2 {
+				log.WithField("entry", entry.PackagePath).Debug("Package has already been crawled several times, discarding entry")
+				// log.WithField("entry", entry.PackagePath).Debug("Package has already been crawled several times, placing to rear of queue")
+				// if err = m.requeue(entry, errors.New("already crawled several times")); err != nil {
+				// 	return err
+				// }
+				goto Dequeue
+			}
+		}
+		log.WithField("entry", entry.PackagePath).WithField("already-exists", alreadyExists).Debug("Sending to remote crawler")
 		if err = stream.Send(entry); err != nil {
 			if err2 := m.requeue(entry, err); err2 != nil {
 				return errorlib.Merge([]error{err, err2})
