@@ -242,9 +242,13 @@ func (service *WebService) pkg(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := tpl.Execute(w, pkg); err != nil {
-		web.RespondWithHtml(w, 500, err.Error())
-		return
+	if pkg.Path == pkgPath {
+		if err := tpl.Execute(w, pkg); err != nil {
+			web.RespondWithHtml(w, 500, err.Error())
+			return
+		}
+	} else {
+		service.subPkgFallback(w, req, pkgPath, pkg)
 	}
 }
 
@@ -270,5 +274,32 @@ func (service *WebService) pkgFallback(w http.ResponseWriter, req *http.Request,
 	} else {
 		web.RespondWithHtml(w, 500, err.Error())
 	}
+}
 
+type SubPackageContext struct {
+	Path string
+	Pkg  *domain.Package
+	Sub  *domain.SubPackage
+}
+
+func (service *WebService) subPkgFallback(w http.ResponseWriter, req *http.Request, pkgPath string, pkg *domain.Package) {
+	const asset = "subpackage.tpl"
+	content, err := service.staticFilesAssetProvider()(asset)
+	if err != nil {
+		panic(fmt.Errorf("problem with asset %q: %v", asset, err))
+	}
+	tpl := template.Must(template.New(asset).Funcs(sprig.FuncMap()).Parse(string(content)))
+
+	if sub, ok := pkg.Data.SubPackages[pkgPath]; ok {
+		tplCtx := &SubPackageContext{
+			Path: pkgPath,
+			Pkg:  pkg,
+			Sub:  sub,
+		}
+		if err := tpl.Execute(w, tplCtx); err != nil {
+			web.RespondWithHtml(w, 500, err.Error())
+		}
+	} else {
+		web.RespondWithHtml(w, 404, fmt.Sprintf(`%[1]q not found within <a href="/%[2]v">%[2]v</a>`, pkgPath, pkg.Path))
+	}
 }
