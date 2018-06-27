@@ -240,6 +240,14 @@ func (pc *PackageCrawl) AddMessage(msg string) {
 	if pc.JobMessages == nil {
 		pc.JobMessages = []string{}
 	}
+	// TODO: Perhaps change JobMessages to a map where the value is the number
+	//       of occurrences.
+	// Don't add duplicate messages.
+	for _, jm := range pc.JobMessages {
+		if jm == msg {
+			return
+		}
+	}
 	pc.JobMessages = append(pc.JobMessages, msg)
 }
 
