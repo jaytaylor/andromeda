@@ -366,7 +366,10 @@ func (client *BoltClient) PackagesLen() (int, error) {
 }
 
 func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map[string]*domain.PackageReferences) error {
-	entries := []*domain.ToCrawlEntry{}
+	var (
+		entries     = []*domain.ToCrawlEntry{}
+		discoveries = []string{}
+	)
 
 	if err := client.db.Update(func(tx *bolt.Tx) error {
 		pkgPaths := []string{}
@@ -386,6 +389,7 @@ func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map
 					Reason:      fmt.Sprintf("imported-by ref path=%v", refPkg.Path),
 				}
 				entries = append(entries, entry)
+				discoveries = append(discoveries, pkgPath)
 				continue
 			}
 			if pkg.ImportedBy == nil {
@@ -417,6 +421,7 @@ func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map
 	}
 	// TODO: Put all in a single transaction.
 	if len(entries) > 0 {
+		log.WithField("ref-pkg", refPkg.Path).WithField("to-crawls", len(entries)).Debugf("Adding discovered to-crawls: %v", discoveries)
 		if _, err := client.ToCrawlAdd(entries, nil); err != nil {
 			return err
 		}
