@@ -1,0 +1,24 @@
+# Instructions
+#
+# 1.  Place at: /etc/systemd/system/mnt-ramdisk.automount 
+#
+# 2.  $ mkdir /mnt/ramdisk && chmod 777 /mnt/ramdisk
+#
+# 3.  Add line to /etc/fstab:
+#
+#     tmpfs	/mnt/ramdisk	tmpfs	rw,size=4096M 0 0
+#
+# 4.  $ systemctl daemon-reload
+#     $ systemctl enable mnt-ramdisk.automount 
+#     $ systemctl start mnt-ramdisk.automount
+#
+
+[Unit]
+Description=Ramdisk Mount
+
+[Automount]
+Where=/mnt/ramdisk
+
+[Install]
+WantedBy=multi-user.target
+

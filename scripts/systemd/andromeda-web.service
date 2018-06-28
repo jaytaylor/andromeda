@@ -1,0 +1,15 @@
+[Unit]
+Description=Andromeda Web Service
+After=network.target
+
+[Service]
+Type=simple
+User=myuser
+EnvironmentFile=-/etc/default/andromeda
+WorkingDirectory=/home/myuser/go/src/jaytaylor.com/andromeda
+ExecStart=/home/myuser/go/bin/andromeda web -v -a 0.0.0.0:8001
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+Alias=andromeda.service
