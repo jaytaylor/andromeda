@@ -1,0 +1,15 @@
+[Unit]
+Description=Andromeda Remote Crawler Service
+After=network.target
+
+[Service]
+Type=simple
+User=myuser
+EnvironmentFile=-/etc/default/andromeda
+WorkingDirectory=/home/myuser/go/src/jaytaylor.com/andromeda
+ExecStart=/home/myuser/go/bin/andromeda remote-crawler -v -a 127.0.0.1:8001 --delete-after -s /mnt/ramdisk/src
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
