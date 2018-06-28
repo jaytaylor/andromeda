@@ -553,6 +553,7 @@ func PackagePathToRepoRoot(pkgPath string) (*vcs.RepoRoot, error) {
 			return nil, err
 		}
 		rr.Repo = strings.Replace(rr.Repo, "https://github.com/", "git@github.com:", 1)
+		rr.Repo = strings.Replace(rr.Repo, "https://gitlab.com/", "git@gitlab.com:", 1)
 		//logInfof("root=%v repo=%v vcs=%v", rr.Root, rr.Repo, rr.VCS.Name)
 		// log.WithField("root", rr.Root).WithField("repo", rr.Repo).WithField("vcs", rr.VCS.Name).Debug("Found rr OK")
 	} else {
