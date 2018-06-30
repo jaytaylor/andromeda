@@ -315,34 +315,63 @@ func (client *BoltClient) PathPrefixSearch(prefix string) (map[string]*domain.Pa
 }
 
 func (client *BoltClient) EachPackage(fn func(pkg *domain.Package)) error {
+	var protoErr error
+	if err := client.EachRow(TablePackages, func(k []byte, v []byte) {
+		pkg := &domain.Package{}
+		if protoErr = proto.Unmarshal(v, pkg); protoErr != nil {
+			log.Errorf("Unexpected proto unmarshal error: %s", protoErr)
+			protoErr = fmt.Errorf("unmarshaling pkg=%v: %s", string(k), protoErr)
+		}
+		fn(pkg)
+	}); err != nil {
+		return err
+	}
+	if protoErr != nil {
+		return protoErr
+	}
+	return nil
+}
+
+func (client *BoltClient) EachPackageWithBreak(fn func(pkg *domain.Package) bool) error {
+	var protoErr error
+	if err := client.EachRowWithBreak(TablePackages, func(k []byte, v []byte) bool {
+		pkg := &domain.Package{}
+		if protoErr = proto.Unmarshal(v, pkg); protoErr != nil {
+			log.Errorf("Unexpected proto unmarshal error: %s", protoErr)
+			protoErr = fmt.Errorf("unmarshaling pkg=%v: %s", string(k), protoErr)
+			return false
+		}
+		return fn(pkg)
+	}); err != nil {
+		return err
+	}
+	if protoErr != nil {
+		return protoErr
+	}
+	return nil
+}
+
+func (client *BoltClient) EachRow(table string, fn func(k []byte, v []byte)) error {
 	return client.db.View(func(tx *bolt.Tx) error {
 		var (
-			b = tx.Bucket([]byte(TablePackages))
+			b = tx.Bucket([]byte(table))
 			c = b.Cursor()
 		)
 		for k, v := c.First(); k != nil; k, v = c.Next() {
-			var pkg domain.Package
-			if err := proto.Unmarshal(v, &pkg); err != nil {
-				return err
-			}
-			fn(&pkg)
+			fn(k, v)
 		}
 		return nil
 	})
 }
 
-func (client *BoltClient) EachPackageWithBreak(fn func(pkg *domain.Package) bool) error {
+func (client *BoltClient) EachRowWithBreak(table string, fn func(k []byte, v []byte) bool) error {
 	return client.db.View(func(tx *bolt.Tx) error {
 		var (
-			b = tx.Bucket([]byte(TablePackages))
+			b = tx.Bucket([]byte(table))
 			c = b.Cursor()
 		)
 		for k, v := c.First(); k != nil; k, v = c.Next() {
-			var pkg domain.Package
-			if err := proto.Unmarshal(v, &pkg); err != nil {
-				return err
-			}
-			if cont := fn(&pkg); !cont {
+			if cont := fn(k, v); !cont {
 				break
 			}
 		}
@@ -812,48 +841,6 @@ func (client *BoltClient) RebuildTo(newDBFile string) error {
 			return nil
 		})
 	})
-}
-
-func (client *BoltClient) Hosts() (HostStats, error) {
-	hosts := HostStats{}
-	if err := client.db.View(func(tx *bolt.Tx) error {
-		var (
-			b   = tx.Bucket([]byte(TablePackages))
-			c   = b.Cursor()
-			n   int
-			err error
-		)
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			if n > 0 && n%10000 == 0 {
-				log.WithField("n", n).Debug("Processed chunk")
-			}
-			if bytes.Contains(k, []byte{'.'}) {
-				h := string(bytes.Split(k, []byte{'/'})[0])
-				if _, ok := hosts[h]; !ok {
-					hosts[h] = map[string]int{}
-				}
-
-				if _, ok := hosts[h]["repos"]; !ok {
-					hosts[h]["repos"] = 0
-				}
-				hosts[h]["repos"]++
-
-				if _, ok := hosts[h]["packages"]; !ok {
-					hosts[h]["packages"] = 0
-				}
-				pkg := &domain.Package{}
-				if err = proto.Unmarshal(v, pkg); err != nil {
-					return fmt.Errorf("unmarshaling pkg=%v: %s", string(k), err)
-				}
-				hosts[h]["packages"] += len(pkg.Data.SubPackages)
-			}
-			n++
-		}
-		return nil
-	}); err != nil {
-		return hosts, err
-	}
-	return hosts, nil
 }
 
 /*func compress(bs []byte) ([]byte, error) {
