@@ -19,21 +19,6 @@ import (
 	"jaytaylor.com/andromeda/web"
 )
 
-var (
-	DBFile        = "andromeda.bolt"
-	RebuildDBFile string
-	Quiet         bool
-	Verbose       bool
-
-	BootstrapGoDocPackagesFile string
-
-	WebAddr string
-
-	CrawlServerAddr = "127.0.01:8082"
-
-	EnqueuePriority = db.DefaultQueuePriority
-)
-
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&Quiet, "quiet", "q", false, "Activate quiet log output")
 	rootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Activate verbose log output")
@@ -65,15 +50,28 @@ func init() {
 	rootCmd.AddCommand(queueDeleteCmd)
 	rootCmd.AddCommand(repoRootCmd)
 	rootCmd.AddCommand(purgeTableCmd)
-	rootCmd.AddCommand(statsCmd)
 	rootCmd.AddCommand(getCmd)
 	rootCmd.AddCommand(lsCmd)
 	rootCmd.AddCommand(webCmd)
 	rootCmd.AddCommand(remoteCrawlerCmd)
 	rootCmd.AddCommand(normalizeSubPackageKeysCmd)
-	rootCmd.AddCommand(hostsCmd)
 	rootCmd.AddCommand(rebuildDBCmd)
 }
+
+var (
+	DBFile        = "andromeda.bolt"
+	RebuildDBFile string
+	Quiet         bool
+	Verbose       bool
+
+	BootstrapGoDocPackagesFile string
+
+	WebAddr string
+
+	CrawlServerAddr = "127.0.01:8082"
+
+	EnqueuePriority = db.DefaultQueuePriority
+)
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
@@ -83,26 +81,8 @@ func main() {
 
 var rootCmd = &cobra.Command{
 	Use:   "andromeda",
-	Short: ".. jay will fill this out sometime ..",
-	Long:  ".. jay will fill this long one out sometime ..",
-	//Args:  cobra.MinimumNArgs(1),
-	PreRun: func(_ *cobra.Command, _ []string) {
-		initLogging()
-	},
-	Run: func(cmd *cobra.Command, args []string) {
-		log.Info("See -h/--help for usage information")
-		/*if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
-			if err := bootstrap(dbClient); err != nil {
-				return fmt.Errorf("boostrap: %s", err)
-			}
-			if err := crawl(dbClient); err != nil {
-				return fmt.Errorf("crawl: %s", err)
-			}
-			return nil
-		}); err != nil {
-			log.Fatalf("main: %s", err)
-		}*/
-	},
+	Short: "Search the entire visible golang universe",
+	Long:  "The most complete golang packages DB in this universe",
 }
 
 var bootstrapCmd = &cobra.Command{
@@ -211,11 +191,9 @@ var repoRootCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("%s", err)
 		}
-		bs, err := json.MarshalIndent(rr, "", "    ")
-		if err != nil {
-			log.Fatalf("%s", err)
+		if err := emitJSON(rr); err != nil {
+			log.Fatalf("main: %s", err)
 		}
-		fmt.Printf("%v\n", string(bs))
 	},
 }
 
@@ -250,33 +228,6 @@ var purgeTableCmd = &cobra.Command{
 	},
 }
 
-var statsCmd = &cobra.Command{
-	Use:   "stats",
-	Short: ".. jay will fill this out sometime ..",
-	Long:  ".. jay will fill this long one out sometime ..",
-	PreRun: func(_ *cobra.Command, _ []string) {
-		initLogging()
-	},
-	Run: func(cmd *cobra.Command, args []string) {
-		if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
-			pl, err := dbClient.PackagesLen()
-			if err != nil {
-				return fmt.Errorf("getting packages count: %s", err)
-			}
-			log.WithField("packages", pl).Info("count")
-
-			tcl, err := dbClient.ToCrawlsLen()
-			if err != nil {
-				return fmt.Errorf("getting to-crawls count: %s", err)
-			}
-			log.WithField("to-crawls", tcl).Info("count")
-			return nil
-		}); err != nil {
-			log.Fatalf("main: %s", err)
-		}
-	},
-}
-
 var getCmd = &cobra.Command{
 	Use:   "get",
 	Short: "[table] [key]",
@@ -293,11 +244,7 @@ var getCmd = &cobra.Command{
 				if err != nil {
 					return fmt.Errorf("getting package: %s", err)
 				}
-				j, err := json.MarshalIndent(pkg, "", "    ")
-				if err != nil {
-					return fmt.Errorf("marshalling package to JSON: %s", err)
-				}
-				fmt.Println(string(j))
+				return emitJSON(pkg)
 
 			case db.TableToCrawl, "to-crawls":
 				var entry *domain.ToCrawlEntry
@@ -313,11 +260,7 @@ var getCmd = &cobra.Command{
 				if entry == nil {
 					return fmt.Errorf("to-crawl entry %q not found", args[1])
 				}
-				j, err := json.MarshalIndent(entry, "", "    ")
-				if err != nil {
-					return fmt.Errorf("marshalling to-crawl entry to JSON: %s", err)
-				}
-				fmt.Println(string(j))
+				return emitJSON(entry)
 
 			default:
 				return fmt.Errorf("unrecognized table %q", args[0])
@@ -479,32 +422,6 @@ var normalizeSubPackageKeysCmd = &cobra.Command{
 	},
 }
 
-var hostsCmd = &cobra.Command{
-	Use:   "hosts",
-	Short: "Hosts stats",
-	Long:  "List all hosts and package counts per host",
-	PreRun: func(_ *cobra.Command, _ []string) {
-		initLogging()
-	},
-	Run: func(cmd *cobra.Command, args []string) {
-		dbCfg := db.NewBoltConfig(DBFile)
-		if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
-			hosts, err := dbClient.Hosts()
-			if err != nil {
-				log.Fatal(err)
-			}
-			bs, err := json.MarshalIndent(&hosts, "", "    ")
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Printf("%v\n", string(bs))
-			return nil
-		}); err != nil {
-			log.Fatal(err)
-		}
-	},
-}
-
 var rebuildDBCmd = &cobra.Command{
 	Use:   "rebuild-db",
 	Short: "Rebuilds the database",
@@ -582,4 +499,13 @@ func initLogging() {
 		level = log.ErrorLevel
 	}
 	log.SetLevel(level)
+}
+
+func emitJSON(x interface{}) error {
+	bs, err := json.MarshalIndent(x, "", "    ")
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%v\n", string(bs))
+	return nil
 }

@@ -26,6 +26,8 @@ type Client interface {
 	Open() error                                                                                   // Open / start DB client connection.
 	Close() error                                                                                  // Close / shutdown the DB client connection.
 	Purge(tables ...string) error                                                                  // Reset a DB table.
+	EachRow(table string, fn func(k []byte, v []byte)) error                                       // Invoke a callback on the key/value pair for each row of the named table.
+	EachRowWithBreak(table string, fn func(k []byte, v []byte) bool) error                         // Invoke a callback on the key/value pair for each row of the named table until cb returns false.
 	PackageSave(pkgs ...*domain.Package) error                                                     // Performs an upsert merge operation on a fully crawled package.
 	PackageDelete(pkgPaths ...string) error                                                        // Delete a package from the index.  Complete erasure.
 	Package(pkgPath string) (*domain.Package, error)                                               // Retrieve a specific package..
@@ -45,7 +47,6 @@ type Client interface {
 	MetaDelete(key string) error                                                                   // Delete a metadata key.
 	Meta(key string, dst interface{}) error                                                        // Retrieve metadata key and populate into dst.  NB: dst must be one of *[]byte, *string, or proto.Message struct.
 	NormalizeSubPackageKeys() error                                                                // DB fixer utility.
-	Hosts() (HostStats, error)                                                                     // Map of hosts -> repo and package count per host.
 	BackupTo(destFile string) error                                                                // Create a backup copy of the DB.  Return ErrNotImplemented if not supported.
 	RebuildTo(newDBFile string) error                                                              // Rebuild a fresh copy of the DB at destination.  Return ErrNotImplmented if not supported.
 }
@@ -77,8 +78,6 @@ func NewQueueOptions() *QueueOptions {
 	}
 	return opts
 }
-
-type HostStats map[string]map[string]int
 
 // WithClient is a convenience utility which handles DB client construction,
 // open, and close..
