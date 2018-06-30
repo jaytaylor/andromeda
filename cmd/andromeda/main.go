@@ -71,6 +71,7 @@ func init() {
 	rootCmd.AddCommand(webCmd)
 	rootCmd.AddCommand(remoteCrawlerCmd)
 	rootCmd.AddCommand(normalizeSubPackageKeysCmd)
+	rootCmd.AddCommand(hostsCmd)
 	rootCmd.AddCommand(rebuildDBCmd)
 }
 
@@ -472,6 +473,32 @@ var normalizeSubPackageKeysCmd = &cobra.Command{
 		dbCfg := db.NewBoltConfig(DBFile)
 		if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
 			return dbClient.NormalizeSubPackageKeys()
+		}); err != nil {
+			log.Fatal(err)
+		}
+	},
+}
+
+var hostsCmd = &cobra.Command{
+	Use:   "hosts",
+	Short: "Hosts stats",
+	Long:  "List all hosts and package counts per host",
+	PreRun: func(_ *cobra.Command, _ []string) {
+		initLogging()
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		dbCfg := db.NewBoltConfig(DBFile)
+		if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
+			hosts, err := dbClient.Hosts()
+			if err != nil {
+				log.Fatal(err)
+			}
+			bs, err := json.MarshalIndent(&hosts, "", "    ")
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("%v\n", string(bs))
+			return nil
 		}); err != nil {
 			log.Fatal(err)
 		}
