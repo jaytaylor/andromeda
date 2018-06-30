@@ -814,6 +814,48 @@ func (client *BoltClient) RebuildTo(newDBFile string) error {
 	})
 }
 
+func (client *BoltClient) Hosts() (HostStats, error) {
+	hosts := HostStats{}
+	if err := client.db.View(func(tx *bolt.Tx) error {
+		var (
+			b   = tx.Bucket([]byte(TablePackages))
+			c   = b.Cursor()
+			n   int
+			err error
+		)
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			if n > 0 && n%10000 == 0 {
+				log.WithField("n", n).Debug("Processed chunk")
+			}
+			if bytes.Contains(k, []byte{'.'}) {
+				h := string(bytes.Split(k, []byte{'/'})[0])
+				if _, ok := hosts[h]; !ok {
+					hosts[h] = map[string]int{}
+				}
+
+				if _, ok := hosts[h]["repos"]; !ok {
+					hosts[h]["repos"] = 0
+				}
+				hosts[h]["repos"]++
+
+				if _, ok := hosts[h]["packages"]; !ok {
+					hosts[h]["packages"] = 0
+				}
+				pkg := &domain.Package{}
+				if err = proto.Unmarshal(v, pkg); err != nil {
+					return fmt.Errorf("unmarshaling pkg=%v: %s", string(k), err)
+				}
+				hosts[h]["packages"] += len(pkg.Data.SubPackages)
+			}
+			n++
+		}
+		return nil
+	}); err != nil {
+		return hosts, err
+	}
+	return hosts, nil
+}
+
 /*func compress(bs []byte) ([]byte, error) {
 }
 

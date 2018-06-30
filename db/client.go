@@ -45,6 +45,7 @@ type Client interface {
 	MetaDelete(key string) error                                                                   // Delete a metadata key.
 	Meta(key string, dst interface{}) error                                                        // Retrieve metadata key and populate into dst.  NB: dst must be one of *[]byte, *string, or proto.Message struct.
 	NormalizeSubPackageKeys() error                                                                // DB fixer utility.
+	Hosts() (HostStats, error)                                                                     // Map of hosts -> repo and package count per host.
 	BackupTo(destFile string) error                                                                // Create a backup copy of the DB.  Return ErrNotImplemented if not supported.
 	RebuildTo(newDBFile string) error                                                              // Rebuild a fresh copy of the DB at destination.  Return ErrNotImplmented if not supported.
 }
@@ -76,6 +77,8 @@ func NewQueueOptions() *QueueOptions {
 	}
 	return opts
 }
+
+type HostStats map[string]map[string]int
 
 // WithClient is a convenience utility which handles DB client construction,
 // open, and close..
