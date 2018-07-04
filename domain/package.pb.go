@@ -6,6 +6,7 @@
 
 	It is generated from these files:
 		package.proto
+		pending_references.proto
 		remote_crawler.proto
 		tocrawlentry.proto
 
@@ -16,6 +17,7 @@
 		PackageCrawl
 		PackageSnapshot
 		SubPackage
+		PendingReferences
 		CrawlResult
 		ToCrawlEntry
 */

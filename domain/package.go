@@ -6,6 +6,7 @@ import (
 	"time"
 
 	humanize "github.com/dustin/go-humanize"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/tools/go/vcs"
 
 	"jaytaylor.com/andromeda/pkg/unique"
@@ -109,6 +110,58 @@ func (pkg *Package) Merge(other *Package) *Package {
 	return pkg
 }
 
+func (pkg *Package) MergePending(pendingRefs *PendingReferences) {
+	if !strings.HasPrefix(pendingRefs.PackagePath, pkg.Path) {
+		log.WithField("pkg", pkg.Path).WithField("pending-refs-pkg", pendingRefs.PackagePath).Warnf("Refusing to merge %v mismatched pending package references", len(pendingRefs.ImportedBy))
+		return
+	}
+
+	for importPath, newRefs := range pendingRefs.ImportedBy {
+		importPath = SubPackagePathNormalize(pkg.Path, importPath)
+		if _, ok := pkg.ImportedBy[importPath]; !ok {
+			pkg.ImportedBy[importPath] = NewPackageReferences()
+		}
+		for _, newRef := range newRefs.Refs {
+			var found bool
+			for _, ref := range pkg.ImportedBy[importPath].Refs {
+				if ref.Path == newRef.Path {
+					ref.Merge(newRef)
+					found = true
+					break
+				}
+			}
+			if !found {
+				pkg.ImportedBy[importPath].Refs = append(pkg.ImportedBy[importPath].Refs, newRef)
+			}
+		}
+	}
+}
+
+func (ref *PackageReference) Merge(other *PackageReference) {
+	if ref.Path != other.Path {
+		log.WithField("ref", ref.Path).WithField("other", other.Path).Warn("Refusing to merge mismatched package reference")
+		return
+	}
+	if !ref.Active && !other.Active {
+		return
+	}
+
+	if other.LastSeenAt.After(*ref.LastSeenAt) {
+		if ref.Active && !other.Active {
+			ref.Active = false
+		} else if !ref.Active && other.Active {
+			ref.Active = true
+		}
+		ref.LastSeenAt = other.LastSeenAt
+	}
+
+	if other.FirstSeenAt.Before(*ref.FirstSeenAt) {
+		ref.FirstSeenAt = other.FirstSeenAt
+	}
+}
+
+/* This logic needs checking, or more likely to simply be tossed out completely.
+
 // UpdateImportedBy behaves differently based on whether pkgRef.Active is true or
 // false.
 //
@@ -139,7 +192,7 @@ func (pkg *Package) UpdateImportedBy(subPkgPath string, pkgRef *PackageReference
 		pkg.ImportedBy[subPkgPath] = &PackageReferences{Refs: []*PackageReference{pkgRef}}
 	}
 	// TODO: Sort alphabetically or by a sensible ranking metric.
-}
+}*/
 
 // NormalizeSubPackageKeys runs the sub-package key normalizer on
 // pkg.Data.SubPackages.
@@ -223,6 +276,16 @@ func NewPackageReference(path string, now ...*time.Time) *PackageReference {
 	}
 	pkgRef.LastSeenAt = pkgRef.FirstSeenAt
 	return pkgRef
+}
+
+func NewPackageReferences(refs ...*PackageReference) *PackageReferences {
+	if refs == nil {
+		refs = []*PackageReference{}
+	}
+	pkgRefs := &PackageReferences{
+		Refs: refs,
+	}
+	return pkgRefs
 }
 
 func NewPackageCrawl(now ...*time.Time) *PackageCrawl {

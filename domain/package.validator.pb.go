@@ -6,6 +6,7 @@ Package domain is a generated protocol buffer package.
 
 It is generated from these files:
 	package.proto
+	pending_references.proto
 	remote_crawler.proto
 	tocrawlentry.proto
 
@@ -16,6 +17,7 @@ It has these top-level messages:
 	PackageCrawl
 	PackageSnapshot
 	SubPackage
+	PendingReferences
 	CrawlResult
 	ToCrawlEntry
 */
