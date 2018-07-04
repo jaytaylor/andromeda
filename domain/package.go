@@ -364,6 +364,9 @@ func SubPackagePathNormalize(pkgPath string, subPkgPath string) string {
 		// NB: An empty string signifies the root package path.
 		return ""
 	}
+	if !strings.HasPrefix(subPkgPath, pkgPath) {
+		return subPkgPath
+	}
 	normalized := strings.Replace(subPkgPath, pkgPath+"/", "", 1)
 	return normalized
 }
@@ -371,6 +374,9 @@ func SubPackagePathNormalize(pkgPath string, subPkgPath string) string {
 func SubPackagePathDenormalize(pkgPath string, subPkgPath string) string {
 	if subPkgPath == "" {
 		return pkgPath
+	}
+	if strings.HasPrefix(subPkgPath, pkgPath) {
+		return subPkgPath
 	}
 	denormalized := fmt.Sprintf("%v/%v", pkgPath, subPkgPath)
 	return denormalized

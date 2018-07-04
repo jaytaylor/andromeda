@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/onrik/logrus/filename"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -54,6 +55,7 @@ func init() {
 	remoteCrawlerCmd.Flags().StringVarP(&TLSCAFile, "ca", "", TLSCAFile, "ca.crt file for mutual TLS CA-based authentication")
 
 	rebuildDBCmd.Flags().StringVarP(&RebuildDBFile, "target", "t", RebuildDBFile, "Target destination filename")
+	rebuildAndCleanupDBCmd.Flags().StringVarP(&RebuildDBFile, "target", "t", RebuildDBFile, "Target destination filename")
 
 	rootCmd.AddCommand(bootstrapCmd)
 	rootCmd.AddCommand(crawlCmd)
@@ -65,7 +67,7 @@ func init() {
 	rootCmd.AddCommand(lsCmd)
 	rootCmd.AddCommand(webCmd)
 	rootCmd.AddCommand(remoteCrawlerCmd)
-	rootCmd.AddCommand(normalizeSubPackageKeysCmd)
+	rootCmd.AddCommand(rebuildAndCleanupDBCmd)
 	rootCmd.AddCommand(rebuildDBCmd)
 }
 
@@ -477,24 +479,6 @@ func configureRemoteCrawler(r *crawler.Remote) error {
 	return nil
 }
 
-var normalizeSubPackageKeysCmd = &cobra.Command{
-	Use:     "normalize-sub-pkg-keys",
-	Aliases: []string{"normalize-subpkg-keys"},
-	Short:   ".. jay will fill this long one out sometime ..",
-	Long:    ".. jay will fill this long one out sometime ..",
-	PreRun: func(_ *cobra.Command, _ []string) {
-		initLogging()
-	},
-	Run: func(cmd *cobra.Command, args []string) {
-		dbCfg := db.NewBoltConfig(DBFile)
-		if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
-			return dbClient.NormalizeSubPackageKeys()
-		}); err != nil {
-			log.Fatal(err)
-		}
-	},
-}
-
 var rebuildDBCmd = &cobra.Command{
 	Use:   "rebuild-db",
 	Short: "Rebuilds the database",
@@ -506,6 +490,49 @@ var rebuildDBCmd = &cobra.Command{
 		dbCfg := db.NewBoltConfig(DBFile)
 		if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
 			return dbClient.RebuildTo(RebuildDBFile)
+		}); err != nil {
+			log.Fatal(err)
+		}
+	},
+}
+
+var rebuildAndCleanupDBCmd = &cobra.Command{
+	Use:   "rebuild-cleanup-db",
+	Short: "Rebuilds the database and cleans up records",
+	Long:  "Rebuilds the entire database and applies cleanup filters to the records along the way",
+	PreRun: func(_ *cobra.Command, _ []string) {
+		initLogging()
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		var (
+			dbCfg = db.NewBoltConfig(DBFile)
+			err   error
+		)
+
+		filterFn := func(bucket []byte, k []byte, v []byte) ([]byte, []byte) {
+			if string(bucket) != db.TablePackages {
+				return k, v
+			}
+			pkg := &domain.Package{}
+			if err = proto.Unmarshal(v, pkg); err != nil {
+				log.Fatalf("Unexpected problem unmarshaling protobuf for key=%v: %s", string(k), err)
+			}
+
+			for subPkgPath, _ := range pkg.Data.SubPackages {
+				if strings.Contains(subPkgPath, "/vendor/") || strings.Contains(subPkgPath, "Godep/_workspace/") {
+					delete(pkg.Data.SubPackages, subPkgPath)
+				}
+			}
+			pkg.NormalizeSubPackageKeys()
+
+			if v, err = proto.Marshal(pkg); err != nil {
+				log.Fatalf("Unexpected problem marshaling protobuf for key=%v: %s", string(k), err)
+			}
+			return k, v
+		}
+
+		if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
+			return dbClient.RebuildTo(RebuildDBFile, filterFn)
 		}); err != nil {
 			log.Fatal(err)
 		}
