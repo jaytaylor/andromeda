@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package domain;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "jaytaylor.com/andromeda/domain";
+
+import "package.proto";
+
+message PendingReferences {
+  string package_path = 1;
+  map<string, PackageReferences> imported_by = 2;
+}
