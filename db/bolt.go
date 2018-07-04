@@ -154,9 +154,11 @@ func (client *BoltClient) packageSave(tx *bolt.Tx, pkgs []*domain.Package) error
 			pkg.ID = id
 		}
 
-		if pc := pkg.History[len(pkg.History)-1]; len(pc.JobMessages) > 0 {
-			log.WithField("pkg", pkg.Path).Errorf("Discarding JobMessages: %v", pc.JobMessages)
-			pc.JobMessages = nil
+		if len(pkg.History) > 0 {
+			if pc := pkg.History[len(pkg.History)-1]; len(pc.JobMessages) > 0 {
+				log.WithField("pkg", pkg.Path).Errorf("Discarding JobMessages: %v", pc.JobMessages)
+				pc.JobMessages = nil
+			}
 		}
 
 		if v, err = proto.Marshal(pkg); err != nil {
@@ -395,6 +397,7 @@ func (client *BoltClient) PackagesLen() (int, error) {
 }
 
 func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map[string]*domain.PackageReferences) error {
+	log.Infof("Recording imported  by... %v", len(resources))
 	var (
 		entries     = []*domain.ToCrawlEntry{}
 		discoveries = []string{}
@@ -409,6 +412,7 @@ func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map
 		if err != nil {
 			return err
 		}
+		log.Infof("pkgs=+%v [ %v ]", pkgs, len(pkgs))
 
 		for pkgPath, refs := range resources {
 			pkg, ok := pkgs[pkgPath]
@@ -419,6 +423,7 @@ func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map
 				}
 				entries = append(entries, entry)
 				discoveries = append(discoveries, pkgPath)
+				//pkg = domain.
 				continue
 			}
 			if pkg.ImportedBy == nil {
@@ -444,7 +449,11 @@ func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map
 				}
 			}
 		}
-		return nil
+		pkgsSlice := make([]*domain.Package, 0, len(pkgs))
+		for _, pkg := range pkgs {
+			pkgsSlice = append(pkgsSlice, pkg)
+		}
+		return client.packageSave(tx, pkgsSlice)
 	}); err != nil {
 		return err
 	}
@@ -654,14 +663,6 @@ func (client *BoltClient) Search(q string) (*domain.Package, error) {
 
 type BatchUpdateFunc func(pkg *domain.Package) (changed bool, err error)
 
-func (client *BoltClient) NormalizeSubPackageKeys() error {
-	fixFn := func(pkg *domain.Package) (bool, error) {
-		pkg.NormalizeSubPackageKeys()
-		return true, nil
-	}
-	return client.applyBatchUpdate(fixFn)
-}
-
 func (client *BoltClient) applyBatchUpdate(fn BatchUpdateFunc) error {
 	return client.db.Update(func(tx *bolt.Tx) error {
 		var (
@@ -768,7 +769,7 @@ func (client *BoltClient) BackupTo(destFile string) error {
 
 const rebuildBatchSize = 25000
 
-func (client *BoltClient) RebuildTo(newDBFile string) error {
+func (client *BoltClient) RebuildTo(newDBFile string, kvFilters ...KeyValueFilterFunc) error {
 	if exists, err := oslib.PathExists(newDBFile); err != nil {
 		return err
 	} else if exists {
@@ -803,6 +804,11 @@ func (client *BoltClient) RebuildTo(newDBFile string) error {
 				return err
 			}
 			for k, v := c.First(); k != nil; k, v = c.Next() {
+				if len(kvFilters) > 0 {
+					for _, kvF := range kvFilters {
+						k, v = kvF(name, k, v)
+					}
+				}
 				if n >= rebuildBatchSize {
 					log.WithField("bucket", string(name)).WithField("items-in-tx", n).WithField("total-items-added", t).Debug("Committing batch")
 					if err = newTx.Commit(); err != nil {

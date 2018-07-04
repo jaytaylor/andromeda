@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/tools/go/vcs"
+
 	"jaytaylor.com/andromeda/domain"
 )
 
@@ -119,10 +121,7 @@ func TestBoltDBClientPackageOperations(t *testing.T) {
 
 	for i, pkgPath := range pkgPaths {
 		now := time.Now()
-		pkg := &domain.Package{
-			Path:        pkgPath,
-			FirstSeenAt: &now,
-		}
+		pkg := domain.NewPackage(newFakeRR(pkgPath, pkgPath), &now)
 
 		if err := client.PackageSave(pkg); err != nil {
 			t.Fatal(err)
@@ -191,10 +190,7 @@ func TestBoltDBClientPackageOperations(t *testing.T) {
 		}
 
 		now := time.Now()
-		pkg := &domain.Package{
-			Path:        "jaytaylor.com/archive.is",
-			FirstSeenAt: &now,
-		}
+		pkg := domain.NewPackage(newFakeRR("jaytaylor.com/archive.is", "jaytaylor.com/archive.is"), &now)
 		if err := client.PackageSave(pkg); err != nil {
 			t.Fatal(err)
 		}
@@ -238,6 +234,70 @@ func TestBoltDBClientPackageOperations(t *testing.T) {
 		_, err := client.Package("jaytaylor.com/archive.is/cmd/archive.is")
 		if expected, actual := ErrKeyNotFound, err; actual != expected {
 			t.Errorf("Expected get of non-existant pkg to return error=%v but actual=%v", expected, actual)
+		}
+	}
+
+	// RecordImportedBy tests.
+	{
+		// First, create one of the imported packages to ensure both cases get covered.
+		{
+			pkg := domain.NewPackage(newFakeRR("github.com/ssor/bom", "github.com/ssor/bom"))
+			if err := client.PackageSave(pkg); err != nil {
+				t.Errorf("Problem saving package=%v: %s", pkg.Path, err)
+			}
+		}
+
+		var (
+			now       = time.Now()
+			rr        = newFakeRR("git@github.com:jaytaylor/html2text", "jaytaylor.com/html2text")
+			pkg       = domain.NewPackage(rr)
+			resources = map[string]*domain.PackageReferences{
+				"github.com/olekukonko/tablewriter": &domain.PackageReferences{
+					Refs: []*domain.PackageReference{
+						domain.NewPackageReference("github.com/olekukonko/tablewriter", &now),
+					},
+				},
+				"github.com/ssor/bom": &domain.PackageReferences{
+					Refs: []*domain.PackageReference{
+						domain.NewPackageReference("github.com/ssor/bom", &now),
+					},
+				},
+				"golang.org/x": &domain.PackageReferences{
+					Refs: []*domain.PackageReference{
+						domain.NewPackageReference("golang.org/x/net/html", &now),
+						domain.NewPackageReference("golang.org/x/net/html/atom", &now),
+					},
+				},
+			}
+		)
+
+		pkg.Data = &domain.PackageSnapshot{
+			SubPackages: map[string]*domain.SubPackage{
+				"": &domain.SubPackage{
+					Active: true,
+					Imports: []string{
+						"github.com/olekukonko/tablewriter",
+						"github.com/ssor/bom",
+						"golang.org/x/net/html",
+						"golang.org/x/net/html/atom",
+					},
+					FirstSeenAt: &now,
+					LastSeenAt:  &now,
+				},
+			},
+		}
+
+		if err := client.PackageSave(pkg); err != nil {
+			t.Errorf("Saving package failed: %s", err)
+		}
+		if err := client.RecordImportedBy(pkg, resources); err != nil {
+			t.Errorf("RecordImportedBy failed: %s", err)
+		}
+
+		if err := client.EachPackage(func(pkg *domain.Package) {
+			t.Logf("pkg=%v / %+v", pkg.Path, pkg.ImportedBy)
+		}); err != nil {
+			t.Error(err)
 		}
 	}
 }
@@ -302,4 +362,15 @@ func TestBoltDBClientMetaOperations(t *testing.T) {
 	if err := client.MetaDelete(k); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func newFakeRR(repo string, root string) *vcs.RepoRoot {
+	rr := &vcs.RepoRoot{
+		Repo: repo,
+		Root: root,
+		VCS: &vcs.Cmd{
+			Name: "git",
+		},
+	}
+	return rr
 }

@@ -59,9 +59,10 @@
 <hr>
 
 {{ if .Data.SubPackages }}
+{{ $pkg := . }}
 <h3>{{ len .Data.SubPackages }} Nested Packages:</h3>
 {{ range $subPkgPath, $subPkg := .SubPackagesPretty }}
-<a href="/{{ $subPkgPath }}">{{ $subPkgPath }}</a>
+<a href="/{{ $pkg.Path }}/{{ $subPkgPath }}">{{ $subPkgPath }}</a>
 <br>
 {{ end }}
 {{ end }}

@@ -365,7 +365,15 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 			}
 			log.WithField("candidate-pkg-path", goPkg.Root).Debugf("Ignoring non-fatal error=%s because still got some data back", err)
 		}
+		// Skip vendored imports.
+		if strings.Contains(goPkg.ImportPath, "/vendor/") || strings.Contains(goPkg.ImportPath, "Godep/_workspace/") {
+			return nil
+		}
+
+		// TODO: Add function for this to normalize the sub-pkg import path
+		// going in.
 		pc.Data.SubPackages[goPkg.ImportPath] = domain.NewSubPackage(goPkg.Name)
+
 		// pc.Data.SubPackages[goPkg.ImportPath].Readme = detectReadme(dir)
 		// log.Infof("%# v", *goPkg)
 		for _, imp := range goPkg.Imports {

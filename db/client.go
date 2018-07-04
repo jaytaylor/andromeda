@@ -46,9 +46,8 @@ type Client interface {
 	MetaSave(key string, src interface{}) error                                                    // Store metadata key/value.  NB: src must be one of raw []byte, string, or proto.Message struct.
 	MetaDelete(key string) error                                                                   // Delete a metadata key.
 	Meta(key string, dst interface{}) error                                                        // Retrieve metadata key and populate into dst.  NB: dst must be one of *[]byte, *string, or proto.Message struct.
-	NormalizeSubPackageKeys() error                                                                // DB fixer utility.
 	BackupTo(destFile string) error                                                                // Create a backup copy of the DB.  Return ErrNotImplemented if not supported.
-	RebuildTo(newDBFile string) error                                                              // Rebuild a fresh copy of the DB at destination.  Return ErrNotImplmented if not supported.
+	RebuildTo(newDBFile string, kvFilters ...KeyValueFilterFunc) error                             // Rebuild a fresh copy of the DB at destination.  Return ErrNotImplmented if not supported.  Optionally pass in one or more KeyValueFilterFunc functions.
 }
 
 type Config interface {
@@ -78,6 +77,8 @@ func NewQueueOptions() *QueueOptions {
 	}
 	return opts
 }
+
+type KeyValueFilterFunc func(bucket []byte, key []byte, value []byte) (keyOut []byte, valueOut []byte)
 
 // WithClient is a convenience utility which handles DB client construction,
 // open, and close..
