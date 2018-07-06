@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	TableMetadata = "andromeda-metadata"
-	TablePackages = "packages"
-	TableToCrawl  = "to-crawl"
+	TableMetadata          = "andromeda-metadata"
+	TablePackages          = "packages"
+	TablePendingReferences = "pending-references"
+	TableToCrawl           = "to-crawl"
 
 	DefaultQueuePriority = 3
 )
@@ -48,6 +49,10 @@ type Client interface {
 	Meta(key string, dst interface{}) error                                                        // Retrieve metadata key and populate into dst.  NB: dst must be one of *[]byte, *string, or proto.Message struct.
 	BackupTo(destFile string) error                                                                // Create a backup copy of the DB.  Return ErrNotImplemented if not supported.
 	RebuildTo(newDBFile string, kvFilters ...KeyValueFilterFunc) error                             // Rebuild a fresh copy of the DB at destination.  Return ErrNotImplmented if not supported.  Optionally pass in one or more KeyValueFilterFunc functions.
+	PendingReferences(pkgPathPrefix string) ([]*domain.PendingReferences, error)                   // Retrieve pending references listing for a package path prefix.
+	PendingReferencesSave(pendingRefs ...*domain.PendingReferences) error                          // Save pending references.
+	PendingReferencesDelete(keys ...string) error                                                  // Delete pending references keys.
+	PendingReferencesLen() (int, error)                                                            // Number of pending references keys.
 }
 
 type Config interface {
