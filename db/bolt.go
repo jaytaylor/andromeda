@@ -103,10 +103,39 @@ func (client *BoltClient) initDB() error {
 			TableMetadata,
 			TablePackages,
 			TableToCrawl,
+			TablePendingReferences,
 		}
 		for _, name := range buckets {
 			if _, err := tx.CreateBucketIfNotExists([]byte(name)); err != nil {
 				return fmt.Errorf("initDB: creating bucket %q: %s", name, err)
+			}
+		}
+		return nil
+	})
+}
+
+func (client *BoltClient) EachRow(table string, fn func(k []byte, v []byte)) error {
+	return client.db.View(func(tx *bolt.Tx) error {
+		var (
+			b = tx.Bucket([]byte(table))
+			c = b.Cursor()
+		)
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			fn(k, v)
+		}
+		return nil
+	})
+}
+
+func (client *BoltClient) EachRowWithBreak(table string, fn func(k []byte, v []byte) bool) error {
+	return client.db.View(func(tx *bolt.Tx) error {
+		var (
+			b = tx.Bucket([]byte(table))
+			c = b.Cursor()
+		)
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			if cont := fn(k, v); !cont {
+				break
 			}
 		}
 		return nil
@@ -145,6 +174,10 @@ func (client *BoltClient) packageSave(tx *bolt.Tx, pkgs []*domain.Package) error
 			v   = b.Get(k)
 			err error
 		)
+		if err = client.mergePendingReferences(tx, pkg); err != nil {
+			return err
+		}
+
 		if v == nil || pkg.ID == 0 {
 			id, err := b.NextSequence()
 			if err != nil {
@@ -170,6 +203,24 @@ func (client *BoltClient) packageSave(tx *bolt.Tx, pkgs []*domain.Package) error
 		}
 	}
 
+	return nil
+}
+
+// mergePendingReferences merges pre-existing pending references.
+func (client *BoltClient) mergePendingReferences(tx *bolt.Tx, pkg *domain.Package) error {
+	pendingRefs, err := client.pendingReferences(tx, pkg.Path)
+	if err != nil {
+		return fmt.Errorf("getting pending references for package %q: %s", pkg.Path, err)
+	}
+	keys := []string{}
+	for _, prs := range pendingRefs {
+		pkg.MergePending(prs)
+		keys = append(keys, prs.PackagePath)
+	}
+	if err = client.pendingReferencesDelete(tx, keys); err != nil {
+		return fmt.Errorf("removing prending references after merge for package %q: %s", pkg.Path, err)
+	}
+	log.WithField("pkg", pkg.Path).Debugf("Merged %v pending references", len(pendingRefs))
 	return nil
 }
 
@@ -353,47 +404,8 @@ func (client *BoltClient) EachPackageWithBreak(fn func(pkg *domain.Package) bool
 	return nil
 }
 
-func (client *BoltClient) EachRow(table string, fn func(k []byte, v []byte)) error {
-	return client.db.View(func(tx *bolt.Tx) error {
-		var (
-			b = tx.Bucket([]byte(table))
-			c = b.Cursor()
-		)
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			fn(k, v)
-		}
-		return nil
-	})
-}
-
-func (client *BoltClient) EachRowWithBreak(table string, fn func(k []byte, v []byte) bool) error {
-	return client.db.View(func(tx *bolt.Tx) error {
-		var (
-			b = tx.Bucket([]byte(table))
-			c = b.Cursor()
-		)
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			if cont := fn(k, v); !cont {
-				break
-			}
-		}
-		return nil
-	})
-}
-
 func (client *BoltClient) PackagesLen() (int, error) {
-	var n int
-
-	if err := client.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(TablePackages))
-
-		n = b.Stats().KeyN
-
-		return nil
-	}); err != nil {
-		return 0, err
-	}
-	return n, nil
+	return client.tableLen(TablePackages)
 }
 
 func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map[string]*domain.PackageReferences) error {
@@ -847,6 +859,102 @@ func (client *BoltClient) RebuildTo(newDBFile string, kvFilters ...KeyValueFilte
 			return nil
 		})
 	})
+}
+
+func (client *BoltClient) PendingReferences(pkgPathPrefix string) ([]*domain.PendingReferences, error) {
+	refs := []*domain.PendingReferences{}
+	if err := client.db.View(func(tx *bolt.Tx) error {
+		var err error
+		if refs, err = client.pendingReferences(tx, pkgPathPrefix); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return refs, nil
+}
+
+func (client *BoltClient) pendingReferences(tx *bolt.Tx, pkgPathPrefix string) ([]*domain.PendingReferences, error) {
+	refs := []*domain.PendingReferences{}
+	var (
+		b        = tx.Bucket([]byte(TablePendingReferences))
+		prefixBs = []byte(pkgPathPrefix)
+		c        = b.Cursor()
+		errs     = []error{}
+	)
+	for k, v := c.Seek(prefixBs); k != nil && bytes.HasPrefix(k, prefixBs); k, v = c.Next() {
+		r := &domain.PendingReferences{}
+		if err := proto.Unmarshal(v, r); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		refs = append(refs, r)
+	}
+	if err := errorlib.Merge(errs); err != nil {
+		return nil, err
+	}
+	return refs, nil
+}
+
+func (client *BoltClient) PendingReferencesSave(pendingRefs ...*domain.PendingReferences) error {
+	return client.db.Update(func(tx *bolt.Tx) error {
+		return client.pendingReferencesSave(tx, pendingRefs)
+	})
+}
+
+func (client *BoltClient) pendingReferencesSave(tx *bolt.Tx, pendingRefs []*domain.PendingReferences) error {
+	b := tx.Bucket([]byte(TablePendingReferences))
+	for _, prs := range pendingRefs {
+		v, err := proto.Marshal(prs)
+		if err != nil {
+			return fmt.Errorf("marshalling PendingReferences: %s", err)
+		}
+		if err = b.Put([]byte(prs.PackagePath), v); err != nil {
+			return fmt.Errorf("put'ing pending refs key %q: %s", prs.PackagePath, err)
+		}
+	}
+	return nil
+}
+
+func (client *BoltClient) PendingReferencesDelete(keys ...string) error {
+	return client.db.Update(func(tx *bolt.Tx) error {
+		return client.pendingReferencesDelete(tx, keys)
+	})
+}
+
+func (client *BoltClient) pendingReferencesDelete(tx *bolt.Tx, keys []string) error {
+	var (
+		b   = tx.Bucket([]byte(TablePendingReferences))
+		err error
+	)
+	log.Debug("Deleting %v pending-references: %+v", len(keys), keys)
+	for _, key := range keys {
+		if err = b.Delete([]byte(key)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (client *BoltClient) PendingReferencesLen() (int, error) {
+	return client.tableLen(TablePendingReferences)
+}
+
+func (client *BoltClient) tableLen(name string) (int, error) {
+	var n int
+
+	if err := client.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(name))
+
+		n = b.Stats().KeyN
+
+		return nil
+	}); err != nil {
+		return 0, err
+	}
+	return n, nil
+
 }
 
 /*func compress(bs []byte) ([]byte, error) {
