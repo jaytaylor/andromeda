@@ -52,6 +52,8 @@ type Client interface {
 	PendingReferences(pkgPathPrefix string) ([]*domain.PendingReferences, error)                   // Retrieve pending references listing for a package path prefix.
 	PendingReferencesSave(pendingRefs ...*domain.PendingReferences) error                          // Save pending references.
 	PendingReferencesDelete(keys ...string) error                                                  // Delete pending references keys.
+	EachPendingReferences(fn func(pendingRefs *domain.PendingReferences)) error                    // Iterate over each *domain.PrendingReferences object from the pending-references table.
+	EachPendingReferencesWithBreak(fn func(pendingRefs *domain.PendingReferences) bool) error      // Iterate over each *domain.PrendingReferences object from the pending-references table until callback returns false.
 	PendingReferencesLen() (int, error)                                                            // Number of pending references keys.
 }
 

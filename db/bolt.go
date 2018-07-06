@@ -212,6 +212,9 @@ func (client *BoltClient) mergePendingReferences(tx *bolt.Tx, pkg *domain.Packag
 	if err != nil {
 		return fmt.Errorf("getting pending references for package %q: %s", pkg.Path, err)
 	}
+	if len(pendingRefs) == 0 {
+		return nil
+	}
 	keys := []string{}
 	for _, prs := range pendingRefs {
 		pkg.MergePending(prs)
@@ -409,7 +412,7 @@ func (client *BoltClient) PackagesLen() (int, error) {
 }
 
 func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map[string]*domain.PackageReferences) error {
-	log.Infof("Recording imported  by... %v", len(resources))
+	log.Infof("Recording imported  by... n-resources=%v", len(resources))
 	var (
 		entries     = []*domain.ToCrawlEntry{}
 		discoveries = []string{}
@@ -435,7 +438,9 @@ func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map
 				}
 				entries = append(entries, entry)
 				discoveries = append(discoveries, pkgPath)
-				//pkg = domain.
+				if err = client.pendingReferenceAdd(tx, refPkg, pkgPath); err != nil {
+					return err
+				}
 				continue
 			}
 			if pkg.ImportedBy == nil {
@@ -475,6 +480,58 @@ func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map
 		if _, err := client.ToCrawlAdd(entries, nil); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// pendingReferenceAdd merges or adds a new pending reference into the pending-references table.
+func (client *BoltClient) pendingReferenceAdd(tx *bolt.Tx, refPkg *domain.Package, pkgPath string) error {
+	existing, err := client.pendingReferences(tx, pkgPath)
+	if err != nil {
+		return err
+	}
+	var (
+		now   = time.Now()
+		prs   *domain.PendingReferences
+		found bool
+	)
+	if len(existing) > 0 {
+		for _, prs = range existing {
+			if _, found = prs.ImportedBy[refPkg.Path]; found {
+				break
+			}
+		}
+		if found {
+			found = false
+			for _, ref := range prs.ImportedBy[refPkg.Path].Refs {
+				if ref.Path == pkgPath {
+					// Check if package needs to be reactivated.
+					if !ref.Active {
+						ref.Active = true
+						ref.LastSeenAt = &now
+					}
+					found = true
+					break
+				}
+			}
+			if !found {
+				pr := domain.NewPackageReference(pkgPath, &now)
+				prs.ImportedBy[refPkg.Path].Refs = append(prs.ImportedBy[refPkg.Path].Refs, pr)
+				found = true
+			}
+		}
+	}
+	if !found {
+		pr := domain.NewPackageReference(pkgPath, &now)
+		prs = &domain.PendingReferences{
+			PackagePath: pkgPath,
+			ImportedBy: map[string]*domain.PackageReferences{
+				refPkg.Path: domain.NewPackageReferences(pr),
+			},
+		}
+	}
+	if err = client.pendingReferencesSave(tx, []*domain.PendingReferences{prs}); err != nil {
+		return err
 	}
 	return nil
 }
@@ -928,7 +985,7 @@ func (client *BoltClient) pendingReferencesDelete(tx *bolt.Tx, keys []string) er
 		b   = tx.Bucket([]byte(TablePendingReferences))
 		err error
 	)
-	log.Debug("Deleting %v pending-references: %+v", len(keys), keys)
+	log.Debugf("Deleting %v pending-references: %+v", len(keys), keys)
 	for _, key := range keys {
 		if err = b.Delete([]byte(key)); err != nil {
 			return err
@@ -941,6 +998,44 @@ func (client *BoltClient) PendingReferencesLen() (int, error) {
 	return client.tableLen(TablePendingReferences)
 }
 
+func (client *BoltClient) EachPendingReferences(fn func(pendingRefs *domain.PendingReferences)) error {
+	var protoErr error
+	if err := client.EachRow(TablePendingReferences, func(k []byte, v []byte) {
+		pendingRefs := &domain.PendingReferences{}
+		if protoErr = proto.Unmarshal(v, pendingRefs); protoErr != nil {
+			log.Errorf("Unexpected proto unmarshal error: %s", protoErr)
+			protoErr = fmt.Errorf("unmarshaling pendingRefs=%v: %s", string(k), protoErr)
+		}
+		fn(pendingRefs)
+	}); err != nil {
+		return err
+	}
+	if protoErr != nil {
+		return protoErr
+	}
+	return nil
+}
+
+func (client *BoltClient) EachPendingReferencesWithBreak(fn func(pendingRefs *domain.PendingReferences) bool) error {
+	var protoErr error
+	if err := client.EachRowWithBreak(TablePendingReferences, func(k []byte, v []byte) bool {
+		pendingRefs := &domain.PendingReferences{}
+		if protoErr = proto.Unmarshal(v, pendingRefs); protoErr != nil {
+			log.Errorf("Unexpected proto unmarshal error: %s", protoErr)
+			protoErr = fmt.Errorf("unmarshaling pendingRefs=%v: %s", string(k), protoErr)
+			return false
+		}
+		return fn(pendingRefs)
+	}); err != nil {
+		return err
+	}
+	if protoErr != nil {
+		return protoErr
+	}
+	return nil
+}
+
+// tableLen is a generalized table length getter function.
 func (client *BoltClient) tableLen(name string) (int, error) {
 	var n int
 

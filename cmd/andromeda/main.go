@@ -338,6 +338,24 @@ var lsCmd = &cobra.Command{
 				}
 				fmt.Println("]")
 
+			case db.TablePendingReferences, "pending-refs", "pending":
+				fmt.Println("[")
+				var prevEntry *domain.PendingReferences
+				if err := dbClient.EachPendingReferences(func(pendingRefs *domain.PendingReferences) {
+					if prevEntry != nil {
+						j, _ := json.MarshalIndent(prevEntry, "", "    ")
+						fmt.Printf("%v,\n", j)
+					}
+					prevEntry = pendingRefs
+				}); err != nil {
+					return err
+				}
+				if prevEntry != nil {
+					j, _ := json.MarshalIndent(prevEntry, "", "    ")
+					fmt.Printf("%v\n", string(j))
+				}
+				fmt.Println("]")
+
 			default:
 				return fmt.Errorf("unrecognized table %q", args[0])
 			}

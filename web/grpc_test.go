@@ -4,13 +4,26 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/onrik/logrus/filename"
+	log "github.com/sirupsen/logrus"
 
 	"jaytaylor.com/andromeda/crawler"
 	"jaytaylor.com/andromeda/db"
 	"jaytaylor.com/andromeda/domain"
 )
 
+func initLogging() {
+	log.AddHook(filename.NewHook())
+	if testing.Verbose() {
+		log.SetLevel(log.DebugLevel)
+	}
+}
+
 func TestRemote(t *testing.T) {
+	initLogging()
+
 	dbFile := filepath.Join(os.TempDir(), "andromeda-test-remote.bolt")
 	if err := os.RemoveAll(dbFile); err != nil {
 		t.Fatal(err)
@@ -27,7 +40,7 @@ func TestRemote(t *testing.T) {
 
 	if err := db.WithClient(db.NewBoltConfig(dbFile), func(dbClient db.Client) error {
 		// Add several (3+) to-crawl entries.
-		if _, err := dbClient.ToCrawlAdd(toCrawls...); err != nil {
+		if _, err := dbClient.ToCrawlAdd(toCrawls, nil); err != nil {
 			return err
 		}
 
@@ -42,7 +55,7 @@ func TestRemote(t *testing.T) {
 		)
 
 		cfg.IncludeStdLib = true
-		cfg.MaxItems = 3
+		cfg.MaxItems = 49
 
 		if err := ws.Start(); err != nil {
 			t.Fatal(err)
@@ -66,13 +79,16 @@ func TestRemote(t *testing.T) {
 
 		<-doneCh
 
+		// Give the master a moment to finish processing.
+		defer time.Sleep(1 * time.Second)
+
 		pl, err := dbClient.PackagesLen()
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Logf("packages len=%v", pl)
 		if expected, actual := 40, pl; actual < expected {
-			t.Errorf("Expected number of packages in db >= %v, but actual=%v")
+			t.Errorf("Expected number of packages in db >= %v, but actual=%v", expected, actual)
 		}
 
 		tcl, err := dbClient.ToCrawlsLen()
@@ -81,7 +97,7 @@ func TestRemote(t *testing.T) {
 		}
 		t.Logf("to-crawls len=%v", tcl)
 		if expected, actual := 40, tcl; actual < expected {
-			t.Errorf("Expected number of to-crawl entries in db >= %v, but actual=%v")
+			t.Errorf("Expected number of to-crawl entries in db >= %v, but actual=%v", expected, actual)
 		}
 
 		return nil

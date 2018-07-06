@@ -117,6 +117,9 @@ func (pkg *Package) MergePending(pendingRefs *PendingReferences) {
 	}
 
 	for importPath, newRefs := range pendingRefs.ImportedBy {
+		if pkg.ImportedBy == nil {
+			pkg.ImportedBy = map[string]*PackageReferences{}
+		}
 		importPath = SubPackagePathNormalize(pkg.Path, importPath)
 		if _, ok := pkg.ImportedBy[importPath]; !ok {
 			pkg.ImportedBy[importPath] = NewPackageReferences()
