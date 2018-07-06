@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -436,6 +438,47 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 		return err
 	}
 	pc.Data.Bytes = size
+
+	if pkg.VCS == "git" {
+		if err = gitStats(pkg.Data, localPath); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func gitStats(snap *domain.PackageSnapshot, path string) error {
+	// Number of commits.
+	{
+		cmd := exec.Command("git", "rev-list", "--count", "HEAD")
+		cmd.Dir = path
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			log.WithField("path", path).Errorf("Getting git commit count: %s (output=%v)", err, string(out))
+		}
+		n, err := strconv.Atoi(strings.Trim(string(out), "\r\n"))
+		if err != nil {
+			log.WithField("path", path).Errorf("Parsing git commit count: %s (output=%v)", err, string(out))
+		}
+		snap.Commits = int32(n)
+	}
+
+	// Number of branches.
+	{
+		cmd := exec.Command("git", "branch", "-r")
+		cmd.Dir = path
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			log.WithField("path", path).Errorf("Getting git commit count: %s (output=%v)", err, string(out))
+		}
+		snap.Branches = int32(len(strings.Split(strings.Trim(string(out), "\r\n"), "\n")))
+	}
+	// snap.AllImports()
+
+	// Number of tags.
+
+	// Last commit timestamp.
 
 	return nil
 }
