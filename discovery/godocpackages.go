@@ -1,7 +1,9 @@
 package discovery
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -29,8 +31,21 @@ type Entry struct {
 	ImportCount int64  `json:"import_count"`
 }
 
-// ParseGoDocPackages parses api.godoc.org/packages JSON data.
+// ParseGoDocPackages parses either godoc.org JSON or newline delimited
+// plaintext.
 func ParseGoDocPackages(r io.Reader) (*GoDocPackages, error) {
+	switch InputFormat {
+	case "json", "j":
+		return parseGoDocPackagesJSON(r)
+	case "text", "txt", "t":
+		return parseGoDocPackagesText(r)
+	default:
+		return nil, fmt.Errorf("unrecognized input format %q", InputFormat)
+	}
+}
+
+// parseGoDocPackagesJSON parses api.godoc.org/packages JSON data.
+func parseGoDocPackagesJSON(r io.Reader) (*GoDocPackages, error) {
 	var (
 		dec = json.NewDecoder(r)
 		gdp GoDocPackages
@@ -39,6 +54,30 @@ func ParseGoDocPackages(r io.Reader) (*GoDocPackages, error) {
 		return nil, err
 	}
 	return &gdp, nil
+}
+
+// parseGoDocPackagesText parses newline delimited list of packages.
+func parseGoDocPackagesText(r io.Reader) (*GoDocPackages, error) {
+	var (
+		br  = bufio.NewReader(r)
+		gdp = &GoDocPackages{
+			Results: []Entry{},
+		}
+	)
+	for {
+		line, _, err := br.ReadLine()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+		entry := Entry{
+			Path: string(line),
+		}
+		gdp.Results = append(gdp.Results, entry)
+	}
+	return gdp, nil
 }
 
 // ListGoDocPackages downloads the latest packages listing from
