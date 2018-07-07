@@ -13,6 +13,7 @@ import (
 
 var (
 	AddBatchSize           = 25000
+	InputFormat            = "json" // Can be "json" or "text".
 	UseXZFileDecompression bool
 )
 

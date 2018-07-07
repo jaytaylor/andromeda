@@ -368,7 +368,7 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 			log.WithField("candidate-pkg-path", goPkg.Root).Debugf("Ignoring non-fatal error=%s because still got some data back", err)
 		}
 		// Skip vendored imports.
-		if strings.Contains(goPkg.ImportPath, "/vendor/") || strings.Contains(goPkg.ImportPath, "Godep/_workspace/") {
+		if Vendored(goPkg.ImportPath) {
 			return nil
 		}
 
@@ -379,8 +379,8 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 		// pc.Data.SubPackages[goPkg.ImportPath].Readme = detectReadme(dir)
 		// log.Infof("%# v", *goPkg)
 		for _, imp := range goPkg.Imports {
-			if pieces := strings.SplitN(imp, "/vendor/", 2); len(pieces) > 1 {
-				imp = pieces[1]
+			if path, ok := extractVendored(imp); ok {
+				imp = path
 			}
 			if c.Config.IncludeStdLib || strings.Contains(imp, ".") {
 				// importsMap[imp] = struct{}{}
@@ -388,8 +388,8 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 			}
 		}
 		for _, imp := range goPkg.TestImports {
-			if pieces := strings.SplitN(imp, "/vendor/", 2); len(pieces) > 1 {
-				imp = pieces[1]
+			if path, ok := extractVendored(imp); ok {
+				imp = path
 			}
 			if c.Config.IncludeStdLib || strings.Contains(imp, ".") {
 				// testImportsMap[imp] = struct{}{}
@@ -617,4 +617,26 @@ func PackagePathToRepoRoot(pkgPath string) (*vcs.RepoRoot, error) {
 		}
 	}
 	return rr, nil
+}
+
+// Vendored returns true if the path contains evidence of endoring.
+func Vendored(path string) bool {
+	v := strings.Contains(path, "/vendor/") || strings.Contains(path, "Godep/_workspace/src/") || strings.Contains(path, "/_vendor/")
+	return v
+}
+
+func extractVendored(imp string) (path string, ok bool) {
+	splitters := []string{
+		"/vendor/",
+		"/Godep/_workspace/src/",
+		"/_vendor/",
+	}
+	for _, splitter := range splitters {
+		if pieces := strings.SplitN(imp, splitter, 2); len(pieces) > 1 {
+			ok = true
+			path = pieces[1]
+			return
+		}
+	}
+	return
 }

@@ -26,6 +26,7 @@ go get jaytaylor.com/andromeda/...
 - [ ] Handle relative imports.
 - [ ] Add analysis of RepoRoot sub-package paths and import names.
 - [ ] Remote enqueue
+- [ ] Detect and persist whether each import is vendored or not in the reverse-imports mapping data.
 
 To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`
 
