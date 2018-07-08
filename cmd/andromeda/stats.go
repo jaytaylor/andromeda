@@ -27,8 +27,8 @@ var (
 )
 
 var statsCmd = &cobra.Command{
-	Use:     "stats",
-	Aliases: []string{"s", "st"},
+	Use:     "statistics",
+	Aliases: []string{"stats", "stat", "st"},
 	Short:   "Statistics information",
 	Long:    "Statistics-related information",
 }
