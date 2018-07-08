@@ -75,6 +75,12 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 	m.mu.Lock()
 	m.numRemotes++
 	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		m.numRemotes--
+		m.mu.Unlock()
+		log.WithField("active-remotes", m.numRemotes).Debug("Attach ended")
+	}()
 	log.WithField("active-remotes", m.numRemotes).Debug("Attach invoked")
 	for {
 		var (

@@ -35,11 +35,22 @@
 <div>Data.Commits: {{ .Data.Commits }}</div>
 <div>Data.Branches: {{ .Data.Branches }}</div>
 <div>Data.Tags: {{ .Data.Tags }}</div>
-<div>Data.Bytes: {{ .Data.Bytes }}</div>
+<div>Data.Bytes: {{ .Data.PrettyBytes }}</div>
 <div>Data.Forks: {{ .Data.Forks }}</div>
+
+{{ if .ImportedBy }}
+<hr>
+<h4>Imported By<h4>
+<ul>
+{{ range $imp, $refs := .ImportedBy }}
+    <li><a href="/{{ $imp }}">{{ $imp }} ({{ len $refs.Refs }} reference{{ len $refs.Refs | plural "" "s" }})</a></li>
+{{ end }}
+</ul>
+{{ end }}
 
 {{ with $subPkg := index .Data.SubPackages "" }}
 {{ if $subPkg.Imports }}
+<hr>
 <div>
 <h4>Imports</h4>
 <ul style="list-style-type: none">
@@ -56,27 +67,18 @@
 {{ end }}
 {{ end }}
 {{ end }}
-<hr>
 
 {{ if .Data.SubPackages }}
+<hr>
 {{ $pkg := . }}
-<h3>{{ len .Data.SubPackages }} Nested Packages:</h3>
+<h3>{{ len .Data.SubPackages }} Nested Package{{ len .Data.SubPackages | plural "" "s" }}:</h3>
 {{ range $subPkgPath, $subPkg := .SubPackagesPretty }}
 <a href="/{{ $pkg.Path }}/{{ $subPkgPath }}">{{ $subPkgPath }}</a>
 <br>
 {{ end }}
 {{ end }}
 
-{{ if .ImportedBy }}
-<h4>Imported By<h4>
-<ul>
-{{ range $imp := .ImportedBy }}
-    <li><a href="/{{ $imp }}">{{ $imp }}</a></li>
-{{ end }}
-</ul>
 <hr>
-{{ end }}
-
 <h4>Crawl History</h4>
 {{ range $idx, $crawl := .History }}
 <div>History[{{ $idx }}] Duration: {{ $crawl.Duration }}</div>
@@ -84,8 +86,8 @@
 <div>History[{{ $idx }}] Finished: {{ $crawl.JobFinishedAt }}</div>
 <div>History[{{ $idx }}] Succeeded: {{ $crawl.JobSucceeded }}</div>
 <div>History[{{ $idx }}] Messages: {{ $crawl.JobMessages }}</div>
-<hr>
 {{ end }}
+<hr>
 
 </body>
 </html>
