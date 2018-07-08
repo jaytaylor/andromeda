@@ -302,7 +302,7 @@ func doCrawlerServiceVerb(action string) error {
 		w.rc = crawler.NewRemote(CrawlServerAddr, crawlerCfg)
 
 	default:
-		return fmt.Errorf("Unrecognized crawler service action: %q, must be one of: %v, or run", service.ControlAction)
+		return fmt.Errorf("Unrecognized crawler service action: %q, must be one of: %v, or run", action, service.ControlAction)
 	}
 
 	s, err := service.New(w, svcConfig)

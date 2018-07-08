@@ -10,6 +10,7 @@ Andromeda analyzes the complete graph of the known Go Universe.
 * Git v2.3 or newer (to avoid interactive prompts interrupting the crawler)
 * [go-bindata](https://github.com/jteeuwen/go-bindata)
 * stringer `go get -u -a golang.org/x/tools/cmd/stringer`
+* OpenSSL (for automatic retrieval of SSL/TLS server public-key to feed gRPC by remote-crawler)
 
 ## Installation
 
