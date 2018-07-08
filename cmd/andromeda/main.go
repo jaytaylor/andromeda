@@ -24,6 +24,7 @@ import (
 	"jaytaylor.com/andromeda/db"
 	"jaytaylor.com/andromeda/discovery"
 	"jaytaylor.com/andromeda/domain"
+	"jaytaylor.com/andromeda/pkg/openssl"
 	"jaytaylor.com/andromeda/web"
 )
 
@@ -64,6 +65,7 @@ func init() {
 	remoteCrawlerCmd.Flags().StringVarP(&TLSCertFile, "cert", "c", TLSCertFile, "SSL/TLS public key certifcate file for mutual CA-based authentication, or in the case of a client connecting over HTTPS, this will be the SSL/TLS public-key certificate file belonging to the SSL-terminating server.")
 	remoteCrawlerCmd.Flags().StringVarP(&TLSKeyFile, "key", "k", TLSKeyFile, "SSL/TLS private key certificate file for mutual TLS CA-based authentication")
 	remoteCrawlerCmd.Flags().StringVarP(&TLSCAFile, "ca", "", TLSCAFile, "ca.crt file for mutual TLS CA-based authentication")
+	remoteCrawlerCmd.Flags().BoolVarP(&AutoTLSCert, "auto-cert", "C", AutoTLSCert, "Use OpenSSL to automatically fill in the SSL/TLS public key of the gRPC server")
 
 	rootCmd.AddCommand(rebuildDBCmd)
 
@@ -99,6 +101,7 @@ var (
 	TLSCertFile string
 	TLSKeyFile  string
 	TLSCAFile   string
+	AutoTLSCert bool // When true, will use OpenSSL to automatically retrieve the SSL/TLS public key of the gRPC server.
 )
 
 func main() {
@@ -455,6 +458,14 @@ var remoteCrawlerCmd = &cobra.Command{
 }
 
 func configureRemoteCrawler(r *crawler.Remote) error {
+	if AutoTLSCert {
+		log.WithField("addr", r.Addr).Debug("Automatically downloading SSL/TLS certificate public-key")
+		var err error
+		if TLSCertFile, err = openssl.DownloadCertPubKey(r.Addr); err != nil {
+			return err
+		}
+	}
+
 	if len(TLSCertFile) == 0 && len(TLSKeyFile) == 0 && len(TLSCAFile) == 0 {
 		return nil
 	}
