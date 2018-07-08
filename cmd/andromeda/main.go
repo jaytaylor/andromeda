@@ -32,18 +32,28 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Activate verbose log output")
 	rootCmd.PersistentFlags().StringVarP(&DBFile, "db", "b", DBFile, "Path to BoltDB file")
 
+	rootCmd.AddCommand(bootstrapCmd)
+
 	bootstrapCmd.Flags().StringVarP(&BootstrapGoDocPackagesFile, "godoc-packages-file", "g", "", "Path to local api.godoc.org/packages file to use")
 	bootstrapCmd.Flags().IntVarP(&discovery.AddBatchSize, "batch-size", "B", discovery.AddBatchSize, "Batch size per DB transaction when bulk-loading to-crawl entries")
 	bootstrapCmd.Flags().StringVarP(&discovery.InputFormat, "format", "f", discovery.InputFormat, "Input format, can be \"json\" or \"text\"")
 	bootstrapCmd.Flags().BoolVarP(&discovery.UseXZFileDecompression, "xz", "x", discovery.UseXZFileDecompression, "Activate XZ decompression when reading file-based input (including STDIN)")
 
+	rootCmd.AddCommand(webCmd)
+
 	webCmd.Flags().StringVarP(&WebAddr, "addr", "a", "", "Interface bind address:port spec")
+
+	rootCmd.AddCommand(crawlCmd)
 
 	crawlCmd.Flags().StringVarP(&crawler.DefaultSrcPath, "src-path", "s", crawler.DefaultSrcPath, "Path to checkout source code to")
 	crawlCmd.Flags().BoolVarP(&crawler.DefaultDeleteAfter, "delete-after", "d", crawler.DefaultDeleteAfter, "Delete source code after analysis")
 	crawlCmd.Flags().IntVarP(&crawler.DefaultMaxItems, "max-items", "m", crawler.DefaultMaxItems, "Maximum number of package items to crawl (<=0 signifies unlimited)")
 
+	rootCmd.AddCommand(enqueueCmd)
+
 	enqueueCmd.Flags().IntVarP(&EnqueuePriority, "priority", "p", EnqueuePriority, "Queue priority level")
+
+	rootCmd.AddCommand(remoteCrawlerCmd)
 
 	remoteCrawlerCmd.Flags().StringVarP(&crawler.DefaultSrcPath, "src-path", "s", crawler.DefaultSrcPath, "Path to checkout source code to")
 	remoteCrawlerCmd.Flags().BoolVarP(&crawler.DefaultDeleteAfter, "delete-after", "d", crawler.DefaultDeleteAfter, "Delete source code after analysis")
@@ -55,21 +65,19 @@ func init() {
 	remoteCrawlerCmd.Flags().StringVarP(&TLSKeyFile, "key", "k", TLSKeyFile, "SSL/TLS private key certificate file for mutual TLS CA-based authentication")
 	remoteCrawlerCmd.Flags().StringVarP(&TLSCAFile, "ca", "", TLSCAFile, "ca.crt file for mutual TLS CA-based authentication")
 
+	rootCmd.AddCommand(rebuildDBCmd)
+
 	rebuildDBCmd.Flags().StringVarP(&RebuildDBFile, "target", "t", RebuildDBFile, "Target destination filename")
+
+	rootCmd.AddCommand(rebuildAndCleanupDBCmd)
+
 	rebuildAndCleanupDBCmd.Flags().StringVarP(&RebuildDBFile, "target", "t", RebuildDBFile, "Target destination filename")
 
-	rootCmd.AddCommand(bootstrapCmd)
-	rootCmd.AddCommand(crawlCmd)
-	rootCmd.AddCommand(enqueueCmd)
 	rootCmd.AddCommand(queueDeleteCmd)
 	rootCmd.AddCommand(repoRootCmd)
 	rootCmd.AddCommand(purgeTableCmd)
 	rootCmd.AddCommand(getCmd)
 	rootCmd.AddCommand(lsCmd)
-	rootCmd.AddCommand(webCmd)
-	rootCmd.AddCommand(remoteCrawlerCmd)
-	rootCmd.AddCommand(rebuildAndCleanupDBCmd)
-	rootCmd.AddCommand(rebuildDBCmd)
 }
 
 var (

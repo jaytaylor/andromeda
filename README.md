@@ -50,6 +50,30 @@ go get -u github.com/mwitkow/go-proto-validators/...
 go generate ./...
 ```
 
+### Running remote-crawler as a system service on Windows
+
+Ensure the target user account has the "Run as a System Service" Policy.
+
+Perform the following to edit the Local Security Policy of the computer you want to define the 'Logon as a Service' permission:
+
+1.Logon to the computer with administrative privileges. 
+2.Open the 'Administrative Tools' and open the 'Local Security Policy'.
+3.Expand 'Local Policy' and click on 'User Rights Assignment'.
+4.In the right pane, right-click 'Log on as a service' and select properties. 
+5.Click on the 'Add User or Group' button to add the new user. 
+6.In the 'Select Users or Groups' dialogue, find the user you wish to enter and click 'OK'.
+7.Click 'OK' in the 'Log on as a service Properties' to save changes. 
+
+Notes:
+
+Ensure that the user which you have added above is not listed in the 'Deny log on as a service' policy in the Local Security Policy.
+
+#### Example system service installation on windows
+
+```bash
+andromeda service crawler install -v --delete-after -s /tmp/src -a <host.name>:443 -c <path-to-letsencrypt-cert.pem> -u .\<windows-username> -p <windows-password>
+```
+
 ### License
 
 TBD
