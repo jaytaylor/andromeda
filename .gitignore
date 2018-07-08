@@ -1,3 +1,8 @@
 # Default DB filename.
 /andromeda.bolt
 
+*.pem
+*.key
+*.crt
+*.csr
+
