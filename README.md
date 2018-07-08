@@ -11,6 +11,7 @@ Andromeda analyzes the complete graph of the known Go Universe.
 * [go-bindata](https://github.com/jteeuwen/go-bindata)
 * stringer `go get -u -a golang.org/x/tools/cmd/stringer`
 * OpenSSL (for automatic retrieval of SSL/TLS server public-key to feed gRPC by remote-crawler)
+* xz (for downloading daily snapshots from godoc.org)
 
 ## Installation
 
@@ -49,6 +50,25 @@ go get -u github.com/grpc-ecosystem/grpc-gateway/...
 go get -u github.com/mwitkow/go-proto-validators/...
 
 go generate ./...
+```
+
+### How to bootstrap the server
+
+#### Example
+
+Grab latest seed list from godoc.org:
+
+```
+./download-godoc-packages.sh
+```
+
+Locate the downloaded file and extract it with `xz -k -d <filename>`.
+
+Then cleanup the input and seed into andromeda:
+
+```
+./scripts/input-cleaner.sh archive.godoc.org/packages.20180706 \
+    | andromeda bootstrap -g - -f text
 ```
 
 ### Running remote-crawler as a system service on Windows
