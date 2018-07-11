@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -51,6 +52,15 @@ func (pkg Package) RepoRoot() *vcs.RepoRoot {
 		},
 	}
 	return rr
+}
+
+func (pkg Package) WebURL() string {
+	expr := regexp.MustCompile(`^[^@]+@([^:]+):(.*)(?:\.git)?$`)
+	if m := expr.FindAllStringSubmatch(pkg.URL, -1); len(m) > 0 {
+		u := fmt.Sprintf("https://%v/%v", m[0][1], m[0][2])
+		return u
+	}
+	return pkg.URL
 }
 
 // func NewSubPackage(path string, name string) {
