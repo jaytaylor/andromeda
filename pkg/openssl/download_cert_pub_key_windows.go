@@ -11,6 +11,7 @@ import (
 
 // DownloadCertPubKey Windows implementation.
 func DownloadCertPubKey(addr string) (string, error) {
+	hostname := strings.Split(addr, ":")[0]
 	intermediateFile, err := ioutil.TempFile("", "")
 	if err != nil {
 		return "", fmt.Errorf("creating batch file intermediate temp file: %s", err)
@@ -31,12 +32,11 @@ openssl x509 -outform PEM < %[3]v`,
 	if err != nil {
 		return "", fmt.Errorf("creating batch file: %s", err)
 	}
-	if err := ioutil.WriteFile(batchFilename, []byte(batchCommands), os.FileMode(int(0600))); err != nil {
+	if err := ioutil.WriteFile(batchFilename, []byte(batchCmds), os.FileMode(int(0600))); err != nil {
 		return "", fmt.Errorf("writing batch file %q: %s", batchFilename, err)
 	}
 	defer os.Remove(batchFilename)
 
-	hostname := strings.Split(addr, ":")[0]
 	cmd := exec.Command(batchFilename)
 	data, err := cmd.Output()
 	if err != nil {
