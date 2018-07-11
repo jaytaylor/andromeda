@@ -9,15 +9,12 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	//"os"
-	//"strings"
-	//"time"
 
-	//"gigawatt.io/errorlib"
 	"gigawatt.io/errorlib"
 	"gigawatt.io/web"
 	"gigawatt.io/web/route"
 	"github.com/Masterminds/sprig"
+	"github.com/hkwi/h2c"
 	"github.com/nbio/hitch"
 	log "github.com/sirupsen/logrus"
 	"github.com/soheilhy/cmux"
@@ -81,10 +78,12 @@ func (service *WebService) Start() error {
 
 	m := cmux.New(service.listener)
 	grpcListener := m.Match(cmux.HTTP2HeaderField("content-type", "application/grpc"))
-	httpListener := m.Match(cmux.HTTP1Fast())
+	httpListener := m.Match(cmux.HTTP2(), cmux.HTTP1Fast())
 
 	service.server = &http.Server{
-		Handler: service.handler,
+		Handler: &h2c.Server{
+			Handler: service.handler,
+		},
 		// ReadTimeout:    ReadTimeout,
 		// WriteTimeout:   WriteTimeout,
 		// MaxHeaderBytes: ws.Options.MaxHeaderBytes,
