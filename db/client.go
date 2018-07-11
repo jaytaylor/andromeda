@@ -14,13 +14,13 @@ const (
 	TablePackages          = "packages"
 	TablePendingReferences = "pending-references"
 	TableToCrawl           = "to-crawl"
-
-	DefaultQueuePriority = 3
 )
 
 var (
 	ErrKeyNotFound    = errors.New("requested key not found")
 	ErrNotImplemented = errors.New("function not implemented")
+
+	DefaultQueuePriority = 3
 )
 
 type Client interface {

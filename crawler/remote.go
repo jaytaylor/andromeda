@@ -8,6 +8,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
+	"jaytaylor.com/andromeda/db"
 	"jaytaylor.com/andromeda/domain"
 )
 
@@ -40,13 +41,9 @@ func (r *Remote) Run(stopCh chan struct{}) {
 				return ErrStopRequested
 			}
 
-			if len(r.DialOptions) == 0 {
-				log.Debug("Activated gRPC dial option grpc.WithInsecure() due to empty options")
-				r.DialOptions = append(r.DialOptions, grpc.WithInsecure())
-			}
-			conn, err := grpc.Dial(r.Addr, r.DialOptions...)
+			conn, err := r.conn()
 			if err != nil {
-				return fmt.Errorf("Dialing %v: %s", r.Addr, err)
+				return err
 			}
 			defer conn.Close()
 
@@ -113,4 +110,40 @@ func (r *Remote) Run(stopCh chan struct{}) {
 		case <-time.After(10 * time.Second):
 		}
 	}
+}
+
+func (r *Remote) Enqueue(entries []*domain.ToCrawlEntry, priority ...int) (int, error) {
+	conn, err := r.conn()
+	if err != nil {
+		return 0, err
+	}
+	defer conn.Close()
+
+	rcsc := domain.NewRemoteCrawlerServiceClient(conn)
+
+	if len(priority) == 0 {
+		priority = []int{db.DefaultQueuePriority}
+	}
+	req := &domain.EnqueueRequest{
+		Entries:  entries,
+		Priority: int32(priority[0]),
+	}
+
+	resp, err := rcsc.Enqueue(context.Background(), req)
+	if err != nil {
+		return 0, err
+	}
+	return int(resp.N), nil
+}
+
+func (r *Remote) conn() (*grpc.ClientConn, error) {
+	if len(r.DialOptions) == 0 {
+		log.Debug("Activated gRPC dial option grpc.WithInsecure() due to empty options")
+		r.DialOptions = append(r.DialOptions, grpc.WithInsecure())
+	}
+	conn, err := grpc.Dial(r.Addr, r.DialOptions...)
+	if err != nil {
+		return nil, fmt.Errorf("Dialing %v: %s", r.Addr, err)
+	}
+	return conn, nil
 }

@@ -19,6 +19,8 @@
 		SubPackage
 		PendingReferences
 		CrawlResult
+		EnqueueRequest
+		EnqueueResponse
 		ToCrawlEntry
 */
 package domain

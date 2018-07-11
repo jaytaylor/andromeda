@@ -43,11 +43,25 @@ message CrawlResult {
   string ErrMsg = 3;
 }
 
+message EnqueueRequest {
+  repeated ToCrawlEntry entries = 1;
+  int32 priority = 2;
+}
+
+message EnqueueResponse {
+  int32 n = 1;
+}
+
 service RemoteCrawlerService {
-  // rpc Next() returns (ToCrawlEntry) {}
   rpc Attach(stream CrawlResult) returns (stream ToCrawlEntry) {
     option (google.api.http) = {
       post: "/api/v1/attach"
+      body: "*"
+    };
+  }
+  rpc Enqueue(EnqueueRequest) returns (EnqueueResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/enqueue"
       body: "*"
     };
   }

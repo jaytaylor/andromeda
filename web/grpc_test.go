@@ -39,11 +39,6 @@ func TestRemote(t *testing.T) {
 	}
 
 	if err := db.WithClient(db.NewBoltConfig(dbFile), func(dbClient db.Client) error {
-		// Add several (3+) to-crawl entries.
-		if _, err := dbClient.ToCrawlAdd(toCrawls, nil); err != nil {
-			return err
-		}
-
 		var (
 			cfg    = crawler.NewConfig()
 			master = crawler.NewMaster(dbClient, cfg)
@@ -71,6 +66,28 @@ func TestRemote(t *testing.T) {
 			stopCh = make(chan struct{})
 			doneCh = make(chan struct{})
 		)
+
+		{
+			// Add several (3+) to-crawl entries.
+			n, err := r.Enqueue(toCrawls, db.DefaultQueuePriority)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if expected, actual := len(toCrawls), n; actual != expected {
+				t.Errorf("Expected number of items added to queue=%v but actual=%v", expected, actual)
+			}
+			t.Logf("Added %v/%v item(s) to the queue", n, len(toCrawls))
+		}
+		{
+			// Adding them again should return n=0.
+			n, err := r.Enqueue(toCrawls, db.DefaultQueuePriority)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if expected, actual := 0, n; actual != expected {
+				t.Errorf("Expected redundant enqueue operation n=%v but actual=%v", expected, actual)
+			}
+		}
 
 		go func() {
 			r.Run(stopCh)
