@@ -1,5 +1,6 @@
 # Default DB filename.
 /andromeda.bolt
+/reports
 
 *.pem
 *.key
