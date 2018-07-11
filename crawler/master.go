@@ -8,6 +8,7 @@ import (
 
 	"gigawatt.io/errorlib"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/net/context"
 	"golang.org/x/tools/go/vcs"
 
 	"jaytaylor.com/andromeda/db"
@@ -190,6 +191,20 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 		m.numCrawls++
 		m.mu.Unlock()
 	}
+}
+
+func (m *Master) Enqueue(ctx context.Context, req *domain.EnqueueRequest) (*domain.EnqueueResponse, error) {
+	opts := &db.QueueOptions{
+		Priority: int(req.Priority),
+	}
+	n, err := m.db.ToCrawlAdd(req.Entries, opts)
+	if err != nil {
+		return nil, err
+	}
+	resp := &domain.EnqueueResponse{
+		N: int32(n),
+	}
+	return resp, nil
 }
 
 // Run runs crawls from the to-crawl queue.

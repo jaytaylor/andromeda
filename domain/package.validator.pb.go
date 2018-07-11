@@ -19,6 +19,8 @@ It has these top-level messages:
 	SubPackage
 	PendingReferences
 	CrawlResult
+	EnqueueRequest
+	EnqueueResponse
 	ToCrawlEntry
 */
 package domain

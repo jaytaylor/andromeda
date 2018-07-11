@@ -34,3 +34,16 @@ func (this *CrawlResult) Validate() error {
 	// Validation of proto3 map<> fields is unsupported.
 	return nil
 }
+func (this *EnqueueRequest) Validate() error {
+	for _, item := range this.Entries {
+		if item != nil {
+			if err := go_proto_validators.CallValidatorIfExists(item); err != nil {
+				return go_proto_validators.FieldError("Entries", err)
+			}
+		}
+	}
+	return nil
+}
+func (this *EnqueueResponse) Validate() error {
+	return nil
+}

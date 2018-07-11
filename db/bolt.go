@@ -549,10 +549,14 @@ func (client *BoltClient) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *Queue
 	var deserErr error
 
 	if err := client.q.Scan(TableToCrawl, func(m *boltqueue.Message) {
-		entry := &domain.ToCrawlEntry{}
 		if deserErr != nil {
 			return
 		}
+		if m.Priority() != opts.Priority {
+			return
+		}
+
+		entry := &domain.ToCrawlEntry{}
 		if deserErr = proto.Unmarshal(m.Value, entry); deserErr != nil {
 			deserErr = fmt.Errorf("unmarshalling boltqueue message: %s", deserErr)
 			return

@@ -53,9 +53,18 @@ func init() {
 	crawlCmd.Flags().BoolVarP(&crawler.DefaultDeleteAfter, "delete-after", "d", crawler.DefaultDeleteAfter, "Delete source code after analysis")
 	crawlCmd.Flags().IntVarP(&crawler.DefaultMaxItems, "max-items", "m", crawler.DefaultMaxItems, "Maximum number of package items to crawl (<=0 signifies unlimited)")
 
-	rootCmd.AddCommand(enqueueCmd)
+	rootCmd.AddCommand(localEnqueueCmd)
 
-	enqueueCmd.Flags().IntVarP(&EnqueuePriority, "priority", "p", EnqueuePriority, "Queue priority level")
+	localEnqueueCmd.Flags().IntVarP(&db.DefaultQueuePriority, "priority", "p", db.DefaultQueuePriority, "Priority level to use when adding items to the queue")
+	localEnqueueCmd.Flags().StringVarP(&EnqueueReason, "reason", "r", EnqueueReason, "Reason to use for to-crawl entries")
+
+	rootCmd.AddCommand(remoteCmd)
+
+	remoteCmd.AddCommand(remoteEnqueueCmd)
+
+	remoteEnqueueCmd.Flags().IntVarP(&db.DefaultQueuePriority, "priority", "p", db.DefaultQueuePriority, "Priority level to use when adding items to the queue")
+	remoteEnqueueCmd.Flags().StringVarP(&EnqueueReason, "reason", "r", EnqueueReason, "Reason to use for to-crawl entries")
+	addRemoteFlags(remoteEnqueueCmd)
 
 	rootCmd.AddCommand(remoteCrawlerCmd)
 
@@ -63,12 +72,7 @@ func init() {
 	remoteCrawlerCmd.Flags().BoolVarP(&crawler.DefaultDeleteAfter, "delete-after", "d", crawler.DefaultDeleteAfter, "Delete source code after analysis")
 	remoteCrawlerCmd.Flags().IntVarP(&crawler.DefaultMaxItems, "max-items", "m", crawler.DefaultMaxItems, "Maximum number of package items to crawl (<=0 signifies unlimited)")
 
-	remoteCrawlerCmd.Flags().StringVarP(&CrawlServerAddr, "addr", "a", CrawlServerAddr, "Crawl server host:port address spec")
-
-	remoteCrawlerCmd.Flags().StringVarP(&TLSCertFile, "cert", "c", TLSCertFile, "SSL/TLS public key certifcate file for mutual CA-based authentication, or in the case of a client connecting over HTTPS, this will be the SSL/TLS public-key certificate file belonging to the SSL-terminating server.")
-	remoteCrawlerCmd.Flags().StringVarP(&TLSKeyFile, "key", "k", TLSKeyFile, "SSL/TLS private key certificate file for mutual TLS CA-based authentication")
-	remoteCrawlerCmd.Flags().StringVarP(&TLSCAFile, "ca", "", TLSCAFile, "ca.crt file for mutual TLS CA-based authentication")
-	remoteCrawlerCmd.Flags().BoolVarP(&AutoTLSCert, "auto-cert", "C", AutoTLSCert, "Use OpenSSL to automatically fill in the SSL/TLS public key of the gRPC server")
+	addRemoteFlags(remoteCrawlerCmd)
 
 	rootCmd.AddCommand(rebuildDBCmd)
 
@@ -94,7 +98,7 @@ var (
 
 	BootstrapGoDocPackagesFile string
 
-	EnqueuePriority = db.DefaultQueuePriority
+	EnqueueReason = "requested at cmdline"
 
 	WebAddr string
 
@@ -107,6 +111,16 @@ var (
 	TLSCAFile   string
 	AutoTLSCert bool // When true, will use OpenSSL to automatically retrieve the SSL/TLS public key of the gRPC server.
 )
+
+func addRemoteFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVarP(&CrawlServerAddr, "addr", "a", CrawlServerAddr, "Crawl server host:port address spec")
+
+	cmd.Flags().StringVarP(&TLSCertFile, "cert", "c", TLSCertFile, "SSL/TLS public key certifcate file for mutual CA-based authentication, or in the case of a client connecting over HTTPS, this will be the SSL/TLS public-key certificate file belonging to the SSL-terminating server.")
+	cmd.Flags().StringVarP(&TLSKeyFile, "key", "k", TLSKeyFile, "SSL/TLS private key certificate file for mutual TLS CA-based authentication")
+	cmd.Flags().StringVarP(&TLSCAFile, "ca", "", TLSCAFile, "ca.crt file for mutual TLS CA-based authentication")
+	cmd.Flags().BoolVarP(&AutoTLSCert, "auto-cert", "C", AutoTLSCert, "Use OpenSSL to automatically fill in the SSL/TLS public key of the gRPC server")
+
+}
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
@@ -152,7 +166,7 @@ var crawlCmd = &cobra.Command{
 	},
 }
 
-var enqueueCmd = &cobra.Command{
+var localEnqueueCmd = &cobra.Command{
 	Use:   "enqueue",
 	Short: "Add packages to the to-crawl queue",
 	Long:  "Add one or more packages to the to-crawl queue",
@@ -167,12 +181,11 @@ var enqueueCmd = &cobra.Command{
 			for i, arg := range args {
 				entries[i] = &domain.ToCrawlEntry{
 					PackagePath: arg,
-					Reason:      "added by command-line",
+					Reason:      EnqueueReason,
 					SubmittedAt: &now,
 				}
 			}
 			opts := db.NewQueueOptions()
-			opts.Priority = EnqueuePriority
 			n, err := dbClient.ToCrawlAdd(entries, opts)
 			if err != nil {
 				return err
@@ -417,6 +430,51 @@ var webCmd = &cobra.Command{
 		}); err != nil {
 			log.Fatalf("main: %s", err)
 		}
+	},
+}
+
+var remoteCmd = &cobra.Command{
+	Use:   "remote",
+	Short: "RPCs",
+	Long:  "RPCs",
+	PreRun: func(_ *cobra.Command, _ []string) {
+		initLogging()
+	},
+}
+
+var remoteEnqueueCmd = &cobra.Command{
+	Use:   "enqueue",
+	Short: "Add items to the to-crawl queue",
+	Long:  "Add items to the to-crawl queue",
+	Args:  cobra.MinimumNArgs(1),
+	PreRun: func(_ *cobra.Command, _ []string) {
+		initLogging()
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		var (
+			cfg = crawler.NewConfig()
+			r   = crawler.NewRemote(CrawlServerAddr, cfg)
+		)
+
+		if err := configureRemoteCrawler(r); err != nil {
+			log.Fatalf("main: configuring remote crawler: %s", err)
+		}
+
+		now := time.Now()
+		toCrawls := make([]*domain.ToCrawlEntry, len(args))
+		for i, arg := range args {
+			toCrawls[i] = &domain.ToCrawlEntry{
+				PackagePath: arg,
+				Reason:      EnqueueReason,
+				SubmittedAt: &now,
+			}
+		}
+
+		n, err := r.Enqueue(toCrawls, db.DefaultQueuePriority)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.WithField("num-submitted", len(args)).WithField("num-added", n).Info("Enqueue operation successfully completed")
 	},
 }
 
