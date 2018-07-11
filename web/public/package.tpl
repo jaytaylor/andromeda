@@ -1,3 +1,4 @@
+{{ $pkg := . }}
 <!doctype html>
 <html>
 <head>
@@ -20,7 +21,13 @@
 
 <div>ID: {{ .ID }}</div>
 <!--<h3>Package Root: {{ .Path }}</h3>-->
-<div>URL: <a href="{{ .URL }}" ref="nofollow">{{ .URL }}</a></div>
+<div>Repository Root: <a href="{{ .URL }}" ref="nofollow">{{ .URL }}</a></div>
+{{ with $webURL := $pkg.WebURL }}
+{{ if ne $webURL $pkg.URL }}
+<div>Source code web link: <a href="{{ $webURL }}">{{ $webURL }}</a></div>
+{{ end }}
+{{ end }}
+
 <!-- <div>Name: {{ .Name }}</div> -->
 <!-- <div>Owner: {{ .Owner }}</div> -->
 <div>VCS: {{ .VCS }}</div>
@@ -70,7 +77,6 @@
 
 {{ if .Data.SubPackages }}
 <hr>
-{{ $pkg := . }}
 <h3>{{ len .Data.SubPackages }} Nested Package{{ len .Data.SubPackages | plural "" "s" }}:</h3>
 {{ range $subPkgPath, $subPkg := .SubPackagesPretty }}
 <a href="/{{ $pkg.Path }}/{{ $subPkgPath }}">{{ $subPkgPath }}</a>
