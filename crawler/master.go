@@ -250,9 +250,38 @@ func (m *Master) Run(stopCh chan struct{}) error {
 			if err == ErrStopRequested {
 				break
 			}
-		} else { /*if err = m.CatalogImporters(res.Package); err != nil {
-			break*/
-			panic("handle new relations")
+		} else {
+			if err := func() error {
+				// Lock to guard against data clobbering.
+				log.WithField("pkg", pkg.Path).Debug("Starting index update process..")
+
+				var existing *domain.Package
+				if existing, err = m.db.Package(pkg.Path); err != nil && err != db.ErrKeyNotFound {
+					return err
+				} else if existing != nil {
+					res.Package = existing.Merge(res.Package)
+				}
+
+				log.WithField("pkg", res.Package.Path).Debug("Index updated with crawl result")
+				m.logStats()
+
+				if res.Package == nil {
+					log.WithField("pkg", pkg.Path).Debug("Save skipped because pkg==nil")
+				} else if err = m.db.PackageSave(res.Package); err != nil {
+					return err
+				}
+				if err = m.db.RecordImportedBy(res.Package, res.ImportedResources); err != nil {
+					return err
+				}
+				m.latest = append(m.latest, res.Package)
+				if len(m.latest) > MaxNumLatest {
+					m.latest = m.latest[len(m.latest)-MaxNumLatest:]
+				}
+				return nil
+			}(); err != nil {
+				log.WithField("pkg", res.Package.Path).Errorf("Hard error saving: %s", err)
+				return err
+			}
 		}
 
 		extra := ""
@@ -359,7 +388,6 @@ func (m *Master) Do(stopCh chan struct{}, pkgs ...string) error {
 				log.WithField("pkg", res.Package.Path).Errorf("Hard error saving: %s", err)
 				return err
 			}
-
 		}
 
 		m.mu.Lock()
