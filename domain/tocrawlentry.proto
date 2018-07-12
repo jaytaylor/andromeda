@@ -11,6 +11,7 @@ message ToCrawlEntry {
   uint64 id = 1 [(gogoproto.customname) = "ID"];
   string package_path = 2;
   string reason = 3;
-  uint32 priority = 4;
-  google.protobuf.Timestamp submitted_at = 5 [(gogoproto.stdtime) = true];
+  uint32 errors = 4;
+  string last_message = 5;
+  google.protobuf.Timestamp submitted_at = 6 [(gogoproto.stdtime) = true];
 }
