@@ -27,8 +27,8 @@ go get jaytaylor.com/andromeda/...
 - [ ] Fix `-s` strangeness, should only specify the base path and auto-append "/src".
 - [ ] Handle relative imports (x2).
 - [ ] Add analysis of RepoRoot sub-package paths and import names.
-- [ ] Remote enqueue
 - [ ] Detect and persist whether each import is vendored or not in the reverse-imports mapping data.
+- [ ] Add errors counter to ToCrawlEntry and throw away when error count exceeds N.
 
 To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`
 
@@ -70,6 +70,12 @@ Then cleanup the input and seed into andromeda:
 ./scripts/input-cleaner.sh archive.godoc.org/packages.20180706 \
     | andromeda bootstrap -g - -f text
 ```
+
+### Installation instructions
+
+Instructions generally live alongside the code within the header of the relevant program, so always check the top of the scripts and source code for installation instructions and per-script documentation.
+
+The exception to this rule is the andromeda binary, where usage instructions are available by running `andromeda --help` or `andromeda <sub-command> --help`.
 
 ### Running remote-crawler as a system service on Windows
 
