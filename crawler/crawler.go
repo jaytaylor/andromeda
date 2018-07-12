@@ -433,11 +433,12 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 	// 	pc.Data.TestImports = append(pc.Data.TestImports, imp)
 	// }
 
-	if pkg.VCS == "git" {
+	switch strings.ToLower(pkg.VCS) {
+	case "git":
 		if err = gitStats(pkg.Data, localPath); err != nil {
 			return err
 		}
-	} else if pkg.VCS == "hg" || pkg.VCS == "mercurial" {
+	case "hg", "mercurial":
 		// TODO: isolate if-condition and make this work for mercurial.
 	}
 

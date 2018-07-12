@@ -427,11 +427,12 @@ func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map
 		if err != nil {
 			return err
 		}
-		log.Infof("pkgs=+%v [ %v ]", pkgs, len(pkgs))
+		log.WithField("referenced-pkg", refPkg.Path).Infof("%v/%v importing packages already exist in the %v table", len(pkgs), len(pkgPaths), TablePackages)
 
 		for pkgPath, refs := range resources {
 			pkg, ok := pkgs[pkgPath]
 			if !ok {
+				// Submit for a future crawl and add a pending reference.
 				entry := &domain.ToCrawlEntry{
 					PackagePath: pkgPath,
 					Reason:      fmt.Sprintf("imported-by ref path=%v", refPkg.Path),
