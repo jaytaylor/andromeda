@@ -390,8 +390,11 @@ func (snap *PackageSnapshot) Merge(other *PackageSnapshot) *PackageSnapshot {
 	if other.Tags != int32(0) {
 		snap.Tags = other.Tags
 	}
-	if other.Bytes != uint64(0) {
-		snap.Bytes = other.Bytes
+	if other.BytesVCS != uint64(0) {
+		snap.BytesVCS = other.BytesVCS
+	}
+	if other.BytesTotal != uint64(0) {
+		snap.BytesTotal = other.BytesTotal
 	}
 	if other.Stars != int32(0) {
 		snap.Stars = other.Stars
@@ -400,8 +403,8 @@ func (snap *PackageSnapshot) Merge(other *PackageSnapshot) *PackageSnapshot {
 	return snap
 }
 
-func (snap PackageSnapshot) PrettyBytes() string {
-	pretty := humanize.Bytes(snap.Bytes)
+func (snap PackageSnapshot) PrettyBytesTotal() string {
+	pretty := humanize.Bytes(snap.BytesTotal)
 	return pretty
 }
 

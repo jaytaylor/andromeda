@@ -109,6 +109,11 @@ func (this *PackageSnapshot) Validate() error {
 		}
 	}
 	// Validation of proto3 map<> fields is unsupported.
+	if this.CommittedAt != nil {
+		if err := go_proto_validators.CallValidatorIfExists(this.CommittedAt); err != nil {
+			return go_proto_validators.FieldError("CommittedAt", err)
+		}
+	}
 	return nil
 }
 func (this *SubPackage) Validate() error {

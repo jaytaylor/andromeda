@@ -136,3 +136,14 @@ func main() {
 	t.Logf("goPkg=%v", goPkg.Imports)
 	t.Logf("testImports=%v", goPkg.TestImports)
 }
+
+func TestGitStats(t *testing.T) {
+	srcPath := filepath.Join(os.Getenv("GOPATH"), "src", "jaytaylor.com", "andromeda")
+	snap := &domain.PackageSnapshot{
+		Repo: "git@github.com:jaytaylor/andromeda",
+	}
+	if err := gitStats(snap, srcPath); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("snap: %# v", snap)
+}

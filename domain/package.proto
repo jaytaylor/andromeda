@@ -12,13 +12,12 @@ message Package {
   string name = 2; // [(gogoproto.moretags) = "gorm:\"type:varchar(64);\""];
   string path = 3; // [(gogoproto.moretags) = "gorm:\"type:varchar(255);unique_index\""];
   string url = 4 [(gogoproto.customname) = "URL"]; //, (gogoproto.moretags) = "gorm:\"type:varchar(255);unique\""]; // TODO: Rename to Repo, and auto calc the URL if possible..
-  string docs_url = 5 [(gogoproto.customname) = "DocsURL"]; //, (gogoproto.moretags) = "gorm:\"type:varchar(255)\""];
-  string owner = 6; // [(gogoproto.moretags) = "gorm:\"type:varchar(64)\""];
-  string vcs = 7 [(gogoproto.customname) = "VCS"]; //, (gogoproto.moretags) = "gorm:\"type:varchar(16)\""];
-  map<string, PackageReferences> imported_by = 8; // TODO: Consider making this a type which tracks when the import was first and last seen.
-  PackageSnapshot data = 9;
-  repeated PackageCrawl history = 10;
-  google.protobuf.Timestamp first_seen_at = 11 [(gogoproto.stdtime) = true];
+  string owner = 5; // [(gogoproto.moretags) = "gorm:\"type:varchar(64)\""];
+  string vcs = 6 [(gogoproto.customname) = "VCS"]; //, (gogoproto.moretags) = "gorm:\"type:varchar(16)\""];
+  map<string, PackageReferences> imported_by = 7; // TODO: Consider making this a type which tracks when the import was first and last seen.
+  PackageSnapshot data = 8;
+  repeated PackageCrawl history = 9;
+  google.protobuf.Timestamp first_seen_at = 10 [(gogoproto.stdtime) = true];
 }
 
 message PackageReferences {
@@ -54,12 +53,15 @@ message PackageSnapshot {
   google.protobuf.Timestamp created_at = 1 [(gogoproto.stdtime) = true];
   string repo = 2;
   map<string, SubPackage> sub_packages = 3; // TODO: Implement a strategy to avoid duplicating this field every crawl.  Only want to store the diffs here.
-  int32 commits = 6;
+  int32 commits = 4;
+  google.protobuf.Timestamp committed_at = 5 [(gogoproto.stdtime) = true];
+  string commit_hash = 6;
   int32 branches = 7;
   int32 tags = 8;
-  uint64 bytes = 9;
-  int32 forks = 10;
-  int32 stars = 11;
+  uint64 bytes_vcs = 9 [(gogoproto.customname) = "BytesVCS"];
+  uint64 bytes_total = 10;
+  int32 forks = 11;
+  int32 stars = 12;
 }
 
 message SubPackage {
