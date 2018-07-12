@@ -433,29 +433,29 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 	// 	pc.Data.TestImports = append(pc.Data.TestImports, imp)
 	// }
 
-	size, err := dirSize(localPath)
-	if err != nil {
-		return err
-	}
-	pc.Data.Bytes = size
-
 	if pkg.VCS == "git" {
 		if err = gitStats(pkg.Data, localPath); err != nil {
 			return err
 		}
+	} else if pkg.VCS == "hg" || pkg.VCS == "mercurial" {
+		// TODO: isolate if-condition and make this work for mercurial.
 	}
 
 	return nil
 }
 
 func gitStats(snap *domain.PackageSnapshot, path string) error {
+	if err := sizes(snap, path, ".git"); err != nil {
+		return err
+	}
+
 	// Number of commits.
 	{
 		cmd := exec.Command("git", "rev-list", "--count", "HEAD")
 		cmd.Dir = path
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			log.WithField("path", path).Errorf("Getting git commit count: %s (output=%v)", err, string(out))
+			log.WithField("path", path).Errorf("Counting git commits: %s (output=%v)", err, string(out))
 		}
 		n, err := strconv.Atoi(strings.Trim(string(out), "\r\n"))
 		if err != nil {
@@ -470,16 +470,61 @@ func gitStats(snap *domain.PackageSnapshot, path string) error {
 		cmd.Dir = path
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			log.WithField("path", path).Errorf("Getting git commit count: %s (output=%v)", err, string(out))
+			log.WithField("path", path).Errorf("Counting git branches: %s (output=%v)", err, string(out))
+			return fmt.Errorf("git stats: counting branches: %s", err)
 		}
 		snap.Branches = int32(len(strings.Split(strings.Trim(string(out), "\r\n"), "\n")))
 	}
-	// snap.AllImports()
 
 	// Number of tags.
+	{
+		cmd := exec.Command("git", "tags", "-l")
+		cmd.Dir = path
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			log.WithField("path", path).Errorf("Counting git tags: %s (output=%v)", err, string(out))
+			return fmt.Errorf("git stats: counting tags: %s", err)
+		}
+		snap.Branches = int32(len(strings.Split(strings.Trim(string(out), "\r\n"), "\n")))
+	}
 
-	// Last commit timestamp.
+	// Last commit hash and timestamp.
+	{
+		const gitLayout = "Mon Jan 2 15:04:05 2006 -0700"
+		cmd := exec.Command("git", "log", "-1", "--pretty=format:%H %cd")
+		cmd.Dir = path
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			log.WithField("path", path).Errorf("Getting last info: %s (output=%v)", err, string(out))
+			return fmt.Errorf("git stats: last info: %s", err)
+		}
+		s := strings.Trim(string(out), "\r\n")
+		pieces := strings.SplitN(s, " ", 2)
+		if len(pieces) < 2 {
+			return fmt.Errorf("git stats: received malformed output from log, expected 2 words separated by a space but got: %v", s)
+		}
+		snap.CommitHash = pieces[0]
+		ts, err := time.Parse(gitLayout, pieces[1])
+		if err != nil {
+			return fmt.Errorf("git stats: unexpected date format, parse failed for: %v", pieces[1])
+		}
+		snap.CommittedAt = &ts
+	}
 
+	return nil
+}
+
+func sizes(snap *domain.PackageSnapshot, path string, vcsDir string) error {
+	size, err := dirSize(path)
+	if err != nil {
+		return err
+	}
+	snap.BytesTotal = size
+
+	if size, err = dirSize(filepath.Join(path, vcsDir)); err != nil {
+		return err
+	}
+	snap.BytesVCS = size
 	return nil
 }
 
@@ -534,9 +579,6 @@ func dirSize(path string) (uint64, error) {
 	var size uint64
 	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if info != nil {
-			if info.IsDir() && info.Name() == ".git" {
-				return filepath.SkipDir
-			}
 			if !info.IsDir() {
 				size += uint64(info.Size())
 			}

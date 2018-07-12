@@ -50,7 +50,7 @@ func (r *Remote) Run(stopCh chan struct{}) {
 			rcsc := domain.NewRemoteCrawlerServiceClient(conn)
 			ac, err := rcsc.Attach(context.Background())
 			if err != nil {
-				return fmt.Errorf("attaching: %s", r.Addr, err)
+				return fmt.Errorf("attaching %v: %s", r.Addr, err)
 			}
 
 			if res != nil {

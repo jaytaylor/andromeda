@@ -194,6 +194,7 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 }
 
 func (m *Master) Enqueue(ctx context.Context, req *domain.EnqueueRequest) (*domain.EnqueueResponse, error) {
+	log.WithField("entries", len(req.Entries)).Debug("Received enqueue request")
 	opts := &db.QueueOptions{
 		Priority: int(req.Priority),
 	}
@@ -201,6 +202,7 @@ func (m *Master) Enqueue(ctx context.Context, req *domain.EnqueueRequest) (*doma
 	if err != nil {
 		return nil, err
 	}
+	log.WithField("submitted", len(req.Entries)).WithField("added", n).Info("Completed enqueue operation")
 	resp := &domain.EnqueueResponse{
 		N: int32(n),
 	}

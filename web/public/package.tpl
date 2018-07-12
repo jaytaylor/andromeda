@@ -42,7 +42,7 @@
 <div>Data.Commits: {{ .Data.Commits }}</div>
 <div>Data.Branches: {{ .Data.Branches }}</div>
 <div>Data.Tags: {{ .Data.Tags }}</div>
-<div>Data.Bytes: {{ .Data.PrettyBytes }}</div>
+<div>Data.BytesTotal: {{ .Data.PrettyBytesTotal }}</div>
 <div>Data.Forks: {{ .Data.Forks }}</div>
 
 {{ if .ImportedBy }}

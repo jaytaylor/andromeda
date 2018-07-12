@@ -30,7 +30,7 @@
 <div>Data.Commits: {{ .Pkg.Data.Commits }}</div>
 <div>Data.Branches: {{ .Pkg.Data.Branches }}</div>
 <div>Data.Tags: {{ .Pkg.Data.Tags }}</div>
-<div>Data.Bytes: {{ .Pkg.Data.Bytes }}</div>
+<div>Data.BytesTotal: {{ .Pkg.Data.PrettyBytesTotal }}</div>
 <div>Data.Forks: {{ .Pkg.Data.Forks }}</div>
 
 <div>

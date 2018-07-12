@@ -147,7 +147,7 @@ func (service *WebService) activateRoutes() *hitch.Hitch {
 
 func (service *WebService) LoggerMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		log.Infof("method=%s url=%s remoteAddr=%s referer=%s\n", req.Method, req.URL.String(), req.RemoteAddr, req.Referer())
+		log.WithField("method", req.Method).WithField("url", req.URL.String()).WithField("remote-addr", req.RemoteAddr).WithField("referer", req.Referer()).Info("ws handler invoked")
 		next.ServeHTTP(w, req)
 	})
 }
