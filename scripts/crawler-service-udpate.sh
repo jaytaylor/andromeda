@@ -9,7 +9,9 @@
 #
 # Installation:
 #
-#     * 
+#     * Add to root crontab:
+#
+#         */15 * * * * <GOPATH-HERE>/src/jaytaylor.com/andromeda/scripts/crawler-service-udpate.sh 1>/dev/null 2>/dev/null
 #
 ##
 
