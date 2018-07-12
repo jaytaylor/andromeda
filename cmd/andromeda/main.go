@@ -674,7 +674,7 @@ var checkCmd = &cobra.Command{
 				for i, vs := range versions {
 					v, err := strconv.ParseInt(vs, 0, 0)
 					if err != nil {
-						return fmt.Errorf("git: int parse failed for version component at offset %v for version string %q: %s", pieces[2], err)
+						return fmt.Errorf("git: int parse failed for version component at offset %v for version string %q: %s", i, pieces[2], err)
 					}
 					version[i] = v
 				}
