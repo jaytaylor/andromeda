@@ -39,6 +39,7 @@ for f in "${listingsDir}"/*.xz ; do
         continue
     fi
     b="${f}"
+    # shellcheck disable=SC2001
     report="$(echo "${a}" | sed 's/^.*packages\.\(.*\)\.xz$/\1/')-$(echo "${b}" | sed 's/^.*packages\.\(.*\)\.xz$/\1/').txt"
     "${differ}" "${a}" "${b}" > "${outputDir}/${report}"
     a="${f}"

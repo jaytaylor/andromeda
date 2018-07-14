@@ -6,4 +6,4 @@ set -o nounset
 
 cd "$(dirname "$0")/../archive.godoc.org/"
 
-ls -1 | sort -r | xargs -n1 ../scripts/bootstrap.sh
+find . -type f -name '*.xz' | sort -r | xargs -n1 ../scripts/bootstrap.sh
