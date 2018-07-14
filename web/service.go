@@ -45,12 +45,14 @@ type WebService struct {
 
 	Config *Config
 	DB     db.Client
+	hub    *Hub
 }
 
 func New(db db.Client, cfg *Config) *WebService {
 	service := &WebService{
 		Config: cfg,
 		DB:     db,
+		hub:    newHub(),
 	}
 	service.handler = service.activateRoutes().Handler()
 	return service
@@ -99,6 +101,20 @@ func (service *WebService) Start() error {
 		log.Infof("run server result: %s", g.Wait())
 	}()
 
+	// Attach and wire in crawler master event subscriber / broadcaster.
+	evCh := make(chan string, 100)
+	go func() {
+		go service.hub.run()
+		for {
+			event, ok := <-evCh
+			if !ok {
+				return
+			}
+			service.hub.broadcast <- []byte(event)
+		}
+	}()
+	service.Config.Master.Subscribe(evCh)
+
 	log.WithField("addr", service.listener.Addr()).Info("WebService started")
 	return nil
 }
@@ -146,7 +162,7 @@ func (service *WebService) activateRoutes() *hitch.Hitch {
 
 func (service *WebService) LoggerMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		log.WithField("method", req.Method).WithField("url", req.URL.String()).WithField("remote-addr", req.RemoteAddr).WithField("referer", req.Referer()).Info("ws handler invoked")
+		log.WithField("method", req.Method).WithField("url", req.URL.String()).WithField("remote-addr", req.RemoteAddr).WithField("referer", req.Referer()).Info("http handler invoked")
 		next.ServeHTTP(w, req)
 	})
 }
@@ -201,6 +217,13 @@ func (service *WebService) pkg(w http.ResponseWriter, req *http.Request) {
 		service.tplAsset("index.tpl")(w, req)
 		return
 	}
+
+	if pkgPath == "ws" {
+		log.Debug("Passing off to serveWs handler")
+		serveWs(service.hub, w, req)
+		return
+	}
+
 	log.WithField("pkg-path", pkgPath).Info("GET /:package invoked")
 
 	// Handle API request.

@@ -189,7 +189,7 @@ func (client *BoltClient) packageSave(tx *bolt.Tx, pkgs []*domain.Package) error
 
 		if len(pkg.History) > 0 {
 			if pc := pkg.History[len(pkg.History)-1]; len(pc.JobMessages) > 0 {
-				log.WithField("pkg", pkg.Path).Errorf("Discarding JobMessages: %v", pc.JobMessages)
+				log.WithField("pkg", pkg.Path).Debugf("Discarding JobMessages: %v", pc.JobMessages)
 				pc.JobMessages = nil
 			}
 		}
