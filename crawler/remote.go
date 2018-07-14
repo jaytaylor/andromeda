@@ -14,6 +14,10 @@ import (
 
 const MaxMsgSize = 50000000 // 50MB.
 
+var (
+	RemoteCrawlerReadDeadlineDuration = 30 * time.Second
+)
+
 type Remote struct {
 	Addr        string
 	DialOptions []grpc.DialOption
@@ -50,7 +54,8 @@ func (r *Remote) Run(stopCh chan struct{}) {
 			defer conn.Close()
 
 			rcsc := domain.NewRemoteCrawlerServiceClient(conn)
-			ac, err := rcsc.Attach(context.Background())
+			ctx, cancelFn := context.WithDeadline(context.Background(), time.Now().Add(RemoteCrawlerReadDeadlineDuration))
+			ac, err := rcsc.Attach(ctx)
 			if err != nil {
 				return fmt.Errorf("attaching %v: %s", r.Addr, err)
 			}
@@ -71,17 +76,40 @@ func (r *Remote) Run(stopCh chan struct{}) {
 					return ErrStopRequested
 				}
 
-				select {
-				case <-stopCh:
-					return ErrStopRequested
-				default:
+				var (
+					entry        *domain.ToCrawlEntry
+					notStoppedCh = make(chan struct{}, 1)
+					recvCh       = make(chan error)
+				)
+
+				go func() {
+					select {
+					case <-stopCh:
+						cancelFn()
+
+					case <-notStoppedCh:
+					}
+				}()
+
+				go func() {
+					log.WithField("session-crawls", crawls).Debug("Ready to receive next entry")
+					var err error
+					entry, err = ac.Recv()
+					recvCh <- err
+				}()
+
+				err = <-recvCh
+				notStoppedCh <- struct{}{}
+				if err != nil {
+					if err == context.Canceled {
+						return ErrStopRequested
+					} else if err == context.DeadlineExceeded {
+						return err
+					} else {
+						return fmt.Errorf("receiving entry: %s", err)
+					}
 				}
 
-				log.WithField("session-crawls", crawls).Debug("Ready to receive next entry")
-				entry, err := ac.Recv()
-				if err != nil {
-					return fmt.Errorf("receiving entry: %s", err)
-				}
 				res, err := r.crawler.Do(&domain.Package{Path: entry.PackagePath}, stopCh)
 				if res == nil && err != nil {
 					res = domain.NewCrawlResult(nil, err)
@@ -103,6 +131,9 @@ func (r *Remote) Run(stopCh chan struct{}) {
 				return
 			}
 			log.Errorf("%s", err)
+			if err == context.DeadlineExceeded {
+				continue
+			}
 		}
 		// TODO: Use backoff instead of sleep.
 		log.Debug("Sleeping for 10s..")

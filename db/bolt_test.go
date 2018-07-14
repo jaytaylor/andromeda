@@ -77,6 +77,30 @@ func TestBoltDBClientToCrawlOperations(t *testing.T) {
 		}
 	}
 
+	// Test insertion of dupes using "force" field.
+	{
+		now := time.Now()
+		entry := &domain.ToCrawlEntry{
+			PackagePath: "foo-bar",
+			Reason:      "testing force insert",
+			SubmittedAt: &now,
+			Force:       true,
+		}
+		expected := 4
+		for i := 0; i < 2; i++ {
+			if _, err := client.ToCrawlAdd([]*domain.ToCrawlEntry{entry}, nil); err != nil {
+				t.Fatal(err)
+			}
+			l, err := client.ToCrawlsLen()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if expected, actual := expected+i, l; actual != expected {
+				t.Errorf("[i=%v] Expected crawl queue len=%v but actual=%v", i, expected, actual)
+			}
+		}
+	}
+
 	{
 		if _, err := client.ToCrawlDequeue(); err != nil {
 			t.Fatal(err)
@@ -85,7 +109,7 @@ func TestBoltDBClientToCrawlOperations(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if expected, actual := 2, l; actual != expected {
+		if expected, actual := 4, l; actual != expected {
 			t.Errorf("Expected crawl queue len=%v but actual=%v", expected, actual)
 		}
 	}

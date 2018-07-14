@@ -118,9 +118,22 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.CrawlRe
 		return nil, ErrStopRequested
 	}
 
-	rr, err := PackagePathToRepoRoot(pkg.Path)
-	if err != nil {
-		return nil, err
+	var (
+		rr   *vcs.RepoRoot
+		rrCh = make(chan error)
+	)
+	go func() {
+		var err error
+		rr, err = PackagePathToRepoRoot(pkg.Path)
+		rrCh <- err
+	}()
+	select {
+	case err := <-rrCh:
+		if err != nil {
+			return nil, err
+		}
+	case <-ctx.stopCh:
+		return nil, ErrStopRequested
 	}
 	ctx.rr = rr
 	pkg.Path = rr.Root
@@ -151,7 +164,7 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.CrawlRe
 			pCh <- pFn(ctx)
 		}()
 		select {
-		case err = <-pCh:
+		case err := <-pCh:
 			if err != nil {
 				if c.errorShouldInterruptExecution(err) {
 					return ctx.res, err

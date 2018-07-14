@@ -47,7 +47,7 @@
 
 {{ if .ImportedBy }}
 <hr>
-<h4>Imported By<h4>
+<h4>Imported By {{ len .ImportedBy }} package{{ len .ImportedBy | plural "" "s" }}<h4>
 <ul>
 {{ range $imp, $refs := .ImportedBy }}
     <li><a href="/{{ $imp }}">{{ $imp }} ({{ len $refs.Refs }} reference{{ len $refs.Refs | plural "" "s" }})</a></li>

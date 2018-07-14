@@ -64,6 +64,7 @@ func init() {
 
 	remoteEnqueueCmd.Flags().IntVarP(&db.DefaultQueuePriority, "priority", "p", db.DefaultQueuePriority, "Priority level to use when adding items to the queue")
 	remoteEnqueueCmd.Flags().StringVarP(&EnqueueReason, "reason", "r", EnqueueReason, "Reason to use for to-crawl entries")
+	remoteEnqueueCmd.Flags().BoolVarP(&EnqueueForce, "force", "f", EnqueueForce, "Force queue insertion and crawl")
 	addRemoteFlags(remoteEnqueueCmd)
 
 	rootCmd.AddCommand(remoteCrawlerCmd)
@@ -99,6 +100,7 @@ var (
 	BootstrapGoDocPackagesFile string
 
 	EnqueueReason = "requested at cmdline"
+	EnqueueForce  bool
 
 	WebAddr string
 
@@ -467,6 +469,7 @@ var remoteEnqueueCmd = &cobra.Command{
 				PackagePath: arg,
 				Reason:      EnqueueReason,
 				SubmittedAt: &now,
+				Force:       EnqueueForce,
 			}
 		}
 
