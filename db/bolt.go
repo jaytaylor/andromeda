@@ -562,7 +562,7 @@ func (client *BoltClient) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *Queue
 			deserErr = fmt.Errorf("unmarshalling boltqueue message: %s", deserErr)
 			return
 		}
-		if _, ok := candidates[entry.PackagePath]; ok {
+		if candidate, ok := candidates[entry.PackagePath]; ok && !candidate.Force {
 			// Already in queue.
 			delete(candidates, entry.PackagePath)
 		}

@@ -17,7 +17,10 @@ import (
 )
 
 var (
-	MaxNumLatest = 25
+	MaxNumLatest        = 25
+	ToCrawlErrorLimit   = 25 // Record will be discarded after this number of crawl attempts is exceeded.
+	MaxNumCrawls        = 2
+	MinAgeBeforeRefresh = 30 * 24 * time.Hour
 )
 
 // TODO: Need scheme for ensuring a write hasn't occurred to the affected
@@ -99,14 +102,14 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			}
 			return err
 		}
-		if entry.Errors > 25 {
+		if entry.Errors > uint32(ToCrawlErrorLimit) {
 			log.WithField("pkg", entry.PackagePath).WithField("num-attempts", entry.Errors).Info("Discarding to-crawl due to excessive crawler errors")
 			goto Dequeue
 		}
 		var alreadyExists bool
 		if pkg, _ := m.db.Package(entry.PackagePath); pkg != nil {
 			alreadyExists = true
-			if len(pkg.History) > 2 {
+			if len(pkg.History) > MaxNumCrawls && !entry.Force {
 				log.WithField("entry", entry.PackagePath).Debug("Package has already been crawled several times, discarding entry")
 				// log.WithField("entry", entry.PackagePath).Debug("Package has already been crawled several times, placing to rear of queue")
 				// if err = m.requeue(entry, errors.New("already crawled several times")); err != nil {
