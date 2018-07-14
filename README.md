@@ -29,6 +29,7 @@ go get jaytaylor.com/andromeda/...
 - [ ] Add analysis of RepoRoot sub-package paths and import names.
 - [ ] Detect and persist whether each import is vendored or not in the reverse-imports mapping data.
 - [ ] Add errors counter to ToCrawlEntry and throw away when error count exceeds N.
+- [ ] Move failed to-crawls to different table instead of dropping them outright.
 
 To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`
 

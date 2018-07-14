@@ -13,5 +13,6 @@ set -x
 
 subCommand="$1"
 
+# shellcheck disable=SC2009
 ps -ef | grep andromeda | grep "${subCommand}" | grep -v grep | awk '{ print $2 }' | xargs -n1 kill -9
 
