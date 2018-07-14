@@ -412,7 +412,7 @@ func (client *BoltClient) PackagesLen() (int, error) {
 }
 
 func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map[string]*domain.PackageReferences) error {
-	log.Infof("Recording imported  by... n-resources=%v", len(resources))
+	log.WithField("referenced-pkg", refPkg.Path).Infof("Recording imported by; n-resources=%v", len(resources))
 	var (
 		entries     = []*domain.ToCrawlEntry{}
 		discoveries = []string{}

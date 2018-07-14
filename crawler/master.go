@@ -522,6 +522,9 @@ func (m *Master) enqueueToCrawlsMap(toCrawls map[string]*domain.ToCrawlEntry) er
 func (m *Master) requeue(entry *domain.ToCrawlEntry, cause error) error {
 	log.WithField("pkg", entry.PackagePath).Debugf("Attempting re-queue entry due to: %s", cause)
 
+	entry.Errors++
+	entry.LastMessage = cause.Error()
+
 	opts := db.NewQueueOptions()
 	opts.Priority = db.DefaultQueuePriority + 2
 
