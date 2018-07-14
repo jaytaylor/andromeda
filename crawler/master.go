@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 
 	"gigawatt.io/errorlib"
 	log "github.com/sirupsen/logrus"
@@ -38,12 +39,13 @@ var (
 //     - Overseer
 //     - Master
 type Master struct {
-	db         db.Client
-	crawler    *Crawler
-	latest     []*domain.Package
-	numCrawls  int
-	numRemotes int
-	mu         sync.RWMutex
+	db          db.Client
+	crawler     *Crawler
+	latest      []*domain.Package
+	numCrawls   int
+	numRemotes  int
+	subscribers []chan string
+	mu          sync.RWMutex
 }
 
 // NewMaster constructs and returns a new Master crawler instance.
@@ -97,6 +99,10 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			}
 			return err
 		}
+		if entry.Errors > 25 {
+			log.WithField("pkg", entry.PackagePath).WithField("num-attempts", entry.Errors).Info("Discarding to-crawl due to excessive crawler errors")
+			goto Dequeue
+		}
 		var alreadyExists bool
 		if pkg, _ := m.db.Package(entry.PackagePath); pkg != nil {
 			alreadyExists = true
@@ -110,6 +116,7 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			}
 		}
 		log.WithField("entry", entry.PackagePath).WithField("already-exists", alreadyExists).Debug("Sending to remote crawler")
+		m.emit(fmt.Sprintf("Sending %v to remote crawler (num prior attempts=%v)", entry.PackagePath, entry.Errors))
 		if err = stream.Send(entry); err != nil {
 			if err2 := m.requeue(entry, err); err2 != nil {
 				return errorlib.Merge([]error{err, err2})
@@ -130,8 +137,10 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 		// 	case <-stopCh
 		// }
 
-		if res, err = stream.Recv(); err != nil {
-			log.Info("here")
+		res, err = stream.Recv()
+		m.emit(fmt.Sprintf("Received crawl result for %v", entry.PackagePath))
+
+		if err != nil {
 			if err2 := m.requeue(entry, fmt.Errorf("remote crawler: %s", err)); err2 != nil {
 				// TODO: Consider placing entries in an intermediate table while in-flight,
 				//       so they'll never get lost.
@@ -532,7 +541,7 @@ func (m *Master) requeue(entry *domain.ToCrawlEntry, cause error) error {
 		log.WithField("pkg", entry.PackagePath).Errorf("Re-queueing failed: %s (highly undesirable, graph integrity compromised)", err)
 		return err
 	}
-	log.WithField("pkg", entry.PackagePath).Debug("Re-queued OK")
+	log.WithField("pkg", entry.PackagePath).WithField("num-errs", entry.Errors).Debug("Re-queued OK")
 	return nil
 }
 
@@ -551,4 +560,44 @@ func (m *Master) Latest() []*domain.Package {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.latest
+}
+
+func (m *Master) emit(event string) {
+	m.mu.RLock()
+	subs := make([]chan string, len(m.subscribers))
+	for i, sub := range m.subscribers {
+		subs[i] = sub
+	}
+	m.mu.RUnlock()
+
+	go func() {
+		timeout := 100 * time.Millisecond
+		for i, s := range m.subscribers {
+			select {
+			case s <- event:
+			case <-time.After(timeout):
+				log.Errorf("Subscriber at index=%v took more than %s to receive event=%s (skipped)", i, timeout, event)
+			}
+		}
+	}()
+}
+
+func (m *Master) Subscribe(ch chan string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.subscribers = append(m.subscribers, ch)
+}
+
+func (m *Master) Unsubscribe(ch chan string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	newSubs := []chan string{}
+	for _, s := range m.subscribers {
+		if s != ch {
+			newSubs = append(newSubs, s)
+		}
+	}
+	m.subscribers = newSubs
 }

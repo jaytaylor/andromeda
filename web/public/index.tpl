@@ -5,11 +5,115 @@
     <meta charset="utf-8">
     <meta name="author" content="Jay Taylor">
     <meta name="description" content="Andromeda is a graph of the entire known visible go universe">
+
+    <script type="text/javascript">
+        window.onload = function () {
+            var conn;
+            var status = document.getElementById('status');
+            var msg = document.getElementById('msg');
+            var log = document.getElementById('log');
+            function appendLog(item) {
+                var doScroll = log.scrollTop > log.scrollHeight - log.clientHeight - 1;
+                log.appendChild(item);
+                if (doScroll) {
+                    log.scrollTop = log.scrollHeight - log.clientHeight;
+                }
+            }
+            /*document.getElementById('form').onsubmit = function () {
+                if (!conn) {
+                    return false;
+                }
+                if (!msg.value) {
+                    return false;
+                }
+                conn.send(msg.value);
+                msg.value = '';
+                return false;
+            };*/
+            if (window['WebSocket']) {
+                var proto = 'https:' == document.location.protocol ? 'wss' : 'ws';
+                var wsConnect = function() {
+                    status.innerHTML = '<b>Connecting..</b>';
+
+                    conn = new WebSocket(proto + '://' + document.location.host + '/ws');
+                    conn.onopen = function(evt) {
+                        console.log(evt);
+                        status.innerHTML = '<b>Connected</b>';
+                    };
+                    /*conn.onerror = function(evt) {
+                        console.log(evt);
+                        var item = document.createElement('div');
+                        item.innerHTML = '<b>ERROR: ' + evt + '</b>';
+                        appendLog(item);
+                    };*/
+                    conn.onclose = function(evt) {
+                        status.innerHTML = '<b>Connection closed.</b>';
+                        setTimeout(wsConnect, 10000);
+                    };
+                    conn.onmessage = function(evt) {
+                        var messages = evt.data.split('\n');
+                        for (var i = 0; i < messages.length; i++) {
+                            var item = document.createElement('div');
+                            item.innerText = messages[i];
+                            appendLog(item);
+                        }
+                    };
+                };
+                wsConnect();
+            } else {
+                var item = document.createElement('div');
+                item.innerHTML = '<b>Your browser does not support WebSockets.</b>';
+                appendLog(item);
+            }
+        };
+    </script>
+    <style type="text/css">
+        /*html {
+            overflow: hidden;
+        }*/
+        #stream-container {
+            padding: 0;
+            margin: 0;
+            width: 800px;
+            height: 250px;
+            background: gray;
+        }
+        #log {
+            background: white;
+            margin: 0;
+            padding: 0; /*0.5em 0.5em 0.5em 0.5em;*/
+            width: 800px;
+            height: 250px;
+            overflow: auto;
+        }
+        #form {
+            padding: 0 0.5em 0 0.5em;
+            margin: 0;
+            /*position: absolute;*/
+            /*bottom: 1em;*/
+            /*left: 0px;*/
+            width: 300px;
+            /*overflow: hidden;*/
+        }
+    </style>
+
 </head>
 <body>
 <h1>Andromeda</h1>
 <h2>Search the entire visible Golang Universe</h2>
 <br>
+
+<div id="stream-container">
+    <h3>Crawl Stream</h3>
+    <div> Connection status: <span id="status"></span></div>
+    <div id="log"></div>
+    <!--<form id="form">
+        <input type="submit" value="Send" />
+        <input type="text" id="msg" size="64"/>
+    </form>-->
+</div>
+<br>
+
 {{ with $latest := .Config.Master.Latest }}
 {{ if $latest }}
 <div>
