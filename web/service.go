@@ -72,8 +72,7 @@ func (service *WebService) Start() error {
 		return err
 	}
 
-	const FiftyMB = 50000000
-	grpcServer := grpc.NewServer(grpc.MaxSendMsgSize(FiftyMB), grpc.MaxRecvMsgSize(FiftyMB))
+	grpcServer := grpc.NewServer(grpc.MaxSendMsgSize(crawler.MaxMsgSize), grpc.MaxRecvMsgSize(crawler.MaxMsgSize))
 	domain.RegisterRemoteCrawlerServiceServer(grpcServer, service.Config.Master)
 
 	m := cmux.New(service.listener)
