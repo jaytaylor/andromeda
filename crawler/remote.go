@@ -12,6 +12,8 @@ import (
 	"jaytaylor.com/andromeda/domain"
 )
 
+const MaxMsgSize = 50000000 // 50MB.
+
 type Remote struct {
 	Addr        string
 	DialOptions []grpc.DialOption
@@ -141,6 +143,12 @@ func (r *Remote) conn() (*grpc.ClientConn, error) {
 		log.Debug("Activated gRPC dial option grpc.WithInsecure() due to empty options")
 		r.DialOptions = append(r.DialOptions, grpc.WithInsecure())
 	}
+
+	r.DialOptions = append(r.DialOptions, grpc.WithDefaultCallOptions(
+		grpc.MaxCallRecvMsgSize(MaxMsgSize),
+		grpc.MaxCallSendMsgSize(MaxMsgSize),
+	))
+
 	conn, err := grpc.Dial(r.Addr, r.DialOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("Dialing %v: %s", r.Addr, err)
