@@ -18,6 +18,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/onrik/logrus/filename"
+	"github.com/pkg/profile"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
@@ -46,6 +47,7 @@ func init() {
 	rootCmd.AddCommand(webCmd)
 
 	webCmd.Flags().StringVarP(&WebAddr, "addr", "a", "", "Interface bind address:port spec")
+	webCmd.Flags().BoolVarP(&MemoryProfiling, "memory-profiling", "", MemoryProfiling, "Enable the memory profiler; creates a mem.pprof file while the application is shutting down")
 
 	rootCmd.AddCommand(crawlCmd)
 
@@ -112,6 +114,8 @@ var (
 	TLSKeyFile  string
 	TLSCAFile   string
 	AutoTLSCert bool // When true, will use OpenSSL to automatically retrieve the SSL/TLS public key of the gRPC server.
+
+	MemoryProfiling bool
 )
 
 func addRemoteFlags(cmd *cobra.Command) {
@@ -399,12 +403,16 @@ var lsCmd = &cobra.Command{
 
 var webCmd = &cobra.Command{
 	Use:   "web",
-	Short: ".. jay will fill this long one out sometime ..",
-	Long:  ".. jay will fill this long one out sometime ..",
+	Short: "Andromeda web server",
+	Long:  "Runs the Andromeda HTTP1.1/HTTP2 web frontend and HTTP/2 gRPC server",
 	PreRun: func(_ *cobra.Command, _ []string) {
 		initLogging()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		if MemoryProfiling {
+			defer profile.Start(profile.MemProfile).Stop()
+		}
+
 		dbCfg := db.NewBoltConfig(DBFile)
 		dbCfg.BoltOptions.Timeout = 5 * time.Second
 		if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
