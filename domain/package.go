@@ -110,7 +110,7 @@ func (pkg *Package) Merge(other *Package) *Package {
 	}
 	/* DISABLED: THIS MAKES NO SENSE!!!
 	if len(other.ImportedBy) > 0 {
-		// pkg.ImportedBy = unique.Strings(append(pkg.ImportedBy, other.ImportedBy...))
+		// pkg.ImportedBy = unique.StringsSorted(append(pkg.ImportedBy, other.ImportedBy...))
 		for subPkgPath, wrapper := range other.ImportedBy {
 			for _, ref := range wrapper.Refs {
 				pkg.UpdateImportedBy(subPkgPath, ref)
@@ -340,7 +340,7 @@ func (snap *PackageSnapshot) AllImports() []string {
 	for _, subPkg := range snap.SubPackages {
 		imports = append(imports, subPkg.Imports...)
 	}
-	imports = unique.Strings(imports)
+	imports = unique.StringsSorted(imports)
 	return imports
 }
 
@@ -358,7 +358,7 @@ func (snap *PackageSnapshot) AllTestImports() []string {
 			}
 		}
 	}
-	testImports = unique.Strings(testImports)
+	testImports = unique.StringsSorted(testImports)
 	return testImports
 }
 
@@ -470,7 +470,7 @@ func (subPkg *SubPackage) CombinedImports() []string {
 	for _, pkgPath := range subPkg.TestImports {
 		imports = append(imports, pkgPath)
 	}
-	imports = unique.Strings(imports)
+	imports = unique.StringsSorted(imports)
 	return imports
 }
 

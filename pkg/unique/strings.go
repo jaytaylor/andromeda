@@ -16,6 +16,12 @@ func Strings(input []string) []string {
 			u = append(u, val)
 		}
 	}
+	return u
+}
+
+// StringsSorted sorts the result before returning it.
+func StringsSorted(input []string) []string {
+	u := Strings(input)
 	sort.Strings(u)
 	return u
 }
