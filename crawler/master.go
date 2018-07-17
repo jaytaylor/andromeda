@@ -175,17 +175,19 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			if existing, err = m.db.Package(entry.PackagePath); err != nil && err != db.ErrKeyNotFound {
 				return err
 			} else if existing != nil {
+				if existing.Data.Equals(res.Package.Data) {
+					log.WithField("pkg", entry.PackagePath).Debug("Nothing seems to have changed, discarding crawl")
+					return nil
+				}
 				res.Package = existing.Merge(res.Package)
 			}
-
-			log.WithField("pkg", res.Package.Path).Debug("Index updated with crawl result")
-			m.logStats()
 
 			if res.Package == nil {
 				log.WithField("pkg", entry.PackagePath).Debug("Save skipped because pkg==nil")
 			} else if err = m.db.PackageSave(res.Package); err != nil {
 				return err
 			}
+			log.WithField("pkg", entry.PackagePath).Debug("Index updated with crawl result")
 			if err = m.db.RecordImportedBy(res.Package, res.ImportedResources); err != nil {
 				return err
 			}
@@ -193,6 +195,7 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			if len(m.latest) > MaxNumLatest {
 				m.latest = m.latest[len(m.latest)-MaxNumLatest:]
 			}
+			m.logStats()
 			return nil
 		}(); err != nil {
 			log.WithField("pkg", res.Package.Path).Errorf("Hard error saving: %s", err)

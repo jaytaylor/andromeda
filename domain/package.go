@@ -338,10 +338,28 @@ func (pc PackageCrawl) Duration() time.Duration {
 func (snap *PackageSnapshot) AllImports() []string {
 	imports := []string{}
 	for _, subPkg := range snap.SubPackages {
-		imports = append(imports, subPkg.AllImports()...)
+		imports = append(imports, subPkg.Imports...)
 	}
 	imports = unique.Strings(imports)
 	return imports
+}
+
+// AllTestImports returns imports only found in package tests.
+func (snap *PackageSnapshot) AllTestImports() []string {
+	mainImports := map[string]struct{}{}
+	for _, imp := range snap.AllImports() {
+		mainImports[imp] = struct{}{}
+	}
+	testImports := []string{}
+	for _, subPkg := range snap.SubPackages {
+		for _, imp := range subPkg.TestImports {
+			if _, ok := mainImports[imp]; !ok {
+				testImports = append(testImports, imp)
+			}
+		}
+	}
+	testImports = unique.Strings(testImports)
+	return testImports
 }
 
 // Merge combines the information from a newer package snapshot into this one.
@@ -403,6 +421,31 @@ func (snap *PackageSnapshot) Merge(other *PackageSnapshot) *PackageSnapshot {
 	return snap
 }
 
+func (snap PackageSnapshot) Equals(other *PackageSnapshot) bool {
+	if other == nil {
+		return false
+	}
+	if snap.Branches != other.Branches {
+		return false
+	}
+	if snap.BytesTotal != other.BytesTotal {
+		return false
+	}
+	if snap.CommitHash != other.CommitHash {
+		return false
+	}
+	if snap.Commits != other.Commits {
+		return false
+	}
+	if snap.Repo != other.Repo {
+		return false
+	}
+	if snap.Tags != other.Tags {
+		return false
+	}
+	return true
+}
+
 func (snap PackageSnapshot) PrettyBytesTotal() string {
 	pretty := humanize.Bytes(snap.BytesTotal)
 	return pretty
@@ -419,7 +462,7 @@ func NewSubPackage(name string, now ...*time.Time) *SubPackage {
 	return subPkg
 }
 
-func (subPkg *SubPackage) AllImports() []string {
+func (subPkg *SubPackage) CombinedImports() []string {
 	imports := make([]string, 0, len(subPkg.Imports)+len(subPkg.TestImports))
 	for _, pkgPath := range subPkg.Imports {
 		imports = append(imports, pkgPath)
@@ -427,6 +470,7 @@ func (subPkg *SubPackage) AllImports() []string {
 	for _, pkgPath := range subPkg.TestImports {
 		imports = append(imports, pkgPath)
 	}
+	imports = unique.Strings(imports)
 	return imports
 }
 

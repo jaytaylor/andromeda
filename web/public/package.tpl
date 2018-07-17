@@ -55,6 +55,36 @@
 </ul>
 {{ end }}
 
+{{ with $allImports := $pkg.Data.AllImports }}
+{{ if gt (len $allImports) 0 }}
+<hr>
+<div>
+<h4>All Imports</h4>
+<ul style="list-style-type: none">
+{{ range $imp := $allImports }}
+    <li><a href="/{{ $imp }}">{{ $imp }}</a></li>
+{{ end }}
+</ul>
+</div>
+{{ end }}
+{{ end }}
+
+{{ with $allTestImports := $pkg.Data.AllTestImports }}
+{{ if gt (len $allTestImports) 0 }}
+<hr>
+<div>
+<h4>All Test Imports</h4>
+<ul style="list-style-type: none">
+{{ range $imp := $allTestImports }}
+    <li><a href="/{{ $imp }}">{{ $imp }}</a></li>
+{{ end }}
+</ul>
+</div>
+{{ end }}
+{{ end }}
+
+
+
 {{ with $subPkg := index .Data.SubPackages "" }}
 {{ if $subPkg.Imports }}
 <hr>

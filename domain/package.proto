@@ -72,5 +72,6 @@ message SubPackage {
   bool active = 5;
   google.protobuf.Timestamp first_seen_at = 6 [(gogoproto.stdtime) = true];
   google.protobuf.Timestamp last_seen_at = 7 [(gogoproto.stdtime) = true];
+  string synopsis = 8;
 }
 
