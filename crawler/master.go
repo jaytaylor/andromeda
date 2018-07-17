@@ -496,7 +496,7 @@ func (m *Master) buildAssociations(rr *vcs.RepoRoot, usedPkg *domain.Package, co
 			}
 		}
 	}
-	newImportedBy := unique.Strings(append(usedPkg.ImportedBy, consumerPkg.Path))
+	newImportedBy := unique.StringsSorted(append(usedPkg.ImportedBy, consumerPkg.Path))
 	if !reflect.DeepEqual(usedPkg.ImportedBy, newImportedBy) {
 		usedPkg.ImportedBy = newImportedBy
 		updatedPkgs[rr.Root] = usedPkg
