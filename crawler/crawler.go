@@ -3,6 +3,8 @@ package crawler
 import (
 	"errors"
 	"fmt"
+	godoc "go/doc"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daviddengcn/go-index"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/tools/go/vcs"
 
@@ -312,7 +315,7 @@ func (c *Crawler) Hydrate(ctx *crawlerContext) error {
 func (c *Crawler) ImportedBy(ctx *crawlerContext) error {
 	for subPkgPath, subPkg := range ctx.res.Package.Data.SubPackages {
 		subPkgPath = domain.SubPackagePathDenormalize(ctx.res.Package.Path, subPkgPath)
-		for _, imp := range subPkg.AllImports() {
+		for _, imp := range subPkg.CombinedImports() {
 			// Dont include self-references.
 			if !strings.HasPrefix(imp, ctx.pkg.Path) {
 				ref := domain.NewPackageReference(subPkgPath, ctx.res.Package.LatestCrawl().JobStartedAt)
@@ -387,9 +390,10 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 
 		// TODO: Add function for this to normalize the sub-pkg import path
 		// going in.
-		pc.Data.SubPackages[goPkg.ImportPath] = domain.NewSubPackage(goPkg.Name)
+		subPkg := domain.NewSubPackage(goPkg.Name)
+		pc.Data.SubPackages[goPkg.ImportPath] = subPkg
 
-		// pc.Data.SubPackages[goPkg.ImportPath].Readme = detectReadme(dir)
+		subPkg.Readme, subPkg.Synopsis = detectReadme(dir)
 		// log.Infof("%# v", *goPkg)
 		for _, imp := range goPkg.Imports {
 			if path, ok := extractVendored(imp); ok {
@@ -397,7 +401,7 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 			}
 			if c.Config.IncludeStdLib || strings.Contains(imp, ".") {
 				// importsMap[imp] = struct{}{}
-				pc.Data.SubPackages[goPkg.ImportPath].Imports = append(pc.Data.SubPackages[goPkg.ImportPath].Imports, imp)
+				subPkg.Imports = append(subPkg.Imports, imp)
 			}
 		}
 		for _, imp := range goPkg.TestImports {
@@ -406,7 +410,7 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 			}
 			if c.Config.IncludeStdLib || strings.Contains(imp, ".") {
 				// testImportsMap[imp] = struct{}{}
-				pc.Data.SubPackages[goPkg.ImportPath].TestImports = append(pc.Data.SubPackages[goPkg.ImportPath].TestImports, imp)
+				subPkg.TestImports = append(subPkg.TestImports, imp)
 			}
 		}
 		return nil
@@ -602,15 +606,20 @@ func dirSize(path string) (uint64, error) {
 	return size, err
 }
 
-/*func detectReadme(localPath string) string {
+// detectReadme returns (readme content, synopsis).
+func detectReadme(localPath string) (string, string) {
 	candidates := []string{
 		"README.md",
+		"Readme.md",
 		"readme.md",
 		"README.markdown",
+		"Readme.markdown",
 		"readme.markdown",
 		"README.mkd",
+		"Readme.mkd",
 		"readme.mkd",
 		"README",
+		"Readme",
 		"readme",
 	}
 
@@ -626,12 +635,24 @@ func dirSize(path string) (uint64, error) {
 				continue
 			}
 			if len(data) > 0 {
-				return string(data)
+				if strings.HasSuffix(readmePath, ".md") || strings.HasSuffix(readmePath, ".mkd") || strings.HasSuffix(readmePath, ".markdown") {
+					if parse := index.ParseMarkdown(data); parse != nil {
+						data = parse.Text
+					}
+				}
+				if len(data) > 25*1024 {
+					data = data[:25*1024]
+				}
+				summary := godoc.Synopsis(string(data))
+				if len(summary) > 2048 {
+					summary = summary[0:2048]
+				}
+				return string(data), summary
 			}
 		}
 	}
-	return ""
-}*/
+	return "", ""
+}
 
 // PackagePathToRepoRoot isolates and returns a corresponding *vcs.RepoRoot for the
 // named package.
@@ -677,15 +698,18 @@ func PackagePathToRepoRoot(pkgPath string) (*vcs.RepoRoot, error) {
 
 // Vendored returns true if the path contains evidence of endoring.
 func Vendored(path string) bool {
-	v := strings.Contains(path, "/vendor/") || strings.Contains(path, "Godep/_workspace/src/") || strings.Contains(path, "/_vendor/")
+	v := strings.Contains(path, "/vendor/") || strings.Contains(path, "Godep/_workspace/src/") || strings.Contains(path, "/_vendor/") || strings.Contains(path, "Godeps/_workspace/src/")
 	return v
 }
 
 func extractVendored(imp string) (path string, ok bool) {
 	splitters := []string{
 		"/vendor/",
-		"/Godep/_workspace/src/",
+		"Godep/_workspace/src/",
 		"/_vendor/",
+		"Godeps/_workspace/src/",
+		// "Godep/",
+		// "Godeps/",
 	}
 	for _, splitter := range splitters {
 		if pieces := strings.SplitN(imp, splitter, 2); len(pieces) > 1 {
