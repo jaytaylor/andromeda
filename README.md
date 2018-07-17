@@ -102,6 +102,16 @@ Ensure that the user which you have added above is not listed in the 'Deny log o
 andromeda service crawler install -v --delete-after -s /tmp/src -a <host.name>:443 -c <path-to-letsencrypt-cert.pem> -u .\<windows-username> -p <windows-password>
 ```
 
+### Commands
+
+#### Add top 1000 most recently committed packages to the crawl queue
+
+```bash
+cp -a andromeda.bolt a
+andromeda -b a -v stats mru -n 1000 | jq -r '.[] | .path' | xargs -n10 andromeda remote enqueue -a 127.0.0.1:8001 -v -f
+rm a
+```
+
 ### License
 
 TBD
