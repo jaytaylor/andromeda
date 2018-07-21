@@ -28,12 +28,12 @@ func NewHackerNews(dbClient db.Client) *HackerNews {
 	return f
 }
 
-func (f *HackerNews) Refresh() ([]string, error) {
-	last, err := f.last()
+func (ds *HackerNews) Refresh() ([]string, error) {
+	last, err := ds.last()
 	if err != nil {
 		return nil, err
 	}
-	body, err := f.pull(last)
+	body, err := ds.pull(last)
 	if err != nil {
 		return nil, err
 	}
@@ -47,14 +47,14 @@ func (f *HackerNews) Refresh() ([]string, error) {
 		// 2018-07-20T03:50:44.000Z
 	}
 	//const layout = "2006-01-02T15:04:05.000Z"
-	if err := f.mark(hits.Hits[0].CreatedAt); err != nil {
+	if err := ds.mark(hits.Hits[0].CreatedAt); err != nil {
 		return nil, err
 	}
 	possiblePkgs := findPackages(string(body))
 	return possiblePkgs, nil
 }
 
-func (f *HackerNews) pull(since *time.Time) ([]byte, error) {
+func (ds *HackerNews) pull(since *time.Time) ([]byte, error) {
 	u := fmt.Sprintf(HackerNewsAPIURL, HackerNewsPerPage)
 	if since != nil {
 		u = fmt.Sprintf("%v&numericFilters=created_at_i>%v", u, since.Unix())

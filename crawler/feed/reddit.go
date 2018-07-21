@@ -11,7 +11,7 @@ import (
 	"jaytaylor.com/andromeda/db"
 )
 
-const RedditAPIURL = "https://www.reddit.com/r/%v/new.json"
+var RedditAPIURL = "https://www.reddit.com/r/%v/new.json"
 
 type Reddit struct {
 	*timestamped
@@ -26,12 +26,12 @@ func NewReddit(dbClient db.Client, sub string) *Reddit {
 	return f
 }
 
-func (f *Reddit) Refresh() ([]string, error) {
-	last, err := f.last()
+func (ds *Reddit) Refresh() ([]string, error) {
+	last, err := ds.last()
 	if err != nil {
 		return nil, err
 	}
-	body, err := f.pull()
+	body, err := ds.pull()
 	if err != nil {
 		return nil, err
 	}
@@ -63,15 +63,15 @@ func (f *Reddit) Refresh() ([]string, error) {
 	if body, err = json.Marshal(&pruned); err != nil {
 		return nil, err
 	}
-	if err := f.mark(time.Unix(int64(pruned[0].Data.CreatedUtc), 0)); err != nil {
+	if err := ds.mark(time.Unix(int64(pruned[0].Data.CreatedUtc), 0)); err != nil {
 		return nil, err
 	}
 	possiblePkgs := findPackages(string(body))
 	return possiblePkgs, nil
 }
 
-func (f *Reddit) pull() ([]byte, error) {
-	u := fmt.Sprintf(RedditAPIURL, f.sub)
+func (ds *Reddit) pull() ([]byte, error) {
+	u := fmt.Sprintf(RedditAPIURL, ds.sub)
 	resp, err := doRequest("", u, nil)
 	if err != nil {
 		return nil, err
