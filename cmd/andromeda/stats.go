@@ -14,90 +14,95 @@ import (
 	"jaytaylor.com/andromeda/domain"
 )
 
-func init() {
-	rootCmd.AddCommand(statsCmd)
-
-	statsCmd.AddCommand(dbStatsCmd)
-
-	statsCmd.AddCommand(hostsCmd)
-
-	hostsCmd.Flags().BoolVarP(&HostsExtended, "extended", "e", false, "Include repository and package counts per host")
-
-	statsCmd.AddCommand(mruStatsCmd)
-
-	mruStatsCmd.Flags().IntVarP(&MRUMaxItems, "num", "n", MRUMaxItems, "Number of most-recent committed packages to return")
-}
-
 var (
 	HostsExtended bool
 	MRUMaxItems   = 100
 )
 
-var statsCmd = &cobra.Command{
-	Use:     "statistics",
-	Aliases: []string{"stats", "stat", "st"},
-	Short:   "Statistics information",
-	Long:    "Statistics-related information",
+func newStatsCmd() *cobra.Command {
+	statsCmd := &cobra.Command{
+		Use:     "statistics",
+		Aliases: []string{"stats", "stat", "st"},
+		Short:   "Statistics information",
+		Long:    "Statistics-related information",
+	}
+
+	statsCmd.AddCommand(
+		newDBStatsCmd(),
+		newHostsCmd(),
+		newMRUStatsCmd(),
+	)
+
+	return statsCmd
 }
 
-var dbStatsCmd = &cobra.Command{
-	Use:   "db",
-	Short: "DB table-entry counts",
-	Long:  "Displays packages and to-crawls table counts",
-	PreRun: func(_ *cobra.Command, _ []string) {
-		initLogging()
-	},
-	Run: func(cmd *cobra.Command, args []string) {
-		if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
-			pl, err := dbClient.PackagesLen()
-			if err != nil {
-				return fmt.Errorf("getting packages count: %s", err)
-			}
-			log.WithField("packages", pl).Debug("count")
+func newDBStatsCmd() *cobra.Command {
+	dbStatsCmd := &cobra.Command{
+		Use:   "db",
+		Short: "DB table-entry counts",
+		Long:  "Displays packages and to-crawls table counts",
+		PreRun: func(_ *cobra.Command, _ []string) {
+			initLogging()
+		},
+		Run: func(cmd *cobra.Command, args []string) {
+			if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
+				pl, err := dbClient.PackagesLen()
+				if err != nil {
+					return fmt.Errorf("getting packages count: %s", err)
+				}
+				log.WithField("packages", pl).Debug("count")
 
-			tcl, err := dbClient.ToCrawlsLen()
-			if err != nil {
-				return fmt.Errorf("getting to-crawls count: %s", err)
+				tcl, err := dbClient.ToCrawlsLen()
+				if err != nil {
+					return fmt.Errorf("getting to-crawls count: %s", err)
+				}
+				log.WithField("to-crawls", tcl).Debug("count")
+				counts := map[string]int{
+					"packages":  pl,
+					"to-crawls": tcl,
+				}
+				return emitJSON(counts)
+			}); err != nil {
+				log.Fatalf("main: %s", err)
 			}
-			log.WithField("to-crawls", tcl).Debug("count")
-			counts := map[string]int{
-				"packages":  pl,
-				"to-crawls": tcl,
-			}
-			return emitJSON(counts)
-		}); err != nil {
-			log.Fatalf("main: %s", err)
-		}
-	},
+		},
+	}
+	return dbStatsCmd
 }
 
-var hostsCmd = &cobra.Command{
-	Use:   "hosts",
-	Short: "Unique hosts",
-	Long:  "Map of each unique host, and repo and package counts per host",
-	PreRun: func(_ *cobra.Command, _ []string) {
-		initLogging()
-	},
-	Run: func(cmd *cobra.Command, args []string) {
-		var (
-			dbCfg = db.NewBoltConfig(DBFile)
-			hosts interface{}
-		)
-		if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
-			var err error
-			if HostsExtended {
-				hosts, err = uniqueHostsExtended(dbClient)
-			} else {
-				hosts, err = uniqueHosts(dbClient)
+func newHostsCmd() *cobra.Command {
+	hostsCmd := &cobra.Command{
+		Use:   "hosts",
+		Short: "Unique hosts",
+		Long:  "Map of each unique host, and repo and package counts per host",
+		PreRun: func(_ *cobra.Command, _ []string) {
+			initLogging()
+		},
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				dbCfg = db.NewBoltConfig(DBFile)
+				hosts interface{}
+			)
+			if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
+				var err error
+				if HostsExtended {
+					hosts, err = uniqueHostsExtended(dbClient)
+				} else {
+					hosts, err = uniqueHosts(dbClient)
+				}
+				if err != nil {
+					return err
+				}
+				return emitJSON(hosts)
+			}); err != nil {
+				log.Fatalf("main: %s", err)
 			}
-			if err != nil {
-				return err
-			}
-			return emitJSON(hosts)
-		}); err != nil {
-			log.Fatalf("main: %s", err)
-		}
-	},
+		},
+	}
+
+	hostsCmd.Flags().BoolVarP(&HostsExtended, "extended", "e", false, "Include repository and package counts per host")
+
+	return hostsCmd
 }
 
 // uniqueHosts returns a slice of all unique hosts in the packages table.
@@ -168,38 +173,44 @@ func uniqueHostsExtended(client db.Client) (map[string]map[string]int, error) {
 // Hosts() (HostStats, error)                                                                     // Map of hosts -> repo and package count per host.
 // type HostStats map[string]map[string]int
 
-var mruStatsCmd = &cobra.Command{
-	Use:   "mru",
-	Short: "Get top N most recent packages by commit date",
-	Long:  "Get top N most recent packages by commit date",
-	PreRun: func(_ *cobra.Command, _ []string) {
-		initLogging()
-	},
-	Run: func(cmd *cobra.Command, args []string) {
-		if MRUMaxItems <= 0 {
-			log.Fatal("Invalid value for --max/-m, must be an integer greater than 0")
-		}
-		if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
-			h := &MRUPackagesHeap{}
-			heap.Init(h)
-			if err := dbClient.EachPackage(func(pkg *domain.Package) {
-				if pkg.Data.CommittedAt == nil {
-					return
-				}
-				if h.Len() < MRUMaxItems || pkg.Data.CommittedAt.After(*(*h)[0].Data.CommittedAt) {
-					heap.Push(h, pkg)
-				}
-				if h.Len() > MRUMaxItems {
-					heap.Pop(h)
-				}
-			}); err != nil {
-				return err
+func newMRUStatsCmd() *cobra.Command {
+	mruStatsCmd := &cobra.Command{
+		Use:   "mru",
+		Short: "Get top N most recent packages by commit date",
+		Long:  "Get top N most recent packages by commit date",
+		PreRun: func(_ *cobra.Command, _ []string) {
+			initLogging()
+		},
+		Run: func(cmd *cobra.Command, args []string) {
+			if MRUMaxItems <= 0 {
+				log.Fatal("Invalid value for --max/-m, must be an integer greater than 0")
 			}
-			return emitJSON(h)
-		}); err != nil {
-			log.Fatalf("main: %s", err)
-		}
-	},
+			if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
+				h := &MRUPackagesHeap{}
+				heap.Init(h)
+				if err := dbClient.EachPackage(func(pkg *domain.Package) {
+					if pkg.Data.CommittedAt == nil {
+						return
+					}
+					if h.Len() < MRUMaxItems || pkg.Data.CommittedAt.After(*(*h)[0].Data.CommittedAt) {
+						heap.Push(h, pkg)
+					}
+					if h.Len() > MRUMaxItems {
+						heap.Pop(h)
+					}
+				}); err != nil {
+					return err
+				}
+				return emitJSON(h)
+			}); err != nil {
+				log.Fatalf("main: %s", err)
+			}
+		},
+	}
+
+	mruStatsCmd.Flags().IntVarP(&MRUMaxItems, "num", "n", MRUMaxItems, "Number of most-recent committed packages to return")
+
+	return mruStatsCmd
 }
 
 type MRUPackagesHeap []*domain.Package
