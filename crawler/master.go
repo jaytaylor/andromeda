@@ -102,7 +102,7 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			}
 			return err
 		}
-		if entry.Errors > uint32(ToCrawlErrorLimit) {
+		if entry.Errors > uint32(ToCrawlErrorLimit) || (entry.Errors > 0 && strings.Contains(entry.Reason, "feed crawler")) {
 			log.WithField("pkg", entry.PackagePath).WithField("num-attempts", entry.Errors).Info("Discarding to-crawl due to excessive crawler errors")
 			goto Dequeue
 		}

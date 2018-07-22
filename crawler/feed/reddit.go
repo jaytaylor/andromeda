@@ -104,21 +104,21 @@ type redditChild struct {
 		Subreddit                  string        `json:"subreddit"`
 		Selftext                   string        `json:"selftext"`
 		UserReports                []interface{} `json:"user_reports"`
-		Saved                      bool          `json:"saved"`
+		Saved                      interface{}   `json:"saved"`
 		ModReasonTitle             interface{}   `json:"mod_reason_title"`
 		Gilded                     int           `json:"gilded"`
-		Clicked                    bool          `json:"clicked"`
+		Clicked                    interface{}   `json:"clicked"`
 		Title                      string        `json:"title"`
 		LinkFlairRichtext          []interface{} `json:"link_flair_richtext"`
 		SubredditNamePrefixed      string        `json:"subreddit_name_prefixed"`
-		Hidden                     bool          `json:"hidden"`
+		Hidden                     interface{}   `json:"hidden"`
 		Pwls                       int           `json:"pwls"`
 		LinkFlairCSSClass          interface{}   `json:"link_flair_css_class"`
 		Downs                      int           `json:"downs"`
 		ParentWhitelistStatus      string        `json:"parent_whitelist_status"`
-		HideScore                  bool          `json:"hide_score"`
+		HideScore                  interface{}   `json:"hide_score"`
 		Name                       string        `json:"name"`
-		Quarantine                 bool          `json:"quarantine"`
+		Quarantine                 interface{}   `json:"quarantine"`
 		LinkFlairTextColor         string        `json:"link_flair_text_color"`
 		AuthorFlairBackgroundColor interface{}   `json:"author_flair_background_color"`
 		SubredditType              string        `json:"subreddit_type"`
@@ -127,48 +127,48 @@ type redditChild struct {
 		MediaEmbed                 struct {
 		} `json:"media_embed"`
 		AuthorFlairTemplateID interface{} `json:"author_flair_template_id"`
-		IsOriginalContent     bool        `json:"is_original_content"`
+		IsOriginalContent     interface{} `json:"is_original_content"`
 		SecureMedia           interface{} `json:"secure_media"`
-		IsRedditMediaDomain   bool        `json:"is_reddit_media_domain"`
+		IsRedditMediaDomain   interface{} `json:"is_reddit_media_domain"`
 		Category              interface{} `json:"category"`
 		SecureMediaEmbed      struct {
 		} `json:"secure_media_embed"`
 		LinkFlairText        interface{}   `json:"link_flair_text"`
-		CanModPost           bool          `json:"can_mod_post"`
+		CanModPost           interface{}   `json:"can_mod_post"`
 		Score                int           `json:"score"`
 		ApprovedBy           interface{}   `json:"approved_by"`
 		Thumbnail            string        `json:"thumbnail"`
-		Edited               bool          `json:"edited"`
+		Edited               interface{}   `json:"edited"`
 		AuthorFlairCSSClass  interface{}   `json:"author_flair_css_class"`
 		AuthorFlairRichtext  []interface{} `json:"author_flair_richtext"`
 		ContentCategories    interface{}   `json:"content_categories"`
-		IsSelf               bool          `json:"is_self"`
+		IsSelf               interface{}   `json:"is_self"`
 		ModNote              interface{}   `json:"mod_note"`
 		Created              float64       `json:"created"`
 		LinkFlairType        string        `json:"link_flair_type"`
-		Wls                  int           `json:"wls"`
+		Wls                  interface{}   `json:"wls"`
 		PostCategories       interface{}   `json:"post_categories"`
 		BannedBy             interface{}   `json:"banned_by"`
 		AuthorFlairType      string        `json:"author_flair_type"`
-		ContestMode          bool          `json:"contest_mode"`
+		ContestMode          interface{}   `json:"contest_mode"`
 		SelftextHTML         string        `json:"selftext_html"`
 		Likes                interface{}   `json:"likes"`
 		SuggestedSort        interface{}   `json:"suggested_sort"`
 		BannedAtUtc          float64       `json:"banned_at_utc"`
 		ViewCount            interface{}   `json:"view_count"`
-		Archived             bool          `json:"archived"`
-		NoFollow             bool          `json:"no_follow"`
-		IsCrosspostable      bool          `json:"is_crosspostable"`
-		Pinned               bool          `json:"pinned"`
-		Over18               bool          `json:"over_18"`
+		Archived             interface{}   `json:"archived"`
+		NoFollow             interface{}   `json:"no_follow"`
+		IsCrosspostable      interface{}   `json:"is_crosspostable"`
+		Pinned               interface{}   `json:"pinned"`
+		Over18               interface{}   `json:"over_18"`
 		Media                interface{}   `json:"media"`
-		MediaOnly            bool          `json:"media_only"`
-		CanGild              bool          `json:"can_gild"`
-		Spoiler              bool          `json:"spoiler"`
-		Locked               bool          `json:"locked"`
+		MediaOnly            interface{}   `json:"media_only"`
+		CanGild              interface{}   `json:"can_gild"`
+		Spoiler              interface{}   `json:"spoiler"`
+		Locked               interface{}   `json:"locked"`
 		AuthorFlairText      interface{}   `json:"author_flair_text"`
 		RteMode              string        `json:"rte_mode"`
-		Visited              bool          `json:"visited"`
+		Visited              interface{}   `json:"visited"`
 		NumReports           interface{}   `json:"num_reports"`
 		Distinguished        interface{}   `json:"distinguished"`
 		SubredditID          string        `json:"subreddit_id"`
@@ -179,15 +179,15 @@ type redditChild struct {
 		Author               string        `json:"author"`
 		NumCrossposts        int           `json:"num_crossposts"`
 		NumComments          int           `json:"num_comments"`
-		SendReplies          bool          `json:"send_replies"`
+		SendReplies          interface{}   `json:"send_replies"`
 		AuthorFlairTextColor interface{}   `json:"author_flair_text_color"`
 		Permalink            string        `json:"permalink"`
 		WhitelistStatus      string        `json:"whitelist_status"`
-		Stickied             bool          `json:"stickied"`
+		Stickied             interface{}   `json:"stickied"`
 		URL                  string        `json:"url"`
 		SubredditSubscribers int           `json:"subreddit_subscribers"`
 		CreatedUtc           float64       `json:"created_utc"`
 		ModReports           []interface{} `json:"mod_reports"`
-		IsVideo              bool          `json:"is_video"`
+		IsVideo              interface{}   `json:"is_video"`
 	} `json:"data"`
 }
