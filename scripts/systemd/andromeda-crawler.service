@@ -1,18 +1,27 @@
 ##
 #
-# Recommended installation self-updates every 4 hours:
+# Recommended installation, self-updates every 15 minutes:
 #
 #     1. Install mnt-ramdisk.automount service.
 #
-#     2. Install this andromeda-crawler service, replacing "myuser".
+#         sudo cp scripts/systemd/* /etc/systemd/system/
 #
-#     3. Edit root crontab and add:
+#     2. Install this andromeda-crawler service, replacing "myuser" with the
+#        desired account username.
 #
-#         1 */4 * * * systemctl restart andromeda-crawler
+#         sudo sed -i 's/myuser/DESIRED_USER/g' /etc/systemd/system/andromeda-crawler.service
 #
-#     4. Edit the "myuser" crontab and add:
+#         sudo systemctl daemon-reload
 #
-#         0 */4 * * * /bin/bash -c '. /etc/profile && cd "${GOPATH}/src/jaytaylor.com/andromeda" ; ./scripts/self-update.sh' 2>&1 1>/dev/null
+#     3. Edit root crontab and add (again, replacing "myuser"):
+#
+#         sudo crontab -e
+#
+#         */15 * * * * /bin/bash -c 'sudo -u myuser /bin/bash -c '"'"'. /etc/profile && $GOPATH/src/jaytaylor.com/andromeda/scripts/self-update.sh 1>/dev/null 2>/dev/null ; exit $?'"'"' ; rc=$? ; if [ $rc -eq 0 ] ; then echo '"'"'INFO: Crawler updated, restarting service'"'"' ; systemctl restart andromeda-crawler ; fi'
+#
+#     4. Bounce the service.
+#
+#         sudo systemctl restart andromeda-crawler
 #
 ##
 
