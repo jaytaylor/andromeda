@@ -268,7 +268,7 @@ func (m *Master) Run(stopCh chan struct{}) error {
 		} else {
 			if err := func() error {
 				// Lock to guard against data clobbering.
-				log.WithField("pkg", pkg.Path).Debug("Starting index update process..")
+				log.WithField("pkg", entry.PackagePath).Debug("Starting index update process..")
 
 				var existing *domain.Package
 				if existing, err = m.db.Package(pkg.Path); err != nil && err != db.ErrKeyNotFound {
@@ -277,11 +277,11 @@ func (m *Master) Run(stopCh chan struct{}) error {
 					res.Package = existing.Merge(res.Package)
 				}
 
-				log.WithField("pkg", res.Package.Path).Debug("Index updated with crawl result")
+				log.WithField("pkg", entry.PackagePath).Debug("Index updated with crawl result")
 				m.logStats()
 
 				if res.Package == nil {
-					log.WithField("pkg", pkg.Path).Debug("Save skipped because pkg==nil")
+					log.WithField("pkg", entry.PackagePath).Debug("Save skipped because pkg==nil")
 				} else if err = m.db.PackageSave(res.Package); err != nil {
 					return err
 				}
