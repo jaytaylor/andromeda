@@ -170,6 +170,10 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.CrawlRe
 		select {
 		case err := <-pCh:
 			if err != nil {
+				if c.errorInvalidatesCrawl(err) {
+					ctx.res.Package = nil
+					return ctx.res, err
+				}
 				if c.errorShouldInterruptExecution(err) {
 					return ctx.res, err
 				}
@@ -186,7 +190,16 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.CrawlRe
 // errorShouldInterruptExecution returns true if crawler should cease execution
 // due to a particular error condition.
 func (_ *Crawler) errorShouldInterruptExecution(err error) bool {
-	if err != nil && err != ErrPackageInvalid && err != ErrNoGoFiles {
+	if err != nil && err != ErrPackageInvalid {
+		return true
+	}
+	return false
+}
+
+// errorInvalidatesCrawl returns true when the issue is so serious that the
+// crawl result needs to be discarded.
+func (_ *Crawler) errorInvalidatesCrawl(err error) bool {
+	if err == ErrNoGoFiles {
 		return true
 	}
 	return false
