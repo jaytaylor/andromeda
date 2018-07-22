@@ -279,6 +279,11 @@ var purgeTableCmd = &cobra.Command{
 					return fmt.Errorf("delete all to-crawl entries: %s", err)
 				}
 
+			case db.TableMetadata, "metadata", "meta":
+				if err := dbClient.Purge(db.TableMetadata); err != nil {
+					return fmt.Errorf("delete all metadata entries: %s", err)
+				}
+
 			default:
 				return fmt.Errorf("unrecognized table %q", args[0])
 			}

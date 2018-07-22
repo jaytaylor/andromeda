@@ -62,6 +62,9 @@ message PackageSnapshot {
   uint64 bytes_total = 10;
   int32 forks = 11;
   int32 stars = 12;
+  int32 num_files = 13;
+  int32 num_go_files = 14;
+  int32 loc = 15 [(gogoproto.customname) = "LOC"];
 }
 
 message SubPackage {

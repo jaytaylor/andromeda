@@ -375,6 +375,21 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 		pc        = pkg.LatestCrawl()
 	)
 
+	numGoFiles, err := countFiles(localPath, ".go")
+	if err != nil {
+		return err
+	}
+	if numGoFiles == 0 {
+		return ErrNoGoFiles
+	}
+	pkg.Data.NumGoFiles = int32(numGoFiles)
+
+	numFiles, err := countFiles(localPath, "")
+	if err != nil {
+		return err
+	}
+	pkg.Data.NumFiles = int32(numFiles)
+
 	pc.Data.Repo = rr.Repo
 
 	// importsMap := map[string]struct{}{}
@@ -595,15 +610,11 @@ func loadPackageDynamic(parentDir string, pkgPath string) (*load.Package, error)
 
 // subDirs returns a list of subdirectories under the specified path.
 func subDirs(path string) ([]string, error) {
-	var hasGoFiles bool
 	dirs := []string{}
 	err := filepath.Walk(path, func(p string, info os.FileInfo, _ error) error {
 		if info != nil && info.IsDir() {
 			if info.Name() == ".git" {
 				return filepath.SkipDir
-			}
-			if !hasGoFiles && !info.IsDir() && strings.HasSuffix(info.Name(), ".go") {
-				hasGoFiles = true
 			}
 			dirs = append(dirs, p)
 		}
@@ -611,9 +622,6 @@ func subDirs(path string) ([]string, error) {
 	})
 	if err != nil {
 		return nil, err
-	}
-	if !hasGoFiles {
-		return nil, ErrNoGoFiles
 	}
 	return dirs, nil
 }
@@ -629,6 +637,20 @@ func dirSize(path string) (uint64, error) {
 		return nil
 	})
 	return size, err
+}
+
+func countFiles(path string, suffix string) (int, error) {
+	numFiles := 0
+	walkFn := func(p string, info os.FileInfo, _ error) error {
+		if !info.IsDir() && strings.HasSuffix(info.Name(), suffix) {
+			numFiles++
+		}
+		return nil
+	}
+	if err := filepath.Walk(path, walkFn); err != nil {
+		return numFiles, err
+	}
+	return numFiles, nil
 }
 
 // detectReadme returns (readme content, synopsis).
