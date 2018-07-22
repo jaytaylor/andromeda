@@ -63,6 +63,8 @@ func init() {
 	localEnqueueCmd.Flags().IntVarP(&db.DefaultQueuePriority, "priority", "p", db.DefaultQueuePriority, "Priority level to use when adding items to the queue")
 	localEnqueueCmd.Flags().StringVarP(&EnqueueReason, "reason", "r", EnqueueReason, "Reason to use for to-crawl entries")
 
+	rootCmd.AddCommand(deletePackageCmd)
+
 	rootCmd.AddCommand(remoteCmd)
 
 	remoteCmd.AddCommand(remoteEnqueueCmd)
@@ -456,6 +458,24 @@ var webCmd = &cobra.Command{
 			return nil
 		}); err != nil {
 			log.Fatalf("main: %s", err)
+		}
+	},
+}
+
+var deletePackageCmd = &cobra.Command{
+	Use:     "delete-package",
+	Aliases: []string{"delete-packages"},
+	Short:   "Delete a package from the database",
+	Long:    "Delete a package from the database",
+	Args:    cobra.MinimumNArgs(1),
+	PreRun: func(_ *cobra.Command, _ []string) {
+		initLogging()
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
+			return dbClient.PackageDelete(args...)
+		}); err != nil {
+			log.Fatal(err)
 		}
 	},
 }
