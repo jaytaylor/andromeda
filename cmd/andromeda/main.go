@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"jaytaylor.com/andromeda/crawler"
+	"jaytaylor.com/andromeda/crawler/feed"
 	"jaytaylor.com/andromeda/db"
 	"jaytaylor.com/andromeda/discovery"
 	"jaytaylor.com/andromeda/domain"
@@ -47,6 +48,8 @@ func init() {
 	rootCmd.AddCommand(webCmd)
 
 	webCmd.Flags().StringVarP(&WebAddr, "addr", "a", "", "Interface bind address:port spec")
+	webCmd.Flags().BoolVarP(&FeedsEnabled, "feeds", "", FeedsEnabled, "Enable feed data sources crawler for HN and reddit.com/r/golang")
+	webCmd.Flags().StringVarP(&feed.DefaultSchedule, "feeds-refresh-schedule", "", feed.DefaultSchedule, "Feeds refresh update cron schedule")
 	webCmd.Flags().BoolVarP(&MemoryProfiling, "memory-profiling", "", MemoryProfiling, "Enable the memory profiler; creates a mem.pprof file while the application is shutting down")
 
 	rootCmd.AddCommand(crawlCmd)
@@ -114,6 +117,8 @@ var (
 	TLSKeyFile  string
 	TLSCAFile   string
 	AutoTLSCert bool // When true, will use OpenSSL to automatically retrieve the SSL/TLS public key of the gRPC server.
+
+	FeedsEnabled = true
 
 	MemoryProfiling bool
 )
@@ -427,6 +432,18 @@ var webCmd = &cobra.Command{
 				return err
 			}
 			log.Infof("Web service started on %s", ws.Addr())
+			if FeedsEnabled {
+				f := newFeed(dbClient)
+				if err := f.Start(); err != nil {
+					log.Fatal(err)
+				}
+				defer func() {
+					if err := f.Stop(); err != nil {
+						log.Error(err)
+					}
+				}()
+				go runFeedConnector(dbClient, f)
+			}
 			sigCh := make(chan os.Signal, 1)
 			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 			select {
@@ -779,6 +796,34 @@ func crawl(dbClient db.Client, args ...string) error {
 		return err
 	}
 	return nil
+}
+
+func newFeed(dbClient db.Client) *feed.Feed {
+	cfg := feed.Config{
+		Sources: []feed.DataSource{
+			feed.NewHackerNews(dbClient),
+			feed.NewReddit(dbClient, "golang"),
+		},
+		Schedule: feed.DefaultSchedule,
+	}
+	f := feed.New(cfg)
+	return f
+}
+
+func runFeedConnector(dbClient db.Client, f *feed.Feed) {
+	for {
+		ch := f.Channel()
+		if ch == nil {
+			return
+		}
+		possiblePkg, ok := <-ch
+		if !ok {
+			return
+		}
+		log.WithField("candidate", possiblePkg).Debug("Enqueueing possible pkg")
+		entry := domain.NewToCrawlEntry(possiblePkg, "discovered by feed crawler")
+		dbClient.ToCrawlAdd([]*domain.ToCrawlEntry{entry}, nil)
+	}
 }
 
 func initLogging() {
