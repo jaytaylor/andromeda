@@ -367,8 +367,8 @@ func (m *Master) Do(stopCh chan struct{}, pkgs ...string) error {
 			extra = fmt.Sprintf("; err=%s", err)
 		}
 		log.WithField("pkg", pkgs[i]).Debugf("Package crawl finished%v", extra)
-		if res.Package == nil {
-			log.WithField("pkg", pkgs[i]).Debug("Save skipped because pkg==nil")
+		if res == nil || res.Package == nil || res.Package.Data == nil || res.Package.Data.NumGoFiles == int32(0) {
+			log.WithField("pkg", pkgs[i]).Debug("Save skipped due to invalidation from nil pkg or other suspicious factors")
 		} else if err = m.db.PackageSave(res.Package); err != nil {
 			break
 		} else {
