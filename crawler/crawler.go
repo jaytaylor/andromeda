@@ -375,20 +375,9 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 		pc        = pkg.LatestCrawl()
 	)
 
-	numGoFiles, err := countFiles(localPath, ".go")
-	if err != nil {
+	if err := analyzeFiles(pkg.Data, localPath); err != nil {
 		return err
 	}
-	if numGoFiles == 0 {
-		return ErrNoGoFiles
-	}
-	pkg.Data.NumGoFiles = int32(numGoFiles)
-
-	numFiles, err := countFiles(localPath, "")
-	if err != nil {
-		return err
-	}
-	pkg.Data.NumFiles = int32(numFiles)
 
 	pc.Data.Repo = rr.Repo
 
@@ -639,9 +628,30 @@ func dirSize(path string) (uint64, error) {
 	return size, err
 }
 
-func countFiles(path string, suffix string) (int, error) {
+func analyzeFiles(snap *domain.PackageSnapshot, localPath string) error {
+	numGoFiles, err := countFiles(localPath, ".go", false)
+	if err != nil {
+		return err
+	}
+	if numGoFiles == 0 {
+		return ErrNoGoFiles
+	}
+	snap.NumGoFiles = int32(numGoFiles)
+
+	numFiles, err := countFiles(localPath, "", true)
+	if err != nil {
+		return err
+	}
+	snap.NumFiles = int32(numFiles)
+	return nil
+}
+
+func countFiles(path string, suffix string, includeVendored bool) (int, error) {
 	numFiles := 0
 	walkFn := func(p string, info os.FileInfo, _ error) error {
+		if !includeVendored && Vendored(p) {
+			return nil
+		}
 		if !info.IsDir() && strings.HasSuffix(info.Name(), suffix) {
 			numFiles++
 		}

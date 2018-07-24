@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"container/heap"
 	"fmt"
 	"sort"
 	"strings"
@@ -30,7 +29,6 @@ func newStatsCmd() *cobra.Command {
 	statsCmd.AddCommand(
 		newDBStatsCmd(),
 		newHostsCmd(),
-		newMRUStatsCmd(),
 	)
 
 	return statsCmd
@@ -172,65 +170,3 @@ func uniqueHostsExtended(client db.Client) (map[string]map[string]int, error) {
 
 // Hosts() (HostStats, error)                                                                     // Map of hosts -> repo and package count per host.
 // type HostStats map[string]map[string]int
-
-func newMRUStatsCmd() *cobra.Command {
-	mruStatsCmd := &cobra.Command{
-		Use:   "mru",
-		Short: "Get top N most recent packages by commit date",
-		Long:  "Get top N most recent packages by commit date",
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
-		Run: func(cmd *cobra.Command, args []string) {
-			if MRUMaxItems <= 0 {
-				log.Fatal("Invalid value for --max/-m, must be an integer greater than 0")
-			}
-			if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
-				h := &MRUPackagesHeap{}
-				heap.Init(h)
-				if err := dbClient.EachPackage(func(pkg *domain.Package) {
-					if pkg.Data.CommittedAt == nil {
-						return
-					}
-					if h.Len() < MRUMaxItems || pkg.Data.CommittedAt.After(*(*h)[0].Data.CommittedAt) {
-						heap.Push(h, pkg)
-					}
-					if h.Len() > MRUMaxItems {
-						heap.Pop(h)
-					}
-				}); err != nil {
-					return err
-				}
-				return emitJSON(h)
-			}); err != nil {
-				log.Fatalf("main: %s", err)
-			}
-		},
-	}
-
-	mruStatsCmd.Flags().IntVarP(&MRUMaxItems, "num", "n", MRUMaxItems, "Number of most-recent committed packages to return")
-
-	return mruStatsCmd
-}
-
-type MRUPackagesHeap []*domain.Package
-
-func (h MRUPackagesHeap) Len() int { return len(h) }
-func (h MRUPackagesHeap) Less(i, j int) bool {
-	return h[i].Data.CommittedAt.Before(*h[j].Data.CommittedAt)
-}
-func (h MRUPackagesHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
-
-func (h *MRUPackagesHeap) Push(x interface{}) {
-	// Push and Pop use pointer receivers because they modify the slice's length,
-	// not just its contents.
-	*h = append(*h, x.(*domain.Package))
-}
-
-func (h *MRUPackagesHeap) Pop() interface{} {
-	old := *h
-	n := len(old)
-	x := old[n-1]
-	*h = old[0 : n-1]
-	return x
-}
