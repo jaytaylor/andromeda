@@ -362,6 +362,17 @@ func (snap *PackageSnapshot) AllTestImports() []string {
 	return testImports
 }
 
+// CombinedImports returns all of both general and test imports.
+func (snap *PackageSnapshot) CombinedImports() []string {
+	imports := []string{}
+	for _, subPkg := range snap.SubPackages {
+		imports = append(imports, subPkg.Imports...)
+		imports = append(imports, subPkg.TestImports...)
+	}
+	imports = unique.StringsSorted(imports)
+	return imports
+}
+
 // Merge combines the information from a newer package snapshot into this one.
 func (snap *PackageSnapshot) Merge(other *PackageSnapshot) *PackageSnapshot {
 	// if snap == nil {
@@ -418,7 +429,15 @@ func (snap *PackageSnapshot) Merge(other *PackageSnapshot) *PackageSnapshot {
 		snap.Stars = other.Stars
 	}
 
+	snap.Sync()
+
 	return snap
+}
+
+// Sync keeps calculated fields up to date so they don't become stale.
+func (snap *PackageSnapshot) Sync() {
+	snap.NumImports = int32(len(snap.AllImports()))
+	snap.NumTestImports = int32(len(snap.AllTestImports()))
 }
 
 func (snap PackageSnapshot) Equals(other *PackageSnapshot) bool {

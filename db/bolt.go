@@ -194,6 +194,10 @@ func (client *BoltClient) packageSave(tx *bolt.Tx, pkgs []*domain.Package) error
 			}
 		}
 
+		if pkg.Data != nil {
+			pkg.Data.Sync()
+		}
+
 		if v, err = proto.Marshal(pkg); err != nil {
 			return fmt.Errorf("marshalling Package %q: %s", pkg.Path, err)
 		}

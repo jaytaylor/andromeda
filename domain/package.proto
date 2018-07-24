@@ -49,6 +49,7 @@ message PackageCrawl {
   PackageSnapshot data = 6;
 }
 
+// TODO: Consider tracking earliest commit timestamp.
 message PackageSnapshot {
   google.protobuf.Timestamp created_at = 1 [(gogoproto.stdtime) = true];
   string repo = 2;
@@ -65,6 +66,8 @@ message PackageSnapshot {
   int32 num_files = 13;
   int32 num_go_files = 14;
   int32 loc = 15 [(gogoproto.customname) = "LOC"];
+  int32 num_imports = 16;
+  int32 num_test_imports = 17;
 }
 
 message SubPackage {

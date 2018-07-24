@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -231,11 +232,14 @@ func newGetCmd() *cobra.Command {
 }
 
 func newLsCmd() *cobra.Command {
+	max := -1
+
 	lsCmd := &cobra.Command{
-		Use:   "ls",
-		Short: "[table]",
-		Long:  ".. jay will fill this long one out sometime ..",
-		Args:  cobra.MinimumNArgs(1),
+		Use:     "ls",
+		Aliases: []string{"cat"},
+		Short:   "[table] [optional-filter]",
+		Long:    "[table] [optional-filter], e.g. pkg -CommittedAt",
+		Args:    cobra.MinimumNArgs(1),
 		PreRun: func(_ *cobra.Command, _ []string) {
 			initLogging()
 		},
@@ -243,22 +247,51 @@ func newLsCmd() *cobra.Command {
 			if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient db.Client) error {
 				switch args[0] {
 				case db.TablePackages, "package", "pkg":
-					fmt.Println("[")
-					var prevPkg *domain.Package
-					if err := dbClient.EachPackage(func(pkg *domain.Package) {
+					if len(args) == 1 {
+						fmt.Println("[")
+						var (
+							i       = 0
+							prevPkg *domain.Package
+						)
+						if err := dbClient.EachPackageWithBreak(func(pkg *domain.Package) bool {
+							if prevPkg != nil {
+								j, _ := json.MarshalIndent(prevPkg, "", "    ")
+								fmt.Printf("%v", string(j))
+								if max <= 0 || max > 1 {
+									fmt.Print(",")
+								}
+								fmt.Print("\n")
+							}
+							prevPkg = pkg
+							i++
+							if i >= max {
+								return false
+							}
+							return true
+						}); err != nil {
+							return err
+						}
 						if prevPkg != nil {
 							j, _ := json.MarshalIndent(prevPkg, "", "    ")
-							fmt.Printf("%v,", string(j))
+							fmt.Printf("%v\n", string(j))
 						}
-						prevPkg = pkg
-					}); err != nil {
-						return err
+						fmt.Println("]")
+					} else {
+						lessFn, err := resolveLessFn(args[1])
+						if err != nil {
+							return err
+						}
+						h := domain.NewPackagesHeap(lessFn)
+						if err := dbClient.EachPackage(func(pkg *domain.Package) {
+							h.PackagePush(pkg)
+							if max > 0 && h.Len() > max {
+								h.PackagePop()
+							}
+						}); err != nil {
+							return err
+						}
+						emitJSON(h.Slice())
 					}
-					if prevPkg != nil {
-						j, _ := json.MarshalIndent(prevPkg, "", "    ")
-						fmt.Printf("%v\n", string(j))
-					}
-					fmt.Println("]")
 
 				case db.TableToCrawl, "to-crawls":
 					fmt.Println("[")
@@ -266,7 +299,11 @@ func newLsCmd() *cobra.Command {
 					if err := dbClient.EachToCrawl(func(entry *domain.ToCrawlEntry) {
 						if prevEntry != nil {
 							j, _ := json.MarshalIndent(prevEntry, "", "    ")
-							fmt.Printf("%v,\n", j)
+							fmt.Printf("%v", string(j))
+							if max <= 0 || max > 1 {
+								fmt.Print(",")
+							}
+							fmt.Print("\n")
 						}
 						prevEntry = entry
 					}); err != nil {
@@ -284,7 +321,11 @@ func newLsCmd() *cobra.Command {
 					if err := dbClient.EachPendingReferences(func(pendingRefs *domain.PendingReferences) {
 						if prevEntry != nil {
 							j, _ := json.MarshalIndent(prevEntry, "", "    ")
-							fmt.Printf("%v,\n", j)
+							fmt.Printf("%v", string(j))
+							if max <= 0 || max > 1 {
+								fmt.Print(",")
+							}
+							fmt.Print("\n")
 						}
 						prevEntry = pendingRefs
 					}); err != nil {
@@ -314,7 +355,46 @@ func newLsCmd() *cobra.Command {
 			}
 		},
 	}
+
+	lsCmd.Flags().IntVarP(&max, "max", "m", max, "Maximum number of items to include")
+
 	return lsCmd
+}
+
+func resolveLessFn(name string) (domain.PackagesLessFunc, error) {
+	var (
+		orig    = name
+		reverse bool
+	)
+	if strings.HasSuffix(name, "-") {
+		name = name[0 : len(name)-1]
+		reverse = true
+	} else if strings.HasSuffix(name, "+") {
+		name = name[0 : len(name)-1]
+	}
+	name = strings.Replace(strings.Replace(strings.ToLower(name), "-", "", -1), "_", "", -1)
+	lessFnMap := map[string]domain.PackagesLessFunc{
+		"committedat":   domain.PackagesByCommittedAt,
+		"firstseenat":   domain.PackagesByFirstSeenAt,
+		"lastseenat":    domain.PackagesByLastSeenAt,
+		"bytestotal":    domain.PackagesByBytesTotal,
+		"bytesdata":     domain.PackagesByBytesData,
+		"bytesvcsdir":   domain.PackagesByBytesVCSDir,
+		"numimports":    domain.PackagesByNumImports,
+		"numimportedby": domain.PackagesByNumImportedBy,
+	}
+	lessFn, ok := lessFnMap[name]
+	if !ok {
+		keys := []string{}
+		for k, _ := range lessFnMap {
+			keys = append(keys, k)
+		}
+		return nil, fmt.Errorf("less-comparison function %q not found (available funcs: %v)", orig, strings.Join(keys, ", "))
+	}
+	if reverse {
+		lessFn = domain.PackagesDesc(lessFn)
+	}
+	return lessFn, nil
 }
 
 func newDeletePackageCmd() *cobra.Command {
