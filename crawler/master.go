@@ -20,7 +20,7 @@ var (
 	MaxNumLatest        = 25
 	ToCrawlErrorLimit   = 25 // Record will be discarded after this number of crawl attempts is exceeded.
 	MaxNumCrawls        = 2
-	MinAgeBeforeRefresh = 30 * 24 * time.Hour
+	MinAgeBeforeRefresh = 7 * 24 * time.Hour
 )
 
 // TODO: Need scheme for ensuring a write hasn't occurred to the affected
@@ -109,8 +109,9 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 		var alreadyExists bool
 		if pkg, _ := m.db.Package(entry.PackagePath); pkg != nil {
 			alreadyExists = true
-			if len(pkg.History) > MaxNumCrawls && !entry.Force {
-				log.WithField("entry", entry.PackagePath).Debug("Package has already been crawled several times, discarding entry")
+			now := time.Now()
+			if !entry.Force && pkg.Data != nil && pkg.Data.CreatedAt != nil && pkg.Data.CreatedAt.Add(MinAgeBeforeRefresh).After(now) {
+				log.WithField("entry", entry.PackagePath).Debugf("Package was crawled recently (%s ago), hasn't yet been %s; discarding entry", now.Sub(*pkg.Data.CreatedAt), MinAgeBeforeRefresh)
 				// log.WithField("entry", entry.PackagePath).Debug("Package has already been crawled several times, placing to rear of queue")
 				// if err = m.requeue(entry, errors.New("already crawled several times")); err != nil {
 				// 	return err
@@ -182,8 +183,9 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 				res.Package = existing.Merge(res.Package)
 			}
 
-			if res.Package == nil {
-				log.WithField("pkg", entry.PackagePath).Debug("Save skipped because pkg==nil")
+			if res.Package == nil || res.Package.Data == nil || res.Package.Data.NumGoFiles == 0 {
+				log.WithField("pkg", entry.PackagePath).Debug("Save skipped because pkg or snapshot==nil, or number of go files==0")
+				return nil
 			} else if err = m.db.PackageSave(res.Package); err != nil {
 				return err
 			}
