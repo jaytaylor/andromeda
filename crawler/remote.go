@@ -15,7 +15,7 @@ import (
 const MaxMsgSize = 50000000 // 50MB.
 
 var (
-	RemoteCrawlerReadDeadlineDuration = 30 * time.Second
+	RemoteCrawlerReadDeadlineDuration = 60 * time.Second
 )
 
 type Remote struct {
@@ -118,7 +118,7 @@ func (r *Remote) Run(stopCh chan struct{}) {
 				}
 				if err = ac.Send(res); err != nil {
 					// TODO: Requeue locally.
-					return err
+					return fmt.Errorf("sending result: %s", err)
 				}
 				res = nil
 				crawls++
