@@ -35,7 +35,7 @@ func newRemoteCmd() *cobra.Command {
 
 	remoteCmd.AddCommand(
 		newRemoteEnqueueCmd(),
-		newRemoteCrawlerCmd(),
+		newRemoteCrawlerCmd("crawler"),
 	)
 
 	return remoteCmd
@@ -87,11 +87,12 @@ func newRemoteEnqueueCmd() *cobra.Command {
 	return remoteEnqueueCmd
 }
 
-func newRemoteCrawlerCmd() *cobra.Command {
+func newRemoteCrawlerCmd(aliases ...string) *cobra.Command {
 	remoteCrawlerCmd := &cobra.Command{
-		Use:   "remote-crawler",
-		Short: ".. jay will fill this long one out sometime ..",
-		Long:  ".. jay will fill this long one out sometime ..",
+		Use:     "remote-crawler",
+		Aliases: aliases,
+		Short:   "Start a remote crawler worker",
+		Long:    "Launch a remote crawler gRPC worker",
 		PreRun: func(_ *cobra.Command, _ []string) {
 			initLogging()
 		},
