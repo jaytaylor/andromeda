@@ -30,6 +30,11 @@ go get jaytaylor.com/andromeda/...
 - [ ] Detect and persist whether each import is vendored or not in the reverse-imports mapping data.
 - [ ] Add errors counter to ToCrawlEntry and throw away when error count exceeds N.
 - [ ] Move failed to-crawls to different table instead of dropping them outright.
+- [ ] Add queue monitor, when it is empty add N least recently updated packages to crawl.
+- [ ] Protect against losing queue items from process restarts / interruptions; Add in-flight TCE's to an intermediate table, and at startup move items from said table back into the to-crawl queue.
+- [ ] Remote-crawler: Store crawl result on disk when sending failed, then when remote starts, check for failed transmit and send it.  Possible complexity due to server not expecting _that_ crawl result.  May need to expose via different gRPC API endpoint than `Attach`.
+- [ ] Add counts for total number of packages tracked, globally (currently repos are tracked and called "packages" everywhere, ugh).
+- [ ] Add process-level concurrency support for remote crawlers (to increase throughput without resorting to trying to manage multiple crawler processes per host).
 
 To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`
 
@@ -101,6 +106,17 @@ Ensure that the user which you have added above is not listed in the 'Deny log o
 ```bash
 andromeda service crawler install -v --delete-after -s /tmp/src -a <host.name>:443 -c <path-to-letsencrypt-cert.pem> -u .\<windows-username> -p <windows-password>
 ```
+### Running remote-crawler behind a proxy
+
+#### Linux
+Host github.com bitbucket.com bitbucket.org code.cloudfoundry.org launchpad.net
+    ProxyCommand ncat --proxy proxy.example.com:80 %h %p
+    Compression yes
+
+##### macOS
+Host github.com bitbucket.com bitbucket.org code.cloudfoundry.org launchpad.net
+    ProxyCommand nc -X connect -x proxy.example.com:80 %h %p
+    Compression yes
 
 ### Commands
 
