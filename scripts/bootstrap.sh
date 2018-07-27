@@ -10,4 +10,7 @@ if [ -z "${1:-}" ] ; then
     exit 1
 fi
 
-"$(dirname "$0")/input-cleaner.sh" "$1" | andromeda -v bootstrap -g - -f t
+here="$(dirname "$0")"
+
+"${here}/godoc.org-packages-list.sh" | "${here}/input-cleaner.sh" "$1" | andromeda -v bootstrap -g - -f t
+
