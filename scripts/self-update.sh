@@ -40,10 +40,12 @@ oldCommitHash="$(git rev-parse HEAD)"
 
 tempBranch="tmp-$(date +%s)"
 
+git stash || :
 git checkout -b "${tempBranch}"
 git branch -D "${mainBranch}"
 git fetch --all
 git checkout "${mainBranch}"
+git pull origin "${mainBranch}"
 git branch -D "${tempBranch}"
 
 newCommitHash="$(git rev-parse HEAD)"
