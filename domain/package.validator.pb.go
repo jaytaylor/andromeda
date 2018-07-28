@@ -21,6 +21,7 @@ It has these top-level messages:
 	CrawlResult
 	EnqueueRequest
 	EnqueueResponse
+	OperationResult
 	ToCrawlEntry
 */
 package domain

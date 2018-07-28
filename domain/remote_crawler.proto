@@ -52,10 +52,20 @@ message EnqueueResponse {
   int32 n = 1;
 }
 
+message OperationResult {
+  string ErrMsg = 1;
+}
+
 service RemoteCrawlerService {
   rpc Attach(stream CrawlResult) returns (stream ToCrawlEntry) {
     option (google.api.http) = {
       post: "/api/v1/attach"
+      body: "*"
+    };
+  }
+  rpc Receive(CrawlResult) returns (OperationResult) {
+    option (google.api.http) = {
+      post: "/api/v1/receive"
       body: "*"
     };
   }
