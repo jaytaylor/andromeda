@@ -518,7 +518,7 @@ func gitStats(snap *domain.PackageSnapshot, path string) error {
 
 	// Number of tags.
 	{
-		cmd := exec.Command("git", "tags", "-l")
+		cmd := exec.Command("git", "tag", "-l")
 		cmd.Dir = path
 		out, err := cmd.CombinedOutput()
 		if err != nil {
