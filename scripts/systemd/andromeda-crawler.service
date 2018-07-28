@@ -17,7 +17,7 @@
 #
 #         sudo crontab -e
 #
-#         */15 * * * * /bin/bash -c 'sudo -u myuser /bin/bash -c '"'"'. /etc/profile && $GOPATH/src/jaytaylor.com/andromeda/scripts/self-update.sh 1>/dev/null 2>/dev/null ; exit $?'"'"' ; rc=$? ; if [ $rc -eq 0 ] ; then echo '"'"'INFO: Crawler updated, restarting service'"'"' ; systemctl restart andromeda-crawler ; fi'
+#         */15 * * * * /bin/bash -c 'sudo -u myuser /bin/bash -c '"'"'. /etc/profile && $GOPATH/src/jaytaylor.com/andromeda/scripts/self-update.sh 1>/dev/null 2>/dev/null ; exit $?'"'"' ; rc=$? ; if [ $rc -eq 0 ] ; then echo '"'"'INFO: Crawler updated, restarting service'"'"' ; /bin/systemctl restart andromeda-crawler ; fi'
 #
 #     4. Bounce the service.
 #
