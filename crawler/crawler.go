@@ -649,7 +649,7 @@ func analyzeFiles(snap *domain.PackageSnapshot, localPath string) error {
 func countFiles(path string, suffix string, includeVendored bool) (int, error) {
 	numFiles := 0
 	walkFn := func(p string, info os.FileInfo, _ error) error {
-		if !includeVendored && Vendored(p) {
+		if info == nil || !includeVendored && Vendored(p) {
 			return nil
 		}
 		if !info.IsDir() && strings.HasSuffix(info.Name(), suffix) {
