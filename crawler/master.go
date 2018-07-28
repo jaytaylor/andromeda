@@ -192,7 +192,11 @@ func (m *Master) save(res *domain.CrawlResult) error {
 	defer m.mu.Unlock()
 
 	if res == nil || res.Package == nil {
-		log.Error("Refusing to attempt to save nil result or package")
+		if res == nil {
+			log.Error("Refusing to attempt to save nil result")
+		} else {
+			log.Errorf("Crawl result contained error message: %s", res.ErrMsg)
+		}
 		return nil
 	}
 
