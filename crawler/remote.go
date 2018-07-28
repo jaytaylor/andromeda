@@ -179,6 +179,33 @@ func (r *Remote) Enqueue(entries []*domain.ToCrawlEntry, priority ...int) (int, 
 	return int(resp.N), nil
 }
 
+func (r *Remote) Do(pkgs []string, stopCh chan struct{}) error {
+	conn, err := r.conn()
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	rcsc := domain.NewRemoteCrawlerServiceClient(conn)
+
+	for _, pkg := range pkgs {
+		res, err := r.crawler.Do(&domain.Package{Path: pkg}, stopCh)
+		if res == nil && err != nil {
+			res = domain.NewCrawlResult(nil, err)
+		} else if res.Error() == nil && err != nil {
+			res.ErrMsg = err.Error()
+		}
+		resp, err := rcsc.Receive(context.Background(), res)
+		if err != nil {
+			return err
+		}
+		if resp.ErrMsg != "" {
+			return fmt.Errorf("op response message: %s", resp.ErrMsg)
+		}
+	}
+	return nil
+}
+
 func (r *Remote) conn() (*grpc.ClientConn, error) {
 	if len(r.DialOptions) == 0 {
 		log.Debug("Activated gRPC dial option grpc.WithInsecure() due to empty options")

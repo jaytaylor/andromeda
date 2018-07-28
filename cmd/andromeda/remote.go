@@ -108,6 +108,14 @@ func newRemoteCrawlerCmd(aliases ...string) *cobra.Command {
 				log.Fatalf("main: configuring remote crawler: %s", err)
 			}
 
+			if len(args) > 0 {
+				// Crawl specified packages.
+				if err := r.Do(args, stopCh); err != nil {
+					log.Fatal(err)
+				}
+				return
+			}
+
 			go func() {
 				r.Run(stopCh)
 				runDoneCh <- struct{}{}
