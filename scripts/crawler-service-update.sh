@@ -26,13 +26,13 @@ function restartCrawlerService() {
     command -v systemctl 1>/dev/null 2>/dev/null
     rc=$?
     if [ "${rc}" -eq 0 ] ; then
-        systemctl restart andromeda-crawler
+        /bin/systemctl restart andromeda-crawler
         rc=$?
-        systemctl status andromeda-crawler
+        /bin/systemctl status andromeda-crawler
     else
-        service andromeda-crawler restart
+        /usr/sbin/service andromeda-crawler restart
         rc=$?
-        service andromeda-crawler status
+        /usr/sbin/service andromeda-crawler status
     fi
     set -o errexit
     set -o pipefail
