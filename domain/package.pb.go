@@ -21,6 +21,7 @@
 		CrawlResult
 		EnqueueRequest
 		EnqueueResponse
+		OperationResult
 		ToCrawlEntry
 */
 package domain

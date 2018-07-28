@@ -165,42 +165,8 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			continue
 		}
 
-		if err := func() error {
-			// Lock to guard against data clobbering.
-			m.mu.Lock()
-			defer m.mu.Unlock()
-
-			log.WithField("pkg", entry.PackagePath).Debug("Starting index update process..")
-
-			var existing *domain.Package
-			if existing, err = m.db.Package(entry.PackagePath); err != nil && err != db.ErrKeyNotFound {
-				return err
-			} else if existing != nil {
-				if existing.Data.Equals(res.Package.Data) {
-					log.WithField("pkg", entry.PackagePath).Debug("Nothing seems to have changed, discarding crawl")
-					return nil
-				}
-				res.Package = existing.Merge(res.Package)
-			}
-
-			if res.Package == nil || res.Package.Data == nil || res.Package.Data.NumGoFiles == 0 {
-				log.WithField("pkg", entry.PackagePath).Debug("Save skipped because pkg or snapshot==nil, or number of go files==0")
-				return nil
-			} else if err = m.db.PackageSave(res.Package); err != nil {
-				return err
-			}
-			log.WithField("pkg", entry.PackagePath).Debug("Index updated with crawl result")
-			if err = m.db.RecordImportedBy(res.Package, res.ImportedResources); err != nil {
-				return err
-			}
-			m.latest = append(m.latest, res.Package)
-			if len(m.latest) > MaxNumLatest {
-				m.latest = m.latest[len(m.latest)-MaxNumLatest:]
-			}
-			m.logStats()
-			return nil
-		}(); err != nil {
-			log.WithField("pkg", res.Package.Path).Errorf("Hard error saving: %s", err)
+		if err := m.save(res); err != nil {
+			log.WithField("pkg", entry.PackagePath).Errorf("Hard error saving: %s", err)
 			return err
 		}
 
@@ -208,6 +174,62 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 		m.numCrawls++
 		m.mu.Unlock()
 	}
+}
+
+func (m *Master) Receive(ctx context.Context, res *domain.CrawlResult) (*domain.OperationResult, error) {
+	if err := m.save(res); err != nil {
+		err = fmt.Errorf("saving received crawl result: %s", err)
+		log.Errorf("%s", err)
+		return domain.NewOperationResult(err), err
+	}
+	log.WithField("pkg", res.Package.Path).Debug("Successfully saved received crawl result")
+	return domain.NewOperationResult(nil), nil
+}
+
+func (m *Master) save(res *domain.CrawlResult) error {
+	// Lock to guard against data clobbering.
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if res == nil || res.Package == nil {
+		log.Error("Refusing to attempt to save nil result or package")
+		return nil
+	}
+
+	pkgPath := res.Package.Path
+
+	log.WithField("pkg", pkgPath).Debug("Starting index update process..")
+
+	var (
+		existing *domain.Package
+		err      error
+	)
+	if existing, err = m.db.Package(res.Package.Path); err != nil && err != db.ErrKeyNotFound {
+		return err
+	} else if existing != nil {
+		if existing.Data.Equals(res.Package.Data) {
+			log.WithField("pkg", pkgPath).Debug("Nothing seems to have changed, discarding crawl")
+			return nil
+		}
+		res.Package = existing.Merge(res.Package)
+	}
+
+	if res.Package == nil || res.Package.Data == nil || res.Package.Data.NumGoFiles == 0 {
+		log.WithField("pkg", pkgPath).Debug("Save skipped because pkg or snapshot==nil, or number of go files==0")
+		return nil
+	} else if err = m.db.PackageSave(res.Package); err != nil {
+		return err
+	}
+	log.WithField("pkg", pkgPath).Debug("Index updated with crawl result")
+	if err = m.db.RecordImportedBy(res.Package, res.ImportedResources); err != nil {
+		return err
+	}
+	m.latest = append(m.latest, res.Package)
+	if len(m.latest) > MaxNumLatest {
+		m.latest = m.latest[len(m.latest)-MaxNumLatest:]
+	}
+	m.logStats()
+	return nil
 }
 
 func (m *Master) Enqueue(ctx context.Context, req *domain.EnqueueRequest) (*domain.EnqueueResponse, error) {

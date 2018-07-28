@@ -62,10 +62,20 @@ func (r *Remote) Run(stopCh chan struct{}) {
 
 			if res != nil {
 				log.Debugf("Sending previously unsent res=%# v", *res)
-				if err = ac.Send(res); err != nil {
-					// TODO: Requeue locally.
+				opRes, err := rcsc.Receive(ctx, res)
+				if err != nil {
 					return err
 				}
+				// TODO: consider using boolean field for success and make the msg not be
+				//       error specific.
+				if opRes.ErrMsg != "" {
+					return fmt.Errorf(opRes.ErrMsg)
+				}
+				log.Debug("Successfully uploaded previous result")
+				// if err = ac.Send(res); err != nil {
+				// 	// TODO: Requeue locally.
+				// 	return err
+				// }
 				res = nil
 				crawls++
 			}

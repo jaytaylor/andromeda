@@ -47,3 +47,6 @@ func (this *EnqueueRequest) Validate() error {
 func (this *EnqueueResponse) Validate() error {
 	return nil
 }
+func (this *OperationResult) Validate() error {
+	return nil
+}
