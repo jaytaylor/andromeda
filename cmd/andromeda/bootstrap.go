@@ -11,8 +11,8 @@ import (
 func newBootstrapCmd() *cobra.Command {
 	bootstrapCmd := &cobra.Command{
 		Use:   "bootstrap",
-		Short: ".. jay will fill this out sometime ..",
-		Long:  ".. jay will fill this long one out sometime ..",
+		Short: "Bootstrap a fresh andromeda database",
+		Long:  "Bootstrap a fresh andromeda database",
 		PreRun: func(_ *cobra.Command, _ []string) {
 			initLogging()
 		},
