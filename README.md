@@ -35,6 +35,7 @@ go get jaytaylor.com/andromeda/...
 - [ ] Remote-crawler: Store crawl result on disk when sending failed, then when remote starts, check for failed transmit and send it.  Possible complexity due to server not expecting _that_ crawl result.  May need to expose via different gRPC API endpoint than `Attach`.
 - [ ] Add counts for total number of packages tracked, globally (currently repos are tracked and called "packages" everywhere, ugh).
 - [ ] Add process-level concurrency support for remote crawlers (to increase throughput without resorting to trying to manage multiple crawler processes per host).
+- [ ] Add git commit hash to builds, and has gRPC client send it with requests.
 
 To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`
 
@@ -109,12 +110,12 @@ andromeda service crawler install -v --delete-after -s /tmp/src -a <host.name>:4
 ### Running remote-crawler behind a proxy
 
 #### Linux
-Host github.com bitbucket.com bitbucket.org code.cloudfoundry.org launchpad.net
+Host github.com gitlab.com bitbucket.com bitbucket.org code.cloudfoundry.org launchpad.net
     ProxyCommand ncat --proxy proxy.example.com:80 %h %p
     Compression yes
 
 ##### macOS
-Host github.com bitbucket.com bitbucket.org code.cloudfoundry.org launchpad.net
+Host github.com gitlab.com bitbucket.com bitbucket.org code.cloudfoundry.org launchpad.net
     ProxyCommand nc -X connect -x proxy.example.com:80 %h %p
     Compression yes
 
