@@ -16,6 +16,7 @@ const MaxMsgSize = 50000000 // 50MB.
 
 var (
 	RemoteCrawlerReadDeadlineDuration = 60 * time.Second
+	SleepDuration                     = 10 * time.Second
 )
 
 type Remote struct {
@@ -120,7 +121,8 @@ func (r *Remote) Run(stopCh chan struct{}) {
 					}
 				}
 
-				res, err := r.crawler.Do(&domain.Package{Path: entry.PackagePath}, stopCh)
+				res, err = r.crawler.Do(&domain.Package{Path: entry.PackagePath}, stopCh)
+
 				if res == nil && err != nil {
 					res = domain.NewCrawlResult(nil, err)
 				} else if res.Error() == nil && err != nil {
@@ -150,7 +152,7 @@ func (r *Remote) Run(stopCh chan struct{}) {
 		select {
 		case <-stopCh:
 			return
-		case <-time.After(10 * time.Second):
+		case <-time.After(SleepDuration):
 		}
 	}
 }
