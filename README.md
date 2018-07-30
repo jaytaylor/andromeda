@@ -36,6 +36,8 @@ go get jaytaylor.com/andromeda/...
 - [ ] Add counts for total number of packages tracked, globally (currently repos are tracked and called "packages" everywhere, ugh).
 - [ ] Add process-level concurrency support for remote crawlers (to increase throughput without resorting to trying to manage multiple crawler processes per host).
 - [ ] Add git commit hash to builds, and has gRPC client send it with requests.
+- [ ] 1/2 Distinguish between pkg and repo by refactoring what is currently called a "package" in andromeda into a "repo".
+- [ ] 2/2 Add alias tracking table
 
 To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`
 
