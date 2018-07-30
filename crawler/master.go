@@ -177,10 +177,16 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 }
 
 func (m *Master) Receive(ctx context.Context, res *domain.CrawlResult) (*domain.OperationResult, error) {
+	if res == nil {
+		return domain.NewOperationResult(nil), nil
+	}
 	if err := m.save(res); err != nil {
 		err = fmt.Errorf("saving received crawl result: %s", err)
 		log.Errorf("%s", err)
 		return domain.NewOperationResult(err), err
+	}
+	if res.Package == nil {
+		return domain.NewOperationResult(nil), nil
 	}
 	log.WithField("pkg", res.Package.Path).Debug("Successfully saved received crawl result")
 	return domain.NewOperationResult(nil), nil
