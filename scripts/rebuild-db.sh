@@ -1,21 +1,24 @@
 #!/usr/bin/env bash
+set -x
 
-set -o errexit
-set -o pipefail
-set -o nounset
 
 cd "$(dirname "$0")/.."
 
-status="$(systemctl status andromeda-web | grep 'Active:' | awk '{ print $2 }')"
+status="$(systemctl status andromeda-web | (grep 'Active:' || :) | awk '{ print $2 }')"
+set -o errexit
+set -o pipefail
+set -o nounset
+was_active=false
 
 if [ "${status}" = 'active' ] ; then
+    was_active=true
     sudo systemctl stop andromeda-web
 fi
 
 function cleanup() {
     local rc
     rc=$?
-    if [ "${status}" = 'active' ] ; then
+    if [ "${was_active}" = true ] && [ "${status}" = 'active' ] ; then
         sudo systemctl start andromeda-web
     fi
     exit "${rc}"
