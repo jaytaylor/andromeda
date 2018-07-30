@@ -30,9 +30,9 @@ function restartCrawlerService() {
         rc=$?
         /bin/systemctl status andromeda-crawler
     else
-        /usr/sbin/service andromeda-crawler restart
+        /sbin/initctl restart andromeda-crawler
         rc=$?
-        /usr/sbin/service andromeda-crawler status
+        /sbin/initctl status andromeda-crawler
     fi
     set -o errexit
     set -o pipefail
@@ -53,7 +53,7 @@ function main() {
         exit 1
     fi
 
-    if [ "${DEBUG:-0}" -ne 0 ] ; then
+    if [ "${DEBUG:-0}" != '0' ] ; then
         echo 'DEBUG: Enabling -x mode for verbose script debug output' 2>&1
         set -x
     fi
@@ -65,13 +65,17 @@ function main() {
     cd "$(dirname "$0")"
 
     owner="$(stat --format '%U' self-update.sh)"
+    if [ "${owner}" = 'root' ] ; then
+        echo 'ERROR: self-update.sh owner must not be root; do not install or run the package as root user!' 1>&2
+        exit 1
+    fi
 
     set +o errexit
     set +o pipefail
-    sudo -u "${owner}" ./self-update.sh
+    sudo --set-home --login --non-interactive -u "${owner}" "$(dirname "$0")/self-update.sh"
     rc=$?
 
-    echo "DEBUG: self-update.sh exited with status code=${rc}" 2>&1
+    echo "INFO: self-update.sh exited with status code=${rc}" 2>&1
 
     if [ "${rc}" -eq 0 ] ; then
         restartCrawlerService
