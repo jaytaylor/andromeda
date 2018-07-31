@@ -224,8 +224,12 @@ func (m *Master) save(res *domain.CrawlResult) error {
 		res.Package = existing.Merge(res.Package)
 	}
 
-	if res.Package == nil || res.Package.Data == nil || res.Package.Data.NumGoFiles == 0 {
-		log.WithField("pkg", pkgPath).Debug("Save skipped because pkg or snapshot==nil, or number of go files==0")
+	if res.Package.Data == nil || res.Package.Data.NumGoFiles == 0 {
+		if res.Package.Data == nil {
+			log.WithField("pkg", pkgPath).Debug("Save skipped because res.Package.Data==nil")
+		} else if res.Package.Data.NumGoFiles == 0 {
+			log.WithField("pkg", pkgPath).Debug("Save skipped because res.Package.Data.NumGoFiles==0")
+		}
 		return nil
 	} else if err = m.db.PackageSave(res.Package); err != nil {
 		return err
