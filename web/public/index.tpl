@@ -97,9 +97,41 @@
         }
     </style>
 
+    <style type="text/css">
+        html {
+            /*font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;*/
+            font-family: sans-serif;
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+            color: #333333;
+        }
+        a {
+            color: #375EAB;
+            text-decoration: none;
+        }
+        a:active {
+            text-decoration: underline;
+        }
+        ul {
+            list-style-type: none;
+        }
+        .top-nav {
+            background-color: #E0EBF5;
+            border: 1px solid #D1E1F0;
+        }
+        .top-package {
+            background-color: #EEEEEE;
+        }
+    </style>
+
 </head>
 <body>
-<h1>Andromeda</h1>
+<div class="top-nav">
+    <ul>
+        <li><h1><a href="/">Andromeda</a></h1></li>
+        <li><a href="/about">About</a></li>
+    </ul>
+</div>
 <h2>Search the entire visible Golang Universe</h2>
 <br>
 
