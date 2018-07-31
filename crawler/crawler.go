@@ -1,6 +1,7 @@
 package crawler
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	godoc "go/doc"
@@ -8,10 +9,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
+	"gigawatt.io/oslib"
 	"github.com/daviddengcn/go-index"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/tools/go/vcs"
@@ -180,6 +184,7 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.CrawlRe
 				log.WithField("pkg", ctx.pkg.Path).Warnf("Ignoring non-fatal error: %s", err)
 				//return ctx.pkg, nil
 			}
+			log.Debugf("Finished step %q", runtime.FuncForPC(reflect.ValueOf(pFn).Pointer()).Name())
 		case <-ctx.stopCh:
 			return nil, ErrStopRequested
 		}
@@ -205,85 +210,6 @@ func (_ *Crawler) errorInvalidatesCrawl(err error) bool {
 	return false
 }
 
-/*// CatalogImporters resolves and adds the "imported_by" association between a
-// package and 3rd party packages it makes use of.
-func (c *Crawler) CatalogImporters(pkg *domain.Package) error {
-	log.WithField("pkg", pkg.Path).Infof("catalog starting: %# v", pkg)
-	// log.WithField("pkg", pkg.Path).WithField("imports", pkg.Data.AllImports()).Info("catalog starting")
-
-	var (
-		updatedPkgs = map[string]*domain.Package{
-			pkg.Path: pkg,
-		}
-		discoveries = map[string]*domain.ToCrawlEntry{}
-	)
-	knownPkgs, err := m.db.Packages(pkg.Data.AllImports()...)
-	if err != nil {
-		return err
-	}
-	for _, pkgPath := range pkg.Data.AllImports() {
-		var rr *vcs.RepoRoot
-		usedPkg, ok := updatedPkgs[pkgPath]
-		if !ok {
-			if usedPkg, ok = knownPkgs[pkgPath]; !ok {
-				if rr, err = PackagePathToRepoRoot(pkgPath); err != nil {
-					log.WithField("pkg", pkg.Path).Errorf("Failed to resolve repo for import=%v, skipping: %s", pkgPath, err)
-					continue
-				}
-			}
-		}
-		if rr == nil {
-			rr = usedPkg.RepoRoot()
-		}
-		if err = m.buildAssociations(rr, usedPkg, pkg, updatedPkgs, discoveries); err != nil {
-			return err
-		}
-	}
-	// Save updated packages.
-	if err := m.savePackagesMap(updatedPkgs); err != nil {
-		return err
-	}
-	// Enqueue newly discovered packages.
-	if err := m.enqueueToCrawlsMap(discoveries); err != nil {
-		return err
-	}
-	//log.Infof("done finding rr's for pkg=%v", pkg.Path)
-	return nil
-}
-
-// buildAssociations updates referenced packages for the "imported_by" portion
-// of the graph.
-func (c *Crawler) buildAssociations(rr *vcs.RepoRoot, usedPkg *domain.Package, consumerPkg *domain.Package, updatedPkgs map[string]*domain.Package, discoveries map[string]*domain.ToCrawlEntry) error {
-	if rr.Root == consumerPkg.RepoRoot().Root {
-		log.Debugf("Skipping association between consumerPkg=%v and %v", consumerPkg.Path, rr.Root)
-		return nil
-	}
-	var (
-		ok  bool
-		err error
-	)
-	if usedPkg == nil {
-		if usedPkg, ok = updatedPkgs[rr.Root]; !ok {
-			if usedPkg, err = m.db.Package(rr.Root); err != nil && err != db.ErrKeyNotFound {
-				return err
-			} else if usedPkg == nil {
-				usedPkg = domain.NewPackage(rr, nil)
-				discoveries[rr.Root] = &domain.ToCrawlEntry{
-					PackagePath: rr.Root,
-					Reason:      fmt.Sprintf("In use by %v", consumerPkg.Path),
-				}
-			}
-		}
-	}
-	newImportedBy := unique.StringsSorted(append(usedPkg.ImportedBy, consumerPkg.Path))
-	if !reflect.DeepEqual(usedPkg.ImportedBy, newImportedBy) {
-		usedPkg.ImportedBy = newImportedBy
-		updatedPkgs[rr.Root] = usedPkg
-		log.WithField("consumer-pkg", consumerPkg.Path).WithField("imported-pkg", usedPkg.Path).Debug("Discovered one or more new associations")
-	}
-	return nil
-}*/
-
 // Collect phase fetches information so a package can be analyzed.
 func (c *Crawler) Collect(ctx *crawlerContext) error {
 	//log.Debug("collect starting")
@@ -308,7 +234,7 @@ func (c *Crawler) Collect(ctx *crawlerContext) error {
 // If pkg is nil, it is assumed that this is the first crawl.
 func (c *Crawler) Hydrate(ctx *crawlerContext) error {
 	//log.Debug("hydrate starting")
-	err := c.interrogate(ctx.pkg, ctx.rr)
+	err := c.Interrogate(ctx.pkg, ctx.rr)
 
 	finishedAt := time.Now()
 
@@ -357,19 +283,66 @@ func (c *Crawler) get(rr *vcs.RepoRoot) error {
 	// TODO: If $dst/.git already exists, try just running "git pull origin master" on it rather than re-downloading entire thing!
 
 	if err := rr.VCS.Create(dst, rr.Repo); err != nil {
+		if strings.ToLower(rr.VCS.Name) == "git" {
+			gitDir := filepath.Join(dst, ".git")
+			isDir, err := oslib.IsDirectory(gitDir)
+			if err != nil {
+				return fmt.Errorf("checking if path=%v is a directory: %s", gitDir, err)
+			}
+			if isDir {
+				if err := c.gitUpdate(dst); err == nil {
+					return nil
+				}
+				log.Warnf("Error updating exising git repo at %v: %s (will remove and clone fresh)", dst, err)
+			}
+		}
 		if err := os.RemoveAll(dst); err != nil {
 			return err
 		}
 		// Retry after resetting the directory.
 		if err := rr.VCS.Create(dst, rr.Repo); err != nil {
 			log.WithField("pkg", rr.Root).Errorf("Problem creating / go-get'ing repo: %s", err)
+			// if strings.HasPrefix(err.Error(), "unrecognized import path ") {
+			// 	err = ErrNoGoFiles
+			// }
 			return err
 		}
 	}
 	return nil
 }
 
-func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
+func (c *Crawler) gitUpdate(dst string) error {
+	branchCheckCmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	branchCheckCmd.Dir = dst
+	branchBytes, err := branchCheckCmd.CombinedOutput()
+	branchBytes = bytes.TrimRight(branchBytes, "\r\n")
+	if err != nil {
+		log.Errorf("git branch check combined output: %v", string(branchBytes))
+		return fmt.Errorf("determining current git branch: %s", err)
+	}
+
+	pullCmd := exec.Command("git", "pull", "origin", string(branchBytes))
+	pullCmd.Dir = dst
+	pullOut, err := pullCmd.CombinedOutput()
+	pullOut = bytes.TrimRight(pullOut, "\r\n")
+	if err != nil {
+		log.Errorf("git pull origin %v output: %v", string(branchBytes), string(pullOut))
+		return fmt.Errorf("git pull origin %v: %s", string(branchBytes), err)
+	}
+
+	fetchCmd := exec.Command("git", "fetch", "--all")
+	fetchCmd.Dir = dst
+	fetchOut, err := fetchCmd.CombinedOutput()
+	fetchOut = bytes.TrimRight(fetchOut, "\r\n")
+	if err != nil {
+		log.Errorf("git fetch output: %v", string(fetchOut))
+		return fmt.Errorf("git fetch: %s", err)
+	}
+
+	return nil
+}
+
+func (c *Crawler) Interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 	var (
 		localPath = filepath.Join(c.Config.SrcPath, rr.Root)
 		pc        = pkg.LatestCrawl()
