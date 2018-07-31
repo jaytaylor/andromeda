@@ -19,11 +19,6 @@ import (
 	"jaytaylor.com/andromeda/domain"
 )
 
-var (
-	ErrMetadataUnsupportedSrcType = errors.New("unsupported src type: must be an []byte, string, or proto.Message")
-	ErrMetadataUnsupportedDstType = errors.New("unsupported dst type: must be an *[]byte, *string, or proto.Message")
-)
-
 type BoltConfig struct {
 	DBFile      string
 	BoltOptions *bolt.Options
@@ -245,8 +240,6 @@ func (client *BoltClient) PackageDelete(pkgPaths ...string) error {
 	})
 }
 
-var pkgSepB = []byte{'/'}
-
 func (client *BoltClient) Package(pkgPath string) (*domain.Package, error) {
 	var pkg *domain.Package
 
@@ -326,9 +319,6 @@ func (client *BoltClient) pkgs(tx *bolt.Tx, pkgPaths []string) (map[string]*doma
 // input key when split by "/" characters.
 func (client *BoltClient) hierarchicalKeySearch(b *bolt.Bucket, key []byte, splitOn []byte) []byte {
 	if pieces := bytes.Split(key, splitOn); len(pieces) >= 2 {
-		b.ForEach(func(k, v []byte) error {
-			return nil
-		})
 		var (
 			prefix = bytes.Join(pieces[0:2], splitOn)
 			v      []byte
@@ -738,8 +728,6 @@ func (client *BoltClient) Meta(key string, dst interface{}) error {
 func (client *BoltClient) Search(q string) (*domain.Package, error) {
 	return nil, fmt.Errorf("not yet implemented")
 }
-
-type BatchUpdateFunc func(pkg *domain.Package) (changed bool, err error)
 
 func (client *BoltClient) applyBatchUpdate(fn BatchUpdateFunc) error {
 	return client.db.Update(func(tx *bolt.Tx) error {

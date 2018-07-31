@@ -17,11 +17,19 @@ const (
 )
 
 var (
-	ErrKeyNotFound    = errors.New("requested key not found")
-	ErrNotImplemented = errors.New("function not implemented")
+	ErrKeyNotFound                = errors.New("requested key not found")
+	ErrNotImplemented             = errors.New("function not implemented")
+	ErrMetadataUnsupportedSrcType = errors.New("unsupported src type: must be an []byte, string, or proto.Message")
+	ErrMetadataUnsupportedDstType = errors.New("unsupported dst type: must be an *[]byte, *string, or proto.Message")
 
 	DefaultQueuePriority = 3
+
+	// pkgSepB is a byte array of the package component separator character.
+	// It's used for hierarchical searches and lookups.
+	pkgSepB = []byte{'/'}
 )
+
+type BatchUpdateFunc func(pkg *domain.Package) (changed bool, err error)
 
 type Client interface {
 	Open() error                                                                                   // Open / start DB client connection.
@@ -68,6 +76,9 @@ func NewClient(config Config) Client {
 	switch typ {
 	case Bolt:
 		return newBoltDBClient(config.(*BoltConfig))
+
+	case Rocks:
+		return newRocksDBClient(config.(*RocksConfig))
 
 	default:
 		panic(fmt.Errorf("no client constructor available for db configuration type: %v", typ))
