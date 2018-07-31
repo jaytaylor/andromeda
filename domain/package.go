@@ -428,6 +428,18 @@ func (snap *PackageSnapshot) Merge(other *PackageSnapshot) *PackageSnapshot {
 	if other.Stars != int32(0) {
 		snap.Stars = other.Stars
 	}
+	if other.NumFiles != int32(0) {
+		snap.NumFiles = other.NumFiles
+	}
+	if other.NumGoFiles != int32(0) {
+		snap.NumGoFiles = other.NumGoFiles
+	}
+	if other.NumImports != int32(0) {
+		snap.NumImports = other.NumImports
+	}
+	if other.NumTestImports != int32(0) {
+		snap.NumTestImports = other.NumTestImports
+	}
 
 	snap.Sync()
 
