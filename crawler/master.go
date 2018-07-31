@@ -20,7 +20,7 @@ var (
 	MaxNumLatest        = 25
 	ToCrawlErrorLimit   = 25 // Record will be discarded after this number of crawl attempts is exceeded.
 	MaxNumCrawls        = 2
-	MinAgeBeforeRefresh = 7 * 24 * time.Hour
+	MinAgeBeforeRefresh = 31 * 24 * time.Hour
 )
 
 // TODO: Need scheme for ensuring a write hasn't occurred to the affected
