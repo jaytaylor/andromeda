@@ -243,13 +243,6 @@ func (service *WebService) pkg(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	const asset = "package.tpl"
-	content, err := service.staticFilesAssetProvider()(asset)
-	if err != nil {
-		panic(fmt.Errorf("problem with asset %q: %v", asset, err))
-	}
-	tpl := template.Must(template.New(asset).Funcs(sprig.FuncMap()).Parse(string(content)))
-
 	pkg, err := service.DB.Package(pkgPath)
 	if err != nil {
 		if err == db.ErrKeyNotFound {
@@ -265,6 +258,12 @@ func (service *WebService) pkg(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if pkg.Path == pkgPath {
+		const asset = "package.tpl"
+		content, err := service.staticFilesAssetProvider()(asset)
+		if err != nil {
+			panic(fmt.Errorf("problem with asset %q: %v", asset, err))
+		}
+		tpl := template.Must(template.New(asset).Funcs(sprig.FuncMap()).Parse(string(content)))
 		if err := tpl.Execute(w, pkg); err != nil {
 			web.RespondWithHtml(w, 500, err.Error())
 			return
@@ -313,6 +312,7 @@ func (service *WebService) subPkgFallback(w http.ResponseWriter, req *http.Reque
 	tpl := template.Must(template.New(asset).Funcs(sprig.FuncMap()).Parse(string(content)))
 
 	nPkgPath := domain.SubPackagePathNormalize(pkg.Path, pkgPath)
+	log.Debug("nPkgPath=%v", nPkgPath)
 	if sub, ok := pkg.Data.SubPackages[nPkgPath]; ok {
 		tplCtx := &SubPackageContext{
 			Path: pkgPath,
@@ -323,6 +323,6 @@ func (service *WebService) subPkgFallback(w http.ResponseWriter, req *http.Reque
 			web.RespondWithHtml(w, 500, err.Error())
 		}
 	} else {
-		web.RespondWithHtml(w, 404, fmt.Sprintf(`%[1]q not found within <a href="/%[2]v">%[2]v</a>`, pkgPath, pkg.Path))
+		web.RespondWithHtml(w, 404, fmt.Sprintf(`%[1]q not found in %[2]v<br><br>Perhaps you'd like to <a href="/%[2]v">view all packages contained in %[2]v</a>`, pkgPath, pkg.Path))
 	}
 }

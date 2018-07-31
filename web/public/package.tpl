@@ -109,7 +109,7 @@
 <hr>
 <h3>{{ len .Data.SubPackages }} Nested Package{{ len .Data.SubPackages | plural "" "s" }}:</h3>
 {{ range $subPkgPath, $subPkg := .SubPackagesPretty }}
-<a href="/{{ $pkg.Path }}/{{ $subPkgPath }}">{{ $subPkgPath }}</a>
+<a href="/{{ $subPkgPath }}">{{ $subPkgPath }}</a>
 <br>
 {{ end }}
 {{ end }}

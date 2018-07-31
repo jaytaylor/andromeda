@@ -68,6 +68,11 @@ func TestPackageMergePending(t *testing.T) {
 	}
 }
 
+func TestSubPackagePathNormalize(t *testing.T) {
+	res := SubPackagePathNormalize("github.om/14rcole/os-explode", "github.om/14rcole/os-explode/pkg/watchclient")
+	t.Logf("res=%v", res)
+}
+
 func newFakeRR(repo string, root string) *vcs.RepoRoot {
 	rr := &vcs.RepoRoot{
 		Repo: repo,
