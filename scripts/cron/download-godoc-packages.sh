@@ -4,7 +4,7 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 mkdir -p archive.godoc.org
 cd archive.godoc.org
