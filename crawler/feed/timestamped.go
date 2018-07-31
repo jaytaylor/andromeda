@@ -4,18 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-
-	"jaytaylor.com/andromeda/db"
 )
 
 type timestamped struct {
-	c    db.Client
+	p    Persistence
 	name string
 }
 
-func newTimestamped(dbClient db.Client, name string) *timestamped {
+func newTimestamped(persistence Persistence, name string) *timestamped {
 	stamped := &timestamped{
-		c:    dbClient,
+		p:    persistence,
 		name: name,
 	}
 	return stamped
@@ -26,7 +24,7 @@ func (stamped *timestamped) last() (*time.Time, error) {
 		data = []byte{}
 		ts   = &time.Time{}
 	)
-	if err := stamped.c.Meta(stamped.key(), &data); err != nil {
+	if err := stamped.p.Meta(stamped.key(), &data); err != nil {
 		return nil, err
 	}
 	if len(data) == 0 {
@@ -43,7 +41,7 @@ func (stamped *timestamped) mark(ts time.Time) error {
 	if err != nil {
 		return err
 	}
-	if err = stamped.c.MetaSave(stamped.key(), data); err != nil {
+	if err = stamped.p.MetaSave(stamped.key(), data); err != nil {
 		return err
 	}
 	return nil
