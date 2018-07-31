@@ -128,6 +128,7 @@ func (r *Remote) Run(stopCh chan struct{}) {
 				} else if res.Error() == nil && err != nil {
 					res.ErrMsg = err.Error()
 				}
+
 				if err = ac.Send(res); err != nil {
 					// TODO: Requeue locally.
 					return fmt.Errorf("sending result: %s", err)
@@ -197,6 +198,7 @@ func (r *Remote) Do(pkgs []string, stopCh chan struct{}) error {
 		} else if res.Error() == nil && err != nil {
 			res.ErrMsg = err.Error()
 		}
+
 		resp, err := rcsc.Receive(context.Background(), res)
 		if err != nil {
 			return err
@@ -204,6 +206,7 @@ func (r *Remote) Do(pkgs []string, stopCh chan struct{}) error {
 		if resp.ErrMsg != "" {
 			return fmt.Errorf("op response message: %s", resp.ErrMsg)
 		}
+		log.WithField("pkg", pkg).Debugf("Successfully transmitted crawl result")
 	}
 	return nil
 }
