@@ -12,7 +12,7 @@ import (
 	"jaytaylor.com/andromeda/domain"
 )
 
-const MaxMsgSize = 50000000 // 50MB.
+const MaxMsgSize = 100000000 // 100MB.
 
 var (
 	RemoteCrawlerReadDeadlineDuration = 60 * time.Second
