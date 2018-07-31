@@ -15,3 +15,5 @@ curl -v -sSL -o "${filename}" "https://api.godoc.org/packages"
 
 xz --compress --extreme "${filename}"
 
+rm "${filename}"
+
