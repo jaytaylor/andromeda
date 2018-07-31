@@ -7,8 +7,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-
-	"jaytaylor.com/andromeda/db"
 )
 
 var HackerNewsAPIURL = "https://hn.algolia.com/api/v1/search_by_date?hitsPerPage=%v&page=0&tags=story"
@@ -21,9 +19,9 @@ type HackerNews struct {
 	*timestamped
 }
 
-func NewHackerNews(dbClient db.Client) *HackerNews {
+func NewHackerNews(persistence Persistence) *HackerNews {
 	f := &HackerNews{
-		timestamped: newTimestamped(dbClient, "hackernews"),
+		timestamped: newTimestamped(persistence, "hackernews"),
 	}
 	return f
 }

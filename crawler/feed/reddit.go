@@ -7,8 +7,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-
-	"jaytaylor.com/andromeda/db"
 )
 
 var RedditAPIURL = "https://www.reddit.com/r/%v/new.json"
@@ -18,9 +16,9 @@ type Reddit struct {
 	sub string
 }
 
-func NewReddit(dbClient db.Client, sub string) *Reddit {
+func NewReddit(persistence Persistence, sub string) *Reddit {
 	f := &Reddit{
-		timestamped: newTimestamped(dbClient, fmt.Sprintf("reddit/%v", sub)),
+		timestamped: newTimestamped(persistence, fmt.Sprintf("reddit/%v", sub)),
 		sub:         sub,
 	}
 	return f
