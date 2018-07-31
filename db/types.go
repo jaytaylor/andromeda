@@ -4,4 +4,5 @@ type Type int
 
 const (
 	Bolt Type = iota
+	Rocks
 )
