@@ -449,8 +449,10 @@ func (c *Crawler) interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 	}
 
 	for _, dir := range dirs {
-		if err := scanDir(dir); err != nil {
-			errs = append(errs, err)
+		if !Vendored(dir + "/") {
+			if err := scanDir(dir); err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
 
