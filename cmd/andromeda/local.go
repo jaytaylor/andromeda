@@ -422,6 +422,7 @@ func addCrawlerFlags(cmd *cobra.Command) *cobra.Command {
 	cmd.Flags().StringVarP(&crawler.DefaultSrcPath, "src-path", "s", crawler.DefaultSrcPath, "Path to checkout source code to")
 	cmd.Flags().BoolVarP(&crawler.DefaultDeleteAfter, "delete-after", "d", crawler.DefaultDeleteAfter, "Delete source code after analysis")
 	cmd.Flags().IntVarP(&crawler.DefaultMaxItems, "max-items", "m", crawler.DefaultMaxItems, "Maximum number of package items to crawl (<=0 signifies unlimited)")
+	cmd.Flags().BoolVarP(&crawler.DefaultEnableGoGit, "go-git", "g", crawler.DefaultEnableGoGit, "Enable golang-native git client instead of relying on executable git binary in $PATH")
 
 	return cmd
 }
