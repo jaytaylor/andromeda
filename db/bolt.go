@@ -1046,7 +1046,6 @@ func (client *BoltClient) tableLen(name string) (int, error) {
 		return 0, err
 	}
 	return n, nil
-
 }
 
 /*func compress(bs []byte) ([]byte, error) {
