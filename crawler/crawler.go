@@ -19,6 +19,7 @@ import (
 	"github.com/daviddengcn/go-index"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/tools/go/vcs"
+	git "gopkg.in/src-d/go-git.v4"
 
 	"jaytaylor.com/andromeda/domain"
 	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/cfg"
@@ -30,6 +31,7 @@ var (
 	DefaultSrcPath       = filepath.Join(os.TempDir(), "src")
 	DefaultDeleteAfter   = false
 	DefaultIncludeStdLib = false
+	DefaultEnableGoGit   = false
 
 	ErrStopRequested  = errors.New("stop requested")
 	ErrPackageInvalid = errors.New("package structure is invalid")
@@ -48,6 +50,7 @@ type Config struct {
 	SrcPath       string // Location to checkout code to.
 	DeleteAfter   bool   // Delete package code after analysis.
 	IncludeStdLib bool   // Include standard library in associations and analysis.
+	EnableGoGit   bool   // Enables golang-native git library instead of reyling on git executable binary.
 }
 
 func NewConfig() *Config {
@@ -56,6 +59,7 @@ func NewConfig() *Config {
 		SrcPath:       DefaultSrcPath,
 		DeleteAfter:   DefaultDeleteAfter,
 		IncludeStdLib: DefaultIncludeStdLib,
+		EnableGoGit:   DefaultEnableGoGit,
 	}
 	return cfg
 }
@@ -279,6 +283,22 @@ func (c *Crawler) get(rr *vcs.RepoRoot) error {
 	}
 
 	dst := filepath.Join(c.Config.SrcPath, rr.Root)
+
+	if c.Config.EnableGoGit {
+		if strings.ToLower(rr.VCS.Name) == "git" {
+			log.Debugf("Starting golang-native git clone for %v", rr.Repo)
+
+			// TODO: Use context for cancellation, and invoke PlainCloneContext.
+			_, err := git.PlainClone(dst, false, &git.CloneOptions{
+				URL:      rr.Repo,
+				Progress: os.Stdout,
+			})
+			if err == nil {
+				return nil
+			}
+			log.Warnf("Golang-native clone failed: %s", err)
+		}
+	}
 
 	// TODO: If $dst/.git already exists, try just running "git pull origin master" on it rather than re-downloading entire thing!
 
@@ -712,8 +732,11 @@ func PackagePathToRepoRoot(pkgPath string) (*vcs.RepoRoot, error) {
 		if rr, err = vcs.RepoRootForImportPath(pkgPath, verbose); err != nil {
 			return nil, err
 		}
-		rr.Repo = strings.Replace(rr.Repo, "https://github.com/", "git@github.com:", 1)
-		rr.Repo = strings.Replace(rr.Repo, "https://gitlab.com/", "git@gitlab.com:", 1)
+		if !DefaultEnableGoGit {
+			rr.Repo = strings.Replace(rr.Repo, "https://github.com/", "git@github.com:", 1)
+			rr.Repo = strings.Replace(rr.Repo, "https://gitlab.com/", "git@gitlab.com:", 1)
+		}
+
 		//logInfof("root=%v repo=%v vcs=%v", rr.Root, rr.Repo, rr.VCS.Name)
 		// log.WithField("root", rr.Root).WithField("repo", rr.Repo).WithField("vcs", rr.VCS.Name).Debug("Found rr OK")
 	} else {

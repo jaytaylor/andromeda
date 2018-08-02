@@ -62,7 +62,7 @@ func (r *Remote) Run(stopCh chan struct{}) {
 			}
 
 			if res != nil {
-				log.Debugf("Sending previously unsent res=%# v", *res)
+				log.WithField("pkg", res.Package.Path).Debugf("Sending previously unsent result")
 				opRes, err := rcsc.Receive(ctx, res)
 				if err != nil {
 					return err
