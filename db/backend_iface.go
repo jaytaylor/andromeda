@@ -4,20 +4,25 @@ package db
 type Backend interface {
 	Open() error
 	Close() error
+	New(name string) (Backend, error) // Returns a new instance of the same backend type with a different data file.
 	Get(table string, key []byte) (value []byte, err error)
 	Put(table string, key []byte, value []byte) error
 	Delete(table string, keys ...[]byte) error
 	Drop(tables ...string) error
 	Len(table string) (n int, err error)
-	WithTransaction(opts TXOptions, fn func(tx Transaction) error) error
+	Begin(writable bool) (Transaction, error)
+	View(fn func(tx Transaction) error) error
+	Update(fn func(tx Transaction) error) error
 	EachRow(table string, fn func(key []byte, value []byte)) error
 	EachRowWithBreak(table string, fn func(key []byte, value []byte) bool) error
-	Enqueue(table string, priority int, value []byte) error
+	EachTable(func(table string, tx Transaction) error) error
+	Enqueue(table string, priority int, values ...[]byte) error
 	Dequeue(table string) (value []byte, err error)
-	Cursor() Cursor
+	ScanQ(name string, opts *QueueOptions, fn func(value []byte)) error
+	LenQ(name string, priority int) (int, error)
 }
 
-// Transaction is a generic TX interface to be provided by each Backend
+// Transaction is a generic Tx interface to be provided by each Backend
 // implementation.
 type Transaction interface {
 	Get(table string, key []byte) (value []byte, err error)
@@ -26,28 +31,26 @@ type Transaction interface {
 	Commit() error
 	Rollback() error
 	Cursor() Cursor
-}
-
-type TXOptions struct {
-	ReadOnly bool
+	Backend() Backend
 }
 
 // Cursor is a generic interface to be provided by each Backend implementation.
+// Expects an object-builder style implementation to allow easy access to .Data.
 type Cursor interface {
 	// First moves the cursor to the beginning of the range of elements.
-	First()
+	First() Cursor
 
 	// Last moves the cursor to the end of the range of elements.
-	Last()
+	Last() Cursor
 
 	// Next moves the cursor to the next element.
-	Next() (key []byte, value []byte)
+	Next() Cursor
 
 	// Prev moves the cursor to the previous element.
-	Prev() (key []byte, value []byte)
+	Prev() Cursor
 
 	// Seek moves the
-	Seek(prefix []byte) (key []byte, value []byte)
+	Seek(prefix []byte) Cursor
 
 	// Data returns the K/V pair at the current cursor position.
 	// Returns (nil, nil) when past the end.

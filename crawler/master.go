@@ -42,7 +42,7 @@ var (
 //     - Overseer
 //     - Master
 type Master struct {
-	db          db.Client
+	db          *db.Client
 	crawler     *Crawler
 	latest      []*domain.Package
 	numCrawls   int
@@ -52,7 +52,7 @@ type Master struct {
 }
 
 // NewMaster constructs and returns a new Master crawler instance.
-func NewMaster(dbClient db.Client, cfg *Config) *Master {
+func NewMaster(dbClient *db.Client, cfg *Config) *Master {
 	m := &Master{
 		db:      dbClient,
 		crawler: New(cfg),

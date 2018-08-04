@@ -47,8 +47,10 @@ func newRebuildDBCmd() *cobra.Command {
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			dbCfg := db.NewBoltConfig(DBFile)
-			if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
-				return dbClient.RebuildTo(RebuildDBFile)
+			if err := db.WithClient(dbCfg, func(dbClient *db.Client) error {
+				newCfg := db.NewBoltConfig(RebuildDBFile)
+				newBe := db.NewBoltBackend(newCfg)
+				return dbClient.RebuildTo(newBe)
 			}); err != nil {
 				log.Fatal(err)
 			}
@@ -97,8 +99,10 @@ func newRebuildAndCleanupDBCmd() *cobra.Command {
 				return k, v
 			}
 
-			if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
-				return dbClient.RebuildTo(RebuildDBFile, filterFn)
+			if err := db.WithClient(dbCfg, func(dbClient *db.Client) error {
+				newCfg := db.NewBoltConfig(RebuildDBFile)
+				newBe := db.NewBoltBackend(newCfg)
+				return dbClient.RebuildTo(newBe, filterFn)
 			}); err != nil {
 				log.Fatal(err)
 			}
