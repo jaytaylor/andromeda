@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -36,7 +37,7 @@ func TestCrawlerRun(t *testing.T) {
 		&domain.ToCrawlEntry{PackagePath: "os"},
 	}
 
-	if err := db.WithClient(db.NewBoltConfig(dbFile), func(dbClient db.Client) error {
+	if err := db.WithClient(db.NewBoltConfig(dbFile), func(dbClient *db.Client) error {
 		// Add several (3+) to-crawl entries.
 		if _, err := dbClient.ToCrawlAdd(toCrawls, nil); err != nil {
 			return err
@@ -49,27 +50,63 @@ func TestCrawlerRun(t *testing.T) {
 		}
 
 		// Run the crawler.
+		doneCh := make(chan error)
+		stopCh := make(chan struct{}, 1)
 		cfg := NewConfig()
 		cfg.IncludeStdLib = true
 		cfg.SrcPath = filepath.Join(os.TempDir(), "andromeda-crawler-correctness")
 		defer os.RemoveAll(cfg.SrcPath)
 
 		m := NewMaster(dbClient, cfg)
-		if err := m.Run(nil); err != nil {
-			t.Error(err)
-			return nil
-		}
-
-		// Verify results.
-		{
-			pkg, err := dbClient.Package("runtime")
-			if err != nil {
-				return err
+		go func() {
+			if err := m.Run(stopCh); err != nil && err != ErrStopRequested {
+				doneCh <- err
 			}
-			if expected, actual := 10, len(pkg.ImportedBy); actual < expected {
-				j, _ := json.MarshalIndent(pkg, "", "    ")
-				t.Logf("\"runtime\" package JSON:\n%v", string(j))
-				return fmt.Errorf("Expected \"runtime\" to be imported by > %v others but actual=%v", expected, actual)
+			doneCh <- nil
+		}()
+
+		var (
+			waitingSince = time.Now()
+			waitTimeout  = 3 * time.Minute
+		)
+
+		for {
+			select {
+			case err := <-doneCh:
+				if err != nil {
+					t.Fatal(err)
+				}
+
+			case <-time.After(5 * time.Second):
+				{
+					l1, _ := dbClient.ToCrawlsLen()
+					l2, _ := dbClient.PackagesLen()
+					t.Logf("Checking for crawl result; Queue len=%v; Packages len=%v", l1, l2)
+				}
+
+				// Verify results.
+				{
+					pkg, err := dbClient.Package("runtime")
+					if err != nil {
+						if time.Now().After(waitingSince.Add(waitTimeout)) {
+							t.Logf("Timed out after %s waiting for crawl of runtime package to be accepted", waitTimeout)
+							return fmt.Errorf("fetching pkg %q: %s", "runtime", err)
+						}
+						continue
+						// return fmt.Errorf("fetching pkg %q: %s", "runtime", err)
+					}
+					if expected, actual := 10, len(pkg.ImportedBy); actual < expected {
+						j, _ := json.MarshalIndent(pkg, "", "    ")
+						t.Logf("\"runtime\" package JSON:\n%v", string(j))
+						if time.Now().After(waitingSince.Add(180 * time.Second)) {
+							t.Logf("Timed out after %s waiting for crawl of runtime package to be accepted", waitTimeout)
+							return fmt.Errorf("Expected \"runtime\" to be imported by > %v others but actual=%v", expected, actual)
+						}
+					} else {
+						// Success!
+						return nil
+					}
+				}
 			}
 		}
 
