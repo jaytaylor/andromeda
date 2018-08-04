@@ -31,7 +31,7 @@ var (
 
 type BatchUpdateFunc func(pkg *domain.Package) (changed bool, err error)
 
-type Client interface {
+type ClientInterface interface {
 	Open() error                                                                                   // Open / start DB client connection.
 	Close() error                                                                                  // Close / shutdown the DB client connection.
 	Purge(tables ...string) error                                                                  // Reset a DB table.
@@ -70,15 +70,15 @@ type Config interface {
 }
 
 // NewClient constructs a new DB client based on the passed configuration.
-func NewClient(config Config) Client {
+func NewClient(config Config) ClientInterface {
 	typ := config.Type()
 
 	switch typ {
 	case Bolt:
-		return newBoltDBClient(config.(*BoltConfig))
+		return newClient(NewBoltBackend(config.(*BoltConfig)))
 
-	case Rocks:
-		return newRocksDBClient(config.(*RocksConfig))
+	// case Rocks:
+	//	return newRocksDBClient(config.(*RocksConfig))
 
 	default:
 		panic(fmt.Errorf("no client constructor available for db configuration type: %v", typ))
@@ -100,7 +100,7 @@ type KeyValueFilterFunc func(bucket []byte, key []byte, value []byte) (keyOut []
 
 // WithClient is a convenience utility which handles DB client construction,
 // open, and close..
-func WithClient(config Config, fn func(dbClient Client) error) (err error) {
+func WithClient(config Config, fn func(dbClient ClientInterface) error) (err error) {
 	dbClient := NewClient(config)
 
 	if err = dbClient.Open(); err != nil {
