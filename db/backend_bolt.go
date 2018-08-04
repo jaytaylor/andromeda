@@ -3,10 +3,30 @@ package db
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	bolt "github.com/coreos/bbolt"
 	boltqueue "jaytaylor.com/bboltqueue"
 )
+
+type BoltConfig struct {
+	DBFile      string
+	BoltOptions *bolt.Options
+}
+
+func NewBoltConfig(dbFilename string) *BoltConfig {
+	cfg := &BoltConfig{
+		DBFile: dbFilename,
+		BoltOptions: &bolt.Options{
+			Timeout: 1 * time.Second,
+		},
+	}
+	return cfg
+}
+
+func (cfg BoltConfig) Type() Type {
+	return Bolt
+}
 
 type BoltBackend struct {
 	config *BoltConfig
@@ -79,6 +99,11 @@ func (be *BoltBackend) initDB() error {
 	})
 }
 
+func (be *BoltBackend) New(name string) (Backend, error) {
+	n := NewBoltBackend(NewBoltConfig(name))
+	return n, nil
+}
+
 func (be *BoltBackend) Get(table string, key []byte) ([]byte, error) {
 	var v []byte
 	if err := be.db.View(func(tx *bolt.Tx) error {
@@ -130,20 +155,38 @@ func (be *BoltBackend) Drop(tables ...string) error {
 	})
 }
 
-func (be *BoltBackend) WithTransaction(opts TXOptions, fn func(tx Transaction) error) error {
-	if opts.ReadOnly {
-		return be.db.View(func(tx *bolt.Tx) error {
-			btx := be.wrapTX(tx)
-			return fn(btx)
-		})
-	}
-	if err := be.db.Update(func(tx *bolt.Tx) error {
-		btx := be.wrapTX(tx)
-		return fn(btx)
+func (be *BoltBackend) Len(table string) (int, error) {
+	var n int
+	if err := be.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(table))
+		n = b.Stats().KeyN
+		return nil
 	}); err != nil {
-		return err
+		return 0, err
 	}
-	return nil
+	return n, nil
+}
+
+func (be *BoltBackend) Begin(writable bool) (Transaction, error) {
+	tx, err := be.db.Begin(writable)
+	if err != nil {
+		return nil, err
+	}
+	bTx := be.wrapTx(tx)
+	return bTx, nil
+}
+
+func (be *BoltBackend) View(fn func(tx Transaction) error) error {
+	return be.db.View(func(tx *bolt.Tx) error {
+		btx := be.wrapTx(tx)
+		return fn(btx)
+	})
+}
+func (be *BoltBackend) Update(fn func(tx Transaction) error) error {
+	return be.db.Update(func(tx *bolt.Tx) error {
+		btx := be.wrapTx(tx)
+		return fn(btx)
+	})
 }
 
 func (be *BoltBackend) EachRow(table string, fn func(key []byte, value []byte)) error {
@@ -174,24 +217,25 @@ func (be *BoltBackend) EachRowWithBreak(table string, fn func(key []byte, value 
 	})
 }
 
-func (be *BoltBackend) Len(table string) (int, error) {
-	var n int
-	if err := be.db.View(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte(table))
-		if err != nil {
-			return err
-		}
-		n = b.Stats().KeyN
-		return nil
-	}); err != nil {
-		return 0, err
-	}
-	return n, nil
+func (be *BoltBackend) EachTable(fn func(table string, tx Transaction) error) error {
+	return be.db.View(func(tx *bolt.Tx) error {
+		return tx.ForEach(func(table []byte, b *bolt.Bucket) error {
+			bTx := be.wrapTx(b.Tx())
+			if err := fn(string(table), bTx); err != nil {
+				return err
+			}
+			return nil
+		})
+	})
 }
 
-func (be *BoltBackend) Enqueue(table string, priority int, value []byte) error {
-	m := boltqueue.NewMessage(string(value))
-	if err := be.q.Enqueue(table, priority, m); err != nil {
+func (be *BoltBackend) Enqueue(table string, priority int, values ...[]byte) error {
+	msgs := make([]*boltqueue.Message, 0, len(values))
+	for _, value := range values {
+		m := boltqueue.NewMessage(string(value))
+		msgs = append(msgs, m)
+	}
+	if err := be.q.Enqueue(table, priority, msgs...); err != nil {
 		return err
 	}
 	return nil
@@ -205,27 +249,39 @@ func (be *BoltBackend) Dequeue(table string) ([]byte, error) {
 	return v.Value, nil
 }
 
-func (be *BoltBackend) wrapTX(tx *bolt.Tx) *boltTX {
-	bTX := &boltTX{
+func (be *BoltBackend) ScanQ(name string, opts *QueueOptions, fn func(value []byte)) error {
+	return be.q.Scan(name, func(m *boltqueue.Message) {
+		if opts != nil && m.Priority() != opts.Priority {
+			return
+		}
+		fn(m.Value)
+	})
+}
+
+func (be *BoltBackend) LenQ(name string, priority int) (int, error) {
+	return be.q.Len(name, priority)
+}
+
+func (be *BoltBackend) wrapTx(tx *bolt.Tx) *boltTx {
+	bTx := &boltTx{
 		tx: tx,
+		be: be,
 	}
-	return bTX
+	return bTx
 }
 
-type boltTX struct {
+type boltTx struct {
 	tx *bolt.Tx
+	be *BoltBackend
 }
 
-func (btx *boltTX) Get(table string, key []byte) ([]byte, error) {
-	b, err := btx.tx.CreateBucketIfNotExists([]byte(table))
-	if err != nil {
-		return nil, err
-	}
+func (btx *boltTx) Get(table string, key []byte) ([]byte, error) {
+	b := btx.tx.Bucket([]byte(table))
 	v := b.Get(key)
 	return v, nil
 }
 
-func (btx *boltTX) Put(table string, key []byte, value []byte) error {
+func (btx *boltTx) Put(table string, key []byte, value []byte) error {
 	b, err := btx.tx.CreateBucketIfNotExists([]byte(table))
 	if err != nil {
 		return err
@@ -233,7 +289,7 @@ func (btx *boltTX) Put(table string, key []byte, value []byte) error {
 	return b.Put(key, value)
 }
 
-func (btx *boltTX) Delete(table string, keys ...[]byte) error {
+func (btx *boltTx) Delete(table string, keys ...[]byte) error {
 	b, err := btx.tx.CreateBucketIfNotExists([]byte(table))
 	if err != nil {
 		return err
@@ -246,10 +302,65 @@ func (btx *boltTX) Delete(table string, keys ...[]byte) error {
 	return nil
 }
 
-func (btx *boltTX) Commit() error {
+func (btx *boltTx) Commit() error {
 	return btx.tx.Commit()
 }
 
-func (btx *boltTX) Rollback() error {
+func (btx *boltTx) Rollback() error {
 	return btx.tx.Rollback()
+}
+
+func (btx *boltTx) Backend() Backend {
+	return btx.be
+}
+
+func (btx *boltTx) Cursor() Cursor {
+	c := newBoltCursor(btx.tx.Cursor())
+	return c
+}
+
+type boltCursor struct {
+	c *bolt.Cursor
+	k []byte
+	v []byte
+}
+
+func newBoltCursor(c *bolt.Cursor) Cursor {
+	bc := &boltCursor{
+		c: c,
+	}
+	return bc
+}
+
+func (bc *boltCursor) First() Cursor {
+	bc.k, bc.v = bc.c.First()
+	return bc
+}
+
+func (bc *boltCursor) Last() Cursor {
+	bc.k, bc.v = bc.c.Last()
+	return bc
+}
+
+func (bc *boltCursor) Next() Cursor {
+	bc.k, bc.v = bc.c.Next()
+	return bc
+}
+
+func (bc *boltCursor) Prev() Cursor {
+	bc.k, bc.v = bc.c.Prev()
+	return bc
+}
+
+func (bc *boltCursor) Seek(prefix []byte) Cursor {
+	bc.k, bc.v = bc.c.Seek(prefix)
+	return bc
+}
+
+func (bc *boltCursor) Data() (key []byte, value []byte) {
+	return bc.k, bc.v
+}
+
+func (bc *boltCursor) Close() {
+	return
 }

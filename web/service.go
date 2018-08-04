@@ -44,11 +44,11 @@ type WebService struct {
 	mu       sync.Mutex
 
 	Config *Config
-	DB     db.Client
+	DB     *db.Client
 	hub    *Hub
 }
 
-func New(db db.Client, cfg *Config) *WebService {
+func New(db *db.Client, cfg *Config) *WebService {
 	service := &WebService{
 		Config: cfg,
 		DB:     db,
