@@ -38,6 +38,11 @@ go get jaytaylor.com/andromeda/...
 - [ ] Add git commit hash to builds, and has gRPC client send it with requests.
 - [ ] 1/2 Distinguish between pkg and repo by refactoring what is currently called a "package" in andromeda into a "repo".
 - [ ] 2/2 Add alias tracking table
+- [ ] Consider refactoring "Package" to "Repo", since a go repo contains an arbitrary number of packages (I known, "yuck", but..).
+- [ ] Add `deprecated` attribute and set based on detection of phrases like "is deprecated" and "superceded by" in README.
+- [ ] Attempt topic extraction from READMEs.
+- [ ] Add usage popularity comparison between 2 pkgs
+- [ ] Generic fork and hierarchy detection: Find packages with the pkg same name, then use `lastCommitedAt` field to derive possibly related packages.  Take this list and inspect commit histories to determine if there is commit-overlap between the two.  Could implement github scraping hacks to verify accuracy.
 
 To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`
 
