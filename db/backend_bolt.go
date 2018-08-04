@@ -15,6 +15,13 @@ type BoltBackend struct {
 	mu     sync.Mutex
 }
 
+func NewBoltBackend(config *BoltConfig) *BoltBackend {
+	be := &BoltBackend{
+		config: config,
+	}
+	return be
+}
+
 func (be *BoltBackend) Open() error {
 	be.mu.Lock()
 	defer be.mu.Unlock()
@@ -76,7 +83,11 @@ func (be *BoltBackend) Get(table string, key []byte) ([]byte, error) {
 	var v []byte
 	if err := be.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(table))
+		if b == nil {
+			return ErrKeyNotFound
+		}
 		v = b.Get(key)
+		return nil
 	}); err != nil {
 		return nil, err
 	}
@@ -85,8 +96,37 @@ func (be *BoltBackend) Get(table string, key []byte) ([]byte, error) {
 
 func (be *BoltBackend) Put(table string, key []byte, value []byte) error {
 	return be.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(table))
+		b, err := tx.CreateBucketIfNotExists([]byte(table))
+		if err != nil {
+			return err
+		}
 		return b.Put(key, value)
+	})
+}
+
+func (be *BoltBackend) Delete(table string, keys ...[]byte) error {
+	return be.db.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte(table))
+		if err != nil {
+			return err
+		}
+		for _, key := range keys {
+			if err := b.Delete(key); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (be *BoltBackend) Drop(tables ...string) error {
+	return be.db.Update(func(tx *bolt.Tx) error {
+		for _, table := range tables {
+			if err := tx.DeleteBucket([]byte(table)); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 
@@ -136,12 +176,12 @@ func (be *BoltBackend) EachRowWithBreak(table string, fn func(key []byte, value 
 
 func (be *BoltBackend) Len(table string) (int, error) {
 	var n int
-
-	if err := client.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(name))
-
+	if err := be.db.View(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte(table))
+		if err != nil {
+			return err
+		}
 		n = b.Stats().KeyN
-
 		return nil
 	}); err != nil {
 		return 0, err
@@ -150,7 +190,8 @@ func (be *BoltBackend) Len(table string) (int, error) {
 }
 
 func (be *BoltBackend) Enqueue(table string, priority int, value []byte) error {
-	if err := be.q.Enqueue(table, priority, value); err != nil {
+	m := boltqueue.NewMessage(string(value))
+	if err := be.q.Enqueue(table, priority, m); err != nil {
 		return err
 	}
 	return nil
@@ -175,20 +216,40 @@ type boltTX struct {
 	tx *bolt.Tx
 }
 
-func (btx *boltTx) Get(table string, key []byte) ([]byte, error) {
-	b := btx.tx.Bucket([]byte(table))
+func (btx *boltTX) Get(table string, key []byte) ([]byte, error) {
+	b, err := btx.tx.CreateBucketIfNotExists([]byte(table))
+	if err != nil {
+		return nil, err
+	}
 	v := b.Get(key)
 	return v, nil
 }
-func (btx *boltTx) Put(table string, key []byte, value []byte) error {
-	b := btx.tx.Bucket([]byte(table))
+
+func (btx *boltTX) Put(table string, key []byte, value []byte) error {
+	b, err := btx.tx.CreateBucketIfNotExists([]byte(table))
+	if err != nil {
+		return err
+	}
 	return b.Put(key, value)
 }
 
-func (btx *boltTx) Commit() error {
+func (btx *boltTX) Delete(table string, keys ...[]byte) error {
+	b, err := btx.tx.CreateBucketIfNotExists([]byte(table))
+	if err != nil {
+		return err
+	}
+	for _, key := range keys {
+		if err := b.Delete(key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (btx *boltTX) Commit() error {
 	return btx.tx.Commit()
 }
 
-func (btx *boltTx) Rollback() error {
+func (btx *boltTX) Rollback() error {
 	return btx.tx.Rollback()
 }

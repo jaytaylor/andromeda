@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sync"
 	"time"
 
 	"gigawatt.io/errorlib"
@@ -38,176 +37,92 @@ func (cfg BoltConfig) Type() Type {
 	return Bolt
 }
 
-type BoltClient struct {
-	config *BoltConfig
-	db     *bolt.DB
-	q      *boltqueue.PQueue
-	mu     sync.Mutex
+type Client struct {
+	be Backend
 }
 
-func newBoltDBClient(config *BoltConfig) *BoltClient {
-	client := &BoltClient{
-		config: config,
+func newClient(be Backend) *Client {
+	c := &Client{
+		be: be,
 	}
-	return client
+	return c
 }
 
-func (client *BoltClient) Open() error {
-	client.mu.Lock()
-	defer client.mu.Unlock()
-
-	if client.db != nil {
-		return nil
-	}
-
-	db, err := bolt.Open(client.config.DBFile, 0600, client.config.BoltOptions)
-	if err != nil {
-		return err
-	}
-	client.db = db
-
-	client.q = boltqueue.NewPQueue(client.db)
-
-	if err := client.initDB(); err != nil {
-		return err
-	}
-
-	return nil
+func (c *Client) Open() error {
+	return c.be.Open()
 }
 
-func (client *BoltClient) Close() error {
-	client.mu.Lock()
-	defer client.mu.Unlock()
-
-	if client.db == nil {
-		return nil
-	}
-
-	if err := client.db.Close(); err != nil {
-		return err
-	}
-
-	client.db = nil
-
-	return nil
+func (c *Client) Close() error {
+	return c.be.Close()
 }
 
-func (client *BoltClient) initDB() error {
-	return client.db.Update(func(tx *bolt.Tx) error {
-		buckets := []string{
-			TableMetadata,
-			TablePackages,
-			TableToCrawl,
-			TablePendingReferences,
-		}
-		for _, name := range buckets {
-			if _, err := tx.CreateBucketIfNotExists([]byte(name)); err != nil {
-				return fmt.Errorf("initDB: creating bucket %q: %s", name, err)
-			}
-		}
-		return nil
-	})
+func (c *Client) EachRow(table string, fn func(key []byte, value []byte)) error {
+	return c.be.EachRow(table, fn)
 }
 
-func (client *BoltClient) EachRow(table string, fn func(k []byte, v []byte)) error {
-	return client.db.View(func(tx *bolt.Tx) error {
-		var (
-			b = tx.Bucket([]byte(table))
-			c = b.Cursor()
-		)
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			fn(k, v)
-		}
-		return nil
-	})
+func (c *Client) EachRowWithBreak(table string, fn func(key []byte, value []byte) bool) error {
+	return c.be.EachRowWithBreak(table, fn)
 }
 
-func (client *BoltClient) EachRowWithBreak(table string, fn func(k []byte, v []byte) bool) error {
-	return client.db.View(func(tx *bolt.Tx) error {
-		var (
-			b = tx.Bucket([]byte(table))
-			c = b.Cursor()
-		)
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			if cont := fn(k, v); !cont {
-				break
-			}
-		}
-		return nil
-	})
+func (c *Client) Purge(tables ...string) error {
+	return c.be.Drop(tables...)
 }
 
-func (client *BoltClient) Purge(tables ...string) error {
-	return client.db.Update(func(tx *bolt.Tx) error {
-		for _, table := range tables {
-			log.WithField("bucket", table).Debug("dropping")
-			if err := tx.DeleteBucket([]byte(table)); err != nil {
-				return err
-			}
-			log.WithField("bucket", table).Debug("creating")
-			if _, err := tx.CreateBucket([]byte(table)); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
-func (client *BoltClient) PackageSave(pkgs ...*domain.Package) error {
-	return client.db.Update(func(tx *bolt.Tx) error {
+func (c *Client) PackageSave(pkgs ...*domain.Package) error {
+	return c.be.WithTransaction(TXOptions{}, func(tx Transaction) error {
 		// TODO: Detect when package imports have changed, find the deleted ones, and
 		//       go update those packages' imported-by to mark the import as inactive.
-		return client.packageSave(tx, pkgs)
+		return c.packageSave(tx, pkgs)
 	})
 }
 
-func (client *BoltClient) packageSave(tx *bolt.Tx, pkgs []*domain.Package) error {
-	b := tx.Bucket([]byte(TablePackages))
-	for _, pkg := range pkgs {
-		var (
-			k   = []byte(pkg.Path)
-			v   = b.Get(k)
-			err error
-		)
-		if err = client.mergePendingReferences(tx, pkg); err != nil {
-			return err
-		}
-
-		if v == nil || pkg.ID == 0 {
-			id, err := b.NextSequence()
+func (c *Client) packageSave(tx Transaction, pkgs []*domain.Package) error {
+	return c.be.WithTransaction(TXOptions{}, func(tx Transaction) error {
+		for _, pkg := range pkgs {
+				k   := []byte(pkg.Path)
+			v, err := tx.Get(TablePackages, k)
 			if err != nil {
-				return fmt.Errorf("getting next ID for new package %q: %s", pkg.Path, err)
+				return err
+			}
+			if err = c.mergePendingReferences(tx, pkg); err != nil {
+				return err
 			}
 
-			pkg.ID = id
-		}
+			if v == nil || pkg.ID == 0 {
+				id, err := b.NextSequence()
+				if err != nil {
+					return fmt.Errorf("getting next ID for new package %q: %s", pkg.Path, err)
+				}
 
-		if len(pkg.History) > 0 {
-			if pc := pkg.History[len(pkg.History)-1]; len(pc.JobMessages) > 0 {
-				log.WithField("pkg", pkg.Path).Debugf("Discarding JobMessages: %v", pc.JobMessages)
-				pc.JobMessages = nil
+				pkg.ID = id
+			}
+
+			if len(pkg.History) > 0 {
+				if pc := pkg.History[len(pkg.History)-1]; len(pc.JobMessages) > 0 {
+					log.WithField("pkg", pkg.Path).Debugf("Discarding JobMessages: %v", pc.JobMessages)
+					pc.JobMessages = nil
+				}
+			}
+
+			if pkg.Data != nil {
+				pkg.Data.Sync()
+			}
+
+			if v, err = proto.Marshal(pkg); err != nil {
+				return fmt.Errorf("marshalling Package %q: %s", pkg.Path, err)
+			}
+
+			if err = tx.Put(TablePackages, k, v); err != nil {
+				return fmt.Errorf("saving Package %q: %s", pkg.Path, err)
 			}
 		}
 
-		if pkg.Data != nil {
-			pkg.Data.Sync()
-		}
-
-		if v, err = proto.Marshal(pkg); err != nil {
-			return fmt.Errorf("marshalling Package %q: %s", pkg.Path, err)
-		}
-
-		if err = b.Put(k, v); err != nil {
-			return fmt.Errorf("saving Package %q: %s", pkg.Path, err)
-		}
-	}
-
-	return nil
+	})
 }
 
 // mergePendingReferences merges pre-existing pending references.
-func (client *BoltClient) mergePendingReferences(tx *bolt.Tx, pkg *domain.Package) error {
-	pendingRefs, err := client.pendingReferences(tx, pkg.Path)
+func (c *Client) mergePendingReferences(tx Transaction, pkg *domain.Package) error {
+	pendingRefs, err := c.pendingReferences(tx, pkg.Path)
 	if err != nil {
 		return fmt.Errorf("getting pending references for package %q: %s", pkg.Path, err)
 	}
@@ -219,33 +134,32 @@ func (client *BoltClient) mergePendingReferences(tx *bolt.Tx, pkg *domain.Packag
 		pkg.MergePending(prs)
 		keys = append(keys, prs.PackagePath)
 	}
-	if err = client.pendingReferencesDelete(tx, keys); err != nil {
+	if err = c.pendingReferencesDelete(tx, keys); err != nil {
 		return fmt.Errorf("removing prending references after merge for package %q: %s", pkg.Path, err)
 	}
 	log.WithField("pkg", pkg.Path).Debugf("Merged %v pending references", len(pendingRefs))
 	return nil
 }
 
-// PackageDelete N.B. no existence check is performed.
-func (client *BoltClient) PackageDelete(pkgPaths ...string) error {
-	return client.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(TablePackages))
-		for _, pkgPath := range pkgPaths {
-			k := []byte(pkgPath)
-			if err := b.Delete(k); err != nil {
-				return fmt.Errorf("deleting package %q: %s", pkgPath, err)
-			}
-		}
-		return nil
-	})
+func stringsToBytes(ss []string) [][]byte {
+	bs := make([][]byte, len(s))
+	for i, s := range ss {
+		bs[i] = []byte(ss)
+	}
+	return bs
 }
 
-func (client *BoltClient) Package(pkgPath string) (*domain.Package, error) {
+// PackageDelete N.B. no existence check is performed.
+func (c *Client) PackageDelete(pkgPaths ...string) error {
+	return c.be.Delete(TablePackages, stringsToBytes(pkgPaths)...)
+}
+
+func (c *Client) Package(pkgPath string) (*domain.Package, error) {
 	var pkg *domain.Package
 
-	if err := client.db.View(func(tx *bolt.Tx) error {
+	if err := c.be.WithTransaction(TXOptions{ReadOnly: true}, func(tx Transaction) error {
 		var err error
-		if pkg, err = client.pkg(tx, pkgPath); err != nil {
+		if pkg, err = c.pkg(tx, pkgPath); err != nil {
 			return err
 		}
 		return nil
@@ -255,17 +169,19 @@ func (client *BoltClient) Package(pkgPath string) (*domain.Package, error) {
 	return pkg, nil
 }
 
-func (client *BoltClient) pkg(tx *bolt.Tx, pkgPath string) (*domain.Package, error) {
-	var (
-		b   = tx.Bucket([]byte(TablePackages))
-		k   = []byte(pkgPath)
-		v   = b.Get(k)
-		pkg = &domain.Package{}
-	)
+func (c *Client) pkg(tx Transaction, pkgPath string) (*domain.Package, error) {
+	pkg := &domain.Package{}
+
+	v, err := c.be.Get(TablePackages, []byte(pkgPath))
+	if err != nil {
+		return nil, err
+	}
 
 	if len(v) == 0 {
 		// Fallback to hierarchical search.
-		if v = client.hierarchicalKeySearch(b, k, pkgSepB); len(v) == 0 {
+		if v, err = c.hierarchicalKeySearch(tx, k, pkgSepB); err != nil {
+			return nil, err
+		} else if len(v) == 0 {
 			return nil, ErrKeyNotFound
 		}
 	}
@@ -276,12 +192,12 @@ func (client *BoltClient) pkg(tx *bolt.Tx, pkgPath string) (*domain.Package, err
 	return pkg, nil
 }
 
-func (client *BoltClient) Packages(pkgPaths ...string) (map[string]*domain.Package, error) {
+func (c *Client) Packages(pkgPaths ...string) (map[string]*domain.Package, error) {
 	pkgs := map[string]*domain.Package{}
 
-	if err := client.db.View(func(tx *bolt.Tx) error {
+	if err := c.db.View(func(tx *bolt.Tx) error {
 		var err error
-		if pkgs, err = client.pkgs(tx, pkgPaths); err != nil {
+		if pkgs, err = c.pkgs(tx, pkgPaths); err != nil {
 			return err
 		}
 		return nil
@@ -291,17 +207,18 @@ func (client *BoltClient) Packages(pkgPaths ...string) (map[string]*domain.Packa
 	return pkgs, nil
 }
 
-func (client *BoltClient) pkgs(tx *bolt.Tx, pkgPaths []string) (map[string]*domain.Package, error) {
+func (c *Client) pkgs(tx *bolt.Tx, pkgPaths []string) (map[string]*domain.Package, error) {
 	var (
 		pkgs = map[string]*domain.Package{}
 		b    = tx.Bucket([]byte(TablePackages))
 	)
+
 	for _, pkgPath := range pkgPaths {
 		k := []byte(pkgPath)
 		v := b.Get(k)
 		if len(v) == 0 {
 			// Fallback to hierarchical search.
-			v = client.hierarchicalKeySearch(b, k, pkgSepB)
+			v = c.hierarchicalKeySearch(b, k, pkgSepB)
 		}
 		if len(v) > 0 {
 			pkg := &domain.Package{}
@@ -311,40 +228,42 @@ func (client *BoltClient) pkgs(tx *bolt.Tx, pkgPaths []string) (map[string]*doma
 			pkgs[pkgPath] = pkg
 		}
 	}
-	return pkgs, nil
 
+	return pkgs, nil
 }
 
 // hierarchicalKeySearch searches for any keys matching the leading part of the
 // input key when split by "/" characters.
-func (client *BoltClient) hierarchicalKeySearch(b *bolt.Bucket, key []byte, splitOn []byte) []byte {
+func (c *Client) hierarchicalKeySearch(tx Transaction, key []byte, splitOn []byte) ([]byte, error) {
 	if pieces := bytes.Split(key, splitOn); len(pieces) >= 2 {
-		var (
-			prefix = bytes.Join(pieces[0:2], splitOn)
-			v      []byte
-		)
-		if v = b.Get(prefix); len(v) > 0 {
-			return v
+		prefix := bytes.Join(pieces[0:2], splitOn)
+		v, err := tx.Get(TablePackages, prefix); err != nil {
+			return nil, err
+		} else if len(v) > 0 {
+			return v, nil
 		}
 		for _, piece := range pieces[2:] {
 			prefix = append(prefix, append(splitOn, piece...)...)
-			if v = b.Get(prefix); len(v) > 0 {
-				return v
+			if v, err = tx.Get(TablePackages, prefix); err != nil {
+				return nil, err
+			} else if len(v) > 0 {
+				return v, nil
 			}
 		}
 	}
-	return nil
+	return nil, nil
 }
 
-func (client *BoltClient) PathPrefixSearch(prefix string) (map[string]*domain.Package, error) {
+// PathPrefixSearch finds all packages with a given prefix.
+func (c *Client) PathPrefixSearch(prefix string) (map[string]*domain.Package, error) {
 	pkgs := map[string]*domain.Package{}
-	err := client.db.View(func(tx *bolt.Tx) error {
+	err := c.be.WithTransaction(TXOptions{}, func(tx Transaction) error {
 		var (
-			b        = tx.Bucket([]byte(TablePackages))
 			prefixBs = []byte(prefix)
 			c        = b.Cursor()
 			errs     = []error{}
 		)
+		c.
 		for k, v := c.Seek(prefixBs); k != nil && bytes.HasPrefix(k, prefixBs); k, v = c.Next() {
 			pkg := &domain.Package{}
 			if err := proto.Unmarshal(v, pkg); err != nil {
@@ -364,9 +283,9 @@ func (client *BoltClient) PathPrefixSearch(prefix string) (map[string]*domain.Pa
 	return pkgs, nil
 }
 
-func (client *BoltClient) EachPackage(fn func(pkg *domain.Package)) error {
+func (c *Client) EachPackage(fn func(pkg *domain.Package)) error {
 	var protoErr error
-	if err := client.EachRow(TablePackages, func(k []byte, v []byte) {
+	if err := c.EachRow(TablePackages, func(k []byte, v []byte) {
 		pkg := &domain.Package{}
 		if protoErr = proto.Unmarshal(v, pkg); protoErr != nil {
 			log.Errorf("Unexpected proto unmarshal error: %s", protoErr)
@@ -382,9 +301,9 @@ func (client *BoltClient) EachPackage(fn func(pkg *domain.Package)) error {
 	return nil
 }
 
-func (client *BoltClient) EachPackageWithBreak(fn func(pkg *domain.Package) bool) error {
+func (c *Client) EachPackageWithBreak(fn func(pkg *domain.Package) bool) error {
 	var protoErr error
-	if err := client.EachRowWithBreak(TablePackages, func(k []byte, v []byte) bool {
+	if err := c.EachRowWithBreak(TablePackages, func(k []byte, v []byte) bool {
 		pkg := &domain.Package{}
 		if protoErr = proto.Unmarshal(v, pkg); protoErr != nil {
 			log.Errorf("Unexpected proto unmarshal error: %s", protoErr)
@@ -401,23 +320,23 @@ func (client *BoltClient) EachPackageWithBreak(fn func(pkg *domain.Package) bool
 	return nil
 }
 
-func (client *BoltClient) PackagesLen() (int, error) {
-	return client.tableLen(TablePackages)
+func (c *Client) PackagesLen() (int, error) {
+	return c.tableLen(TablePackages)
 }
 
-func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map[string]*domain.PackageReferences) error {
+func (c *Client) RecordImportedBy(refPkg *domain.Package, resources map[string]*domain.PackageReferences) error {
 	log.WithField("referenced-pkg", refPkg.Path).Infof("Recording imported by; n-resources=%v", len(resources))
 	var (
 		entries     = []*domain.ToCrawlEntry{}
 		discoveries = []string{}
 	)
 
-	if err := client.db.Update(func(tx *bolt.Tx) error {
+	if err := c.db.Update(func(tx *bolt.Tx) error {
 		pkgPaths := []string{}
 		for pkgPath, _ := range resources {
 			pkgPaths = append(pkgPaths, pkgPath)
 		}
-		pkgs, err := client.pkgs(tx, pkgPaths)
+		pkgs, err := c.pkgs(tx, pkgPaths)
 		if err != nil {
 			return err
 		}
@@ -433,7 +352,7 @@ func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map
 				}
 				entries = append(entries, entry)
 				discoveries = append(discoveries, pkgPath)
-				if err = client.pendingReferenceAdd(tx, refPkg, pkgPath); err != nil {
+				if err = c.pendingReferenceAdd(tx, refPkg, pkgPath); err != nil {
 					return err
 				}
 				continue
@@ -465,14 +384,14 @@ func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map
 		for _, pkg := range pkgs {
 			pkgsSlice = append(pkgsSlice, pkg)
 		}
-		return client.packageSave(tx, pkgsSlice)
+		return c.packageSave(tx, pkgsSlice)
 	}); err != nil {
 		return err
 	}
 	// TODO: Put all in a single transaction.
 	if len(entries) > 0 {
 		log.WithField("ref-pkg", refPkg.Path).WithField("to-crawls", len(entries)).Debugf("Adding discovered to-crawls: %v", discoveries)
-		if _, err := client.ToCrawlAdd(entries, nil); err != nil {
+		if _, err := c.ToCrawlAdd(entries, nil); err != nil {
 			return err
 		}
 	}
@@ -480,8 +399,8 @@ func (client *BoltClient) RecordImportedBy(refPkg *domain.Package, resources map
 }
 
 // pendingReferenceAdd merges or adds a new pending reference into the pending-references table.
-func (client *BoltClient) pendingReferenceAdd(tx *bolt.Tx, refPkg *domain.Package, pkgPath string) error {
-	existing, err := client.pendingReferences(tx, pkgPath)
+func (c *Client) pendingReferenceAdd(tx *bolt.Tx, refPkg *domain.Package, pkgPath string) error {
+	existing, err := c.pendingReferences(tx, pkgPath)
 	if err != nil {
 		return err
 	}
@@ -525,13 +444,13 @@ func (client *BoltClient) pendingReferenceAdd(tx *bolt.Tx, refPkg *domain.Packag
 			},
 		}
 	}
-	if err = client.pendingReferencesSave(tx, []*domain.PendingReferences{prs}); err != nil {
+	if err = c.pendingReferencesSave(tx, []*domain.PendingReferences{prs}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (client *BoltClient) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *QueueOptions) (int, error) {
+func (c *Client) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *QueueOptions) (int, error) {
 	if opts == nil {
 		opts = NewQueueOptions()
 	}
@@ -543,7 +462,7 @@ func (client *BoltClient) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *Queue
 
 	var deserErr error
 
-	if err := client.q.Scan(TableToCrawl, func(m *boltqueue.Message) {
+	if err := c.q.Scan(TableToCrawl, func(m *boltqueue.Message) {
 		if deserErr != nil {
 			return
 		}
@@ -578,20 +497,20 @@ func (client *BoltClient) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *Queue
 		toAdd = append(toAdd, boltqueue.NewMessageB(v))
 	}
 
-	if err := client.q.Enqueue(TableToCrawl, opts.Priority, toAdd...); err != nil {
+	if err := c.q.Enqueue(TableToCrawl, opts.Priority, toAdd...); err != nil {
 		return 0, err
 	}
 
 	return numNew, nil
 }
 
-func (client *BoltClient) ToCrawlRemove(pkgs []string) (int, error) {
+func (c *Client) ToCrawlRemove(pkgs []string) (int, error) {
 	return 0, ErrNotImplemented
 }
 
 // ToCrawlDequeue pops the next *domain.ToCrawlEntry off the from of the crawl queue.
-func (client *BoltClient) ToCrawlDequeue() (*domain.ToCrawlEntry, error) {
-	m, err := client.q.Dequeue(TableToCrawl)
+func (c *Client) ToCrawlDequeue() (*domain.ToCrawlEntry, error) {
+	m, err := c.q.Dequeue(TableToCrawl)
 	if err != nil {
 		return nil, err
 	}
@@ -602,9 +521,9 @@ func (client *BoltClient) ToCrawlDequeue() (*domain.ToCrawlEntry, error) {
 	return entry, nil
 }
 
-func (client *BoltClient) EachToCrawl(fn func(entry *domain.ToCrawlEntry)) error {
+func (c *Client) EachToCrawl(fn func(entry *domain.ToCrawlEntry)) error {
 	var protoErr error
-	err := client.q.Scan(TableToCrawl, func(m *boltqueue.Message) {
+	err := c.q.Scan(TableToCrawl, func(m *boltqueue.Message) {
 		if protoErr != nil {
 			return
 		}
@@ -623,12 +542,12 @@ func (client *BoltClient) EachToCrawl(fn func(entry *domain.ToCrawlEntry)) error
 	return nil
 }
 
-func (client *BoltClient) EachToCrawlWithBreak(fn func(entry *domain.ToCrawlEntry) bool) error {
+func (c *Client) EachToCrawlWithBreak(fn func(entry *domain.ToCrawlEntry) bool) error {
 	var (
 		keepGoing = true
 		protoErr  error
 	)
-	err := client.q.ScanWithBreak(TableToCrawl, func(m *boltqueue.Message) bool {
+	err := c.q.ScanWithBreak(TableToCrawl, func(m *boltqueue.Message) bool {
 		if !keepGoing {
 			return keepGoing
 		}
@@ -653,10 +572,10 @@ func (client *BoltClient) EachToCrawlWithBreak(fn func(entry *domain.ToCrawlEntr
 
 const numPriorities = 10
 
-func (client *BoltClient) ToCrawlsLen() (int, error) {
+func (c *Client) ToCrawlsLen() (int, error) {
 	total := 0
 	for i := 0; i < numPriorities; i++ {
-		n, err := client.q.Len(TableToCrawl, i)
+		n, err := c.q.Len(TableToCrawl, i)
 		if err != nil {
 			return 0, err
 		}
@@ -667,8 +586,8 @@ func (client *BoltClient) ToCrawlsLen() (int, error) {
 
 // TODO: Add Get (slow, n due to iteration) and Update methods for ToCrawl.
 
-func (client *BoltClient) MetaSave(key string, src interface{}) error {
-	return client.db.Update(func(tx *bolt.Tx) error {
+func (c *Client) MetaSave(key string, src interface{}) error {
+	return c.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(TableMetadata))
 
 		switch src.(type) {
@@ -691,15 +610,15 @@ func (client *BoltClient) MetaSave(key string, src interface{}) error {
 	})
 }
 
-func (client *BoltClient) MetaDelete(key string) error {
-	return client.db.Update(func(tx *bolt.Tx) error {
+func (c *Client) MetaDelete(key string) error {
+	return c.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(TableMetadata))
 		return b.Delete([]byte(key))
 	})
 }
 
-func (client *BoltClient) Meta(key string, dst interface{}) error {
-	return client.db.View(func(tx *bolt.Tx) error {
+func (c *Client) Meta(key string, dst interface{}) error {
+	return c.db.View(func(tx *bolt.Tx) error {
 		var (
 			b = tx.Bucket([]byte(TableMetadata))
 			v = b.Get([]byte(key))
@@ -725,12 +644,12 @@ func (client *BoltClient) Meta(key string, dst interface{}) error {
 	})
 }
 
-func (client *BoltClient) Search(q string) (*domain.Package, error) {
+func (c *Client) Search(q string) (*domain.Package, error) {
 	return nil, fmt.Errorf("not yet implemented")
 }
 
-func (client *BoltClient) applyBatchUpdate(fn BatchUpdateFunc) error {
-	return client.db.Update(func(tx *bolt.Tx) error {
+func (c *Client) applyBatchUpdate(fn BatchUpdateFunc) error {
+	return c.db.Update(func(tx *bolt.Tx) error {
 		var (
 			n         = 0
 			b         = tx.Bucket([]byte(TablePackages))
@@ -755,7 +674,7 @@ func (client *BoltClient) applyBatchUpdate(fn BatchUpdateFunc) error {
 				batch = append(batch, pkg)
 				if len(batch) >= batchSize {
 					log.WithField("this-batch", len(batch)).WithField("total-added", n).Debug("Saving batch")
-					if err := client.packageSave(tx, batch); err != nil {
+					if err := c.packageSave(tx, batch); err != nil {
 						return err
 					}
 					n += len(batch)
@@ -766,7 +685,7 @@ func (client *BoltClient) applyBatchUpdate(fn BatchUpdateFunc) error {
 		}
 		if len(batch) > 0 {
 			log.WithField("this-batch", len(batch)).WithField("total-added", n).Debug("Saving batch (final)")
-			if err := client.PackageSave(batch...); err != nil {
+			if err := c.PackageSave(batch...); err != nil {
 				return err
 			}
 		}
@@ -774,8 +693,8 @@ func (client *BoltClient) applyBatchUpdate(fn BatchUpdateFunc) error {
 	})
 }
 
-func (client *BoltClient) BackupTo(destFile string) error {
-	return client.db.View(func(tx *bolt.Tx) error {
+func (c *Client) BackupTo(destFile string) error {
+	return c.db.View(func(tx *bolt.Tx) error {
 		if exists, err := oslib.PathExists(destFile); err != nil {
 			return err
 		} else if exists {
@@ -786,14 +705,14 @@ func (client *BoltClient) BackupTo(destFile string) error {
 			return err
 		}
 		defer file.Close()
-		log.WithField("src-db", client.config.DBFile).WithField("backup-dest", destFile).Info("Backing up DB")
+		log.WithField("src-db", c.config.DBFile).WithField("backup-dest", destFile).Info("Backing up DB")
 		n, err := tx.WriteTo(file)
 		if err != nil {
 			return err
 		}
 		log.WithField("new-db", destFile).WithField("bytes-written", n).Info("Backup finished successfully")
 		return nil
-		// newDB, err := bolt.Open(client.config.DBFile, 0600, client.config.BoltOptions)
+		// newDB, err := bolt.Open(c.config.DBFile, 0600, c.config.BoltOptions)
 		// if err != nil {
 		// 	return err
 		// }
@@ -835,22 +754,22 @@ func (client *BoltClient) BackupTo(destFile string) error {
 
 const rebuildBatchSize = 25000
 
-func (client *BoltClient) RebuildTo(newDBFile string, kvFilters ...KeyValueFilterFunc) error {
+func (c *Client) RebuildTo(newDBFile string, kvFilters ...KeyValueFilterFunc) error {
 	if exists, err := oslib.PathExists(newDBFile); err != nil {
 		return err
 	} else if exists {
 		return errors.New("destination DB file already exists")
 	}
 
-	log.WithField("src-db", client.config.DBFile).WithField("new-db", newDBFile).Info("Rebuilding DB")
-	newDB, err := bolt.Open(newDBFile, 0600, client.config.BoltOptions)
+	log.WithField("src-db", c.config.DBFile).WithField("new-db", newDBFile).Info("Rebuilding DB")
+	newDB, err := bolt.Open(newDBFile, 0600, c.config.BoltOptions)
 	if err != nil {
 		log.Error(err.Error())
 		return err
 	}
 	defer newDB.Close()
 
-	return client.db.View(func(tx *bolt.Tx) error {
+	return c.db.View(func(tx *bolt.Tx) error {
 		return tx.ForEach(func(name []byte, b *bolt.Bucket) error {
 			log.WithField("bucket", string(name)).Debug("Rebuilding bucket")
 			var (
@@ -915,11 +834,11 @@ func (client *BoltClient) RebuildTo(newDBFile string, kvFilters ...KeyValueFilte
 	})
 }
 
-func (client *BoltClient) PendingReferences(pkgPathPrefix string) ([]*domain.PendingReferences, error) {
+func (c *Client) PendingReferences(pkgPathPrefix string) ([]*domain.PendingReferences, error) {
 	refs := []*domain.PendingReferences{}
-	if err := client.db.View(func(tx *bolt.Tx) error {
+	if err := c.db.View(func(tx *bolt.Tx) error {
 		var err error
-		if refs, err = client.pendingReferences(tx, pkgPathPrefix); err != nil {
+		if refs, err = c.pendingReferences(tx, pkgPathPrefix); err != nil {
 			return err
 		}
 		return nil
@@ -929,7 +848,7 @@ func (client *BoltClient) PendingReferences(pkgPathPrefix string) ([]*domain.Pen
 	return refs, nil
 }
 
-func (client *BoltClient) pendingReferences(tx *bolt.Tx, pkgPathPrefix string) ([]*domain.PendingReferences, error) {
+func (c *Client) pendingReferences(tx *bolt.Tx, pkgPathPrefix string) ([]*domain.PendingReferences, error) {
 	refs := []*domain.PendingReferences{}
 	var (
 		b        = tx.Bucket([]byte(TablePendingReferences))
@@ -951,13 +870,13 @@ func (client *BoltClient) pendingReferences(tx *bolt.Tx, pkgPathPrefix string) (
 	return refs, nil
 }
 
-func (client *BoltClient) PendingReferencesSave(pendingRefs ...*domain.PendingReferences) error {
-	return client.db.Update(func(tx *bolt.Tx) error {
-		return client.pendingReferencesSave(tx, pendingRefs)
+func (c *Client) PendingReferencesSave(pendingRefs ...*domain.PendingReferences) error {
+	return c.db.Update(func(tx *bolt.Tx) error {
+		return c.pendingReferencesSave(tx, pendingRefs)
 	})
 }
 
-func (client *BoltClient) pendingReferencesSave(tx *bolt.Tx, pendingRefs []*domain.PendingReferences) error {
+func (c *Client) pendingReferencesSave(tx *bolt.Tx, pendingRefs []*domain.PendingReferences) error {
 	b := tx.Bucket([]byte(TablePendingReferences))
 	for _, prs := range pendingRefs {
 		v, err := proto.Marshal(prs)
@@ -971,13 +890,13 @@ func (client *BoltClient) pendingReferencesSave(tx *bolt.Tx, pendingRefs []*doma
 	return nil
 }
 
-func (client *BoltClient) PendingReferencesDelete(keys ...string) error {
-	return client.db.Update(func(tx *bolt.Tx) error {
-		return client.pendingReferencesDelete(tx, keys)
+func (c *Client) PendingReferencesDelete(keys ...string) error {
+	return c.db.Update(func(tx *bolt.Tx) error {
+		return c.pendingReferencesDelete(tx, keys)
 	})
 }
 
-func (client *BoltClient) pendingReferencesDelete(tx *bolt.Tx, keys []string) error {
+func (c *Client) pendingReferencesDelete(tx *bolt.Tx, keys []string) error {
 	var (
 		b   = tx.Bucket([]byte(TablePendingReferences))
 		err error
@@ -991,13 +910,13 @@ func (client *BoltClient) pendingReferencesDelete(tx *bolt.Tx, keys []string) er
 	return nil
 }
 
-func (client *BoltClient) PendingReferencesLen() (int, error) {
-	return client.tableLen(TablePendingReferences)
+func (c *Client) PendingReferencesLen() (int, error) {
+	return c.tableLen(TablePendingReferences)
 }
 
-func (client *BoltClient) EachPendingReferences(fn func(pendingRefs *domain.PendingReferences)) error {
+func (c *Client) EachPendingReferences(fn func(pendingRefs *domain.PendingReferences)) error {
 	var protoErr error
-	if err := client.EachRow(TablePendingReferences, func(k []byte, v []byte) {
+	if err := c.EachRow(TablePendingReferences, func(k []byte, v []byte) {
 		pendingRefs := &domain.PendingReferences{}
 		if protoErr = proto.Unmarshal(v, pendingRefs); protoErr != nil {
 			log.Errorf("Unexpected proto unmarshal error: %s", protoErr)
@@ -1013,9 +932,9 @@ func (client *BoltClient) EachPendingReferences(fn func(pendingRefs *domain.Pend
 	return nil
 }
 
-func (client *BoltClient) EachPendingReferencesWithBreak(fn func(pendingRefs *domain.PendingReferences) bool) error {
+func (c *Client) EachPendingReferencesWithBreak(fn func(pendingRefs *domain.PendingReferences) bool) error {
 	var protoErr error
-	if err := client.EachRowWithBreak(TablePendingReferences, func(k []byte, v []byte) bool {
+	if err := c.EachRowWithBreak(TablePendingReferences, func(k []byte, v []byte) bool {
 		pendingRefs := &domain.PendingReferences{}
 		if protoErr = proto.Unmarshal(v, pendingRefs); protoErr != nil {
 			log.Errorf("Unexpected proto unmarshal error: %s", protoErr)
@@ -1033,10 +952,10 @@ func (client *BoltClient) EachPendingReferencesWithBreak(fn func(pendingRefs *do
 }
 
 // tableLen is a generalized table length getter function.
-func (client *BoltClient) tableLen(name string) (int, error) {
+func (c *Client) tableLen(name string) (int, error) {
 	var n int
 
-	if err := client.db.View(func(tx *bolt.Tx) error {
+	if err := c.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(name))
 
 		n = b.Stats().KeyN
