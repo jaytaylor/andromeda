@@ -364,9 +364,19 @@ func (c *Crawler) gitUpdate(dst string) error {
 
 func (c *Crawler) Interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 	var (
-		localPath = filepath.Join(c.Config.SrcPath, rr.Root)
 		pc        = pkg.LatestCrawl()
+		localPath string // = filepath.Join(c.Config.SrcPath, rr.Root)
 	)
+
+	{
+		// Use golang lookup to determine pkg path on filesystem to ensure correct path
+		// value for all packages, including builtins.
+		goPkg, err := loadPackageDynamic(c.Config.SrcPath, rr.Root)
+		if err != nil {
+			return err
+		}
+		localPath = goPkg.Dir
+	}
 
 	if err := analyzeFiles(pkg.Data, localPath); err != nil {
 		return err
@@ -382,8 +392,21 @@ func (c *Crawler) Interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 		//       Needs testing on windows.
 
 		// Calculate the package import path by removing the first matching occurrence
-		// of the configured src-path + a slash string.
-		pkgPath := strings.Replace(dir, fmt.Sprintf("%v%v", c.Config.SrcPath, string(os.PathSeparator)), "", 1)
+		// of either:
+		//
+		//     * The configured src-path + a slash string
+		//
+		//     * ${GOROOT}/src
+		//
+		pkgPath := dir
+		for _, prefix := range []string{
+			fmt.Sprintf("%v%v", c.Config.SrcPath, string(os.PathSeparator)),
+			fmt.Sprintf("%[1]v%[2]vsrc%[2]v", cfg.BuildContext.GOROOT, string(os.PathSeparator)),
+		} {
+			if strings.HasPrefix(pkgPath, prefix) {
+				pkgPath = strings.Replace(pkgPath, prefix, "", 1)
+			}
+		}
 		log.WithField("candidate-pkg-path", pkgPath).Debug("Scanning for go package and imports")
 		var goPkg *load.Package
 		goPkg, err := loadPackageDynamic(c.Config.SrcPath, pkgPath)
