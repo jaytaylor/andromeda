@@ -19,6 +19,40 @@ Andromeda analyzes the complete graph of the known Go Universe.
 go get jaytaylor.com/andromeda/...
 ```
 
+### Backend selection
+
+Additional setup may be required depending on which DB backend you want to use.
+
+#### BoltDB
+
+No additional packages or work necessary.
+
+#### RocksDB
+
+1. Install RocksDB
+
+[RocksDB installation instructions](https://github.com/facebook/rocksdb/blob/master/INSTALL.md).
+
+2. Install the RocksDB golang package
+
+[gorocksdb package installation instructions](https://github.com/tecbot/gorocksdb#install).
+
+#### Postgresql
+
+1. Install postgresql
+
+```bash
+apt-get install \
+    postgresql \
+    postgresql-client \
+    postgresql-contrib \
+    postgresql-10-prefix
+```
+
+2. Enable the prefix module
+
+["prefix" module enablement instructions](https://github.com/dimitri/prefix#installation).
+
 ### TODOs
 
 - [ ] Add attribute "CanGoGet" to indicate if package is buildable via `go get`.  Then provide a search filter to only include such packages.
