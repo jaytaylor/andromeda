@@ -46,7 +46,7 @@ func newRebuildDBCmd() *cobra.Command {
 			initLogging()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			dbCfg := db.NewBoltConfig(DBFile)
+			dbCfg := db.NewConfig(DBDriver, DBFile)
 			if err := db.WithClient(dbCfg, func(dbClient *db.Client) error {
 				newCfg := db.NewBoltConfig(RebuildDBFile)
 				newBe := db.NewBoltBackend(newCfg)
@@ -73,7 +73,7 @@ func newRebuildAndCleanupDBCmd() *cobra.Command {
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				dbCfg = db.NewBoltConfig(DBFile)
+				dbCfg = db.NewConfig(DBDriver, DBFile)
 				err   error
 			)
 

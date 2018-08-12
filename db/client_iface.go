@@ -3,7 +3,10 @@ package db
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 
+	bolt "github.com/coreos/bbolt"
 	log "github.com/sirupsen/logrus"
 
 	"jaytaylor.com/andromeda/domain"
@@ -69,16 +72,52 @@ type Config interface {
 	Type() Type // Configuration type specifier.
 }
 
+func NewConfig(driver string, dbFile string) Config {
+	switch driver {
+	case "bolt", "boltdb":
+		return NewBoltConfig(dbFile)
+
+	case "rocks", "rocksdb":
+		return NewRocksConfig(dbFile)
+
+	case "postgres", "postgresl":
+		panic("not yet!")
+
+	default:
+		panic(fmt.Sprintf("Unrecognized or unsupported DB driver %q", driver))
+	}
+}
+
 // NewClient constructs a new DB client based on the passed configuration.
 func NewClient(config Config) *Client {
 	typ := config.Type()
 
 	switch typ {
 	case Bolt:
-		return newClient(NewBoltBackend(config.(*BoltConfig)))
+		be := NewBoltBackend(config.(*BoltConfig))
+		// TODO: Return an error instead of panicking.
+		if err := be.Open(); err != nil {
+			panic(fmt.Errorf("Opening bolt backend: %s", err))
+		}
+		q := NewBoltQueue(be.db)
+		return newClient(be, q)
 
-	// case Rocks:
-	//	return newRocksDBClient(config.(*RocksConfig))
+	case Rocks:
+		// MORE TEMPORARY UGLINESS TO MAKE IT WORK FOR NOW:
+		if err := os.MkdirAll(config.(*RocksConfig).Dir, os.FileMode(int(0700))); err != nil {
+			panic(err)
+		}
+		queueFile := filepath.Join(config.(*RocksConfig).Dir, "queue.bolt")
+		db, err := bolt.Open(queueFile, 0600, NewBoltConfig("").BoltOptions)
+		if err != nil {
+			panic(fmt.Errorf("Creating bolt queue: %s", err))
+		}
+		q := NewBoltQueue(db)
+		be := NewRocksBackend(config.(*RocksConfig))
+		return newClient(be, q)
+
+	case Postgres:
+		panic("not yet implemented")
 
 	default:
 		panic(fmt.Errorf("no client constructor available for db configuration type: %v", typ))

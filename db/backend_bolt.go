@@ -6,7 +6,6 @@ import (
 	"time"
 
 	bolt "github.com/coreos/bbolt"
-	boltqueue "jaytaylor.com/bboltqueue"
 )
 
 type BoltConfig struct {
@@ -31,7 +30,6 @@ func (cfg BoltConfig) Type() Type {
 type BoltBackend struct {
 	config *BoltConfig
 	db     *bolt.DB
-	q      *boltqueue.PQueue
 	mu     sync.Mutex
 }
 
@@ -55,8 +53,6 @@ func (be *BoltBackend) Open() error {
 		return err
 	}
 	be.db = db
-
-	be.q = boltqueue.NewPQueue(be.db)
 
 	if err := be.initDB(); err != nil {
 		return err
@@ -112,6 +108,9 @@ func (be *BoltBackend) Get(table string, key []byte) ([]byte, error) {
 			return ErrKeyNotFound
 		}
 		v = b.Get(key)
+		if len(v) == 0 {
+			return ErrKeyNotFound
+		}
 		return nil
 	}); err != nil {
 		return nil, err
@@ -178,14 +177,14 @@ func (be *BoltBackend) Begin(writable bool) (Transaction, error) {
 
 func (be *BoltBackend) View(fn func(tx Transaction) error) error {
 	return be.db.View(func(tx *bolt.Tx) error {
-		btx := be.wrapTx(tx)
-		return fn(btx)
+		bTx := be.wrapTx(tx)
+		return fn(bTx)
 	})
 }
 func (be *BoltBackend) Update(fn func(tx Transaction) error) error {
 	return be.db.Update(func(tx *bolt.Tx) error {
-		btx := be.wrapTx(tx)
-		return fn(btx)
+		bTx := be.wrapTx(tx)
+		return fn(bTx)
 	})
 }
 
@@ -229,39 +228,6 @@ func (be *BoltBackend) EachTable(fn func(table string, tx Transaction) error) er
 	})
 }
 
-func (be *BoltBackend) Enqueue(table string, priority int, values ...[]byte) error {
-	msgs := make([]*boltqueue.Message, 0, len(values))
-	for _, value := range values {
-		m := boltqueue.NewMessage(string(value))
-		msgs = append(msgs, m)
-	}
-	if err := be.q.Enqueue(table, priority, msgs...); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (be *BoltBackend) Dequeue(table string) ([]byte, error) {
-	v, err := be.q.Dequeue(table)
-	if err != nil {
-		return nil, err
-	}
-	return v.Value, nil
-}
-
-func (be *BoltBackend) ScanQ(name string, opts *QueueOptions, fn func(value []byte)) error {
-	return be.q.Scan(name, func(m *boltqueue.Message) {
-		if opts != nil && m.Priority() != opts.Priority {
-			return
-		}
-		fn(m.Value)
-	})
-}
-
-func (be *BoltBackend) LenQ(name string, priority int) (int, error) {
-	return be.q.Len(name, priority)
-}
-
 func (be *BoltBackend) wrapTx(tx *bolt.Tx) *boltTx {
 	bTx := &boltTx{
 		tx: tx,
@@ -278,6 +244,9 @@ type boltTx struct {
 func (btx *boltTx) Get(table string, key []byte) ([]byte, error) {
 	b := btx.tx.Bucket([]byte(table))
 	v := b.Get(key)
+	if len(v) == 0 {
+		return nil, ErrKeyNotFound
+	}
 	return v, nil
 }
 
@@ -314,7 +283,7 @@ func (btx *boltTx) Backend() Backend {
 	return btx.be
 }
 
-func (btx *boltTx) Cursor() Cursor {
+func (btx *boltTx) Cursor(_ string) Cursor {
 	c := newBoltCursor(btx.tx.Cursor())
 	return c
 }

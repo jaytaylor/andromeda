@@ -3,6 +3,7 @@ package db
 import (
 	"bytes"
 	"fmt"
+	"sync"
 	"time"
 
 	"gigawatt.io/errorlib"
@@ -14,22 +15,56 @@ import (
 )
 
 type Client struct {
-	be Backend
+	be     Backend
+	q      Queue
+	opened map[string]struct{} // Track open resources.
+	mu     sync.Mutex
 }
 
-func newClient(be Backend) *Client {
+func newClient(be Backend, q Queue) *Client {
 	c := &Client{
-		be: be,
+		be:     be,
+		q:      q,
+		opened: map[string]struct{}{},
 	}
 	return c
 }
 
+type openclose interface {
+	Open() error
+	Close() error
+}
+
 func (c *Client) Open() error {
-	return c.be.Open()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for name, o := range map[string]openclose{"be": c.be, "q": c.q} {
+		if _, ok := c.opened[name]; !ok {
+			if err := o.Open(); err != nil {
+				return err
+			}
+			c.opened[name] = struct{}{}
+		}
+	}
+
+	return nil
 }
 
 func (c *Client) Close() error {
-	return c.be.Close()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for name, o := range map[string]openclose{"be": c.be, "q": c.q} {
+		if _, ok := c.opened[name]; ok {
+			if err := o.Close(); err != nil {
+				return err
+			}
+			delete(c.opened, name)
+		}
+	}
+
+	return nil
 }
 
 func (c *Client) EachRow(table string, fn func(key []byte, value []byte)) error {
@@ -54,11 +89,15 @@ func (c *Client) PackageSave(pkgs ...*domain.Package) error {
 
 func (c *Client) packageSave(tx Transaction, pkgs []*domain.Package) error {
 	for _, pkg := range pkgs {
-		k := []byte(pkg.Path)
-		v, err := tx.Get(TablePackages, k)
+		var (
+			k   = []byte(pkg.Path)
+			v   []byte
+			err error
+		)
+		/*v, err := tx.Get(TablePackages, k)
 		if err != nil {
 			return err
-		}
+		}*/
 		if err = c.mergePendingReferences(tx, pkg); err != nil {
 			return err
 		}
@@ -149,7 +188,7 @@ func (c *Client) pkg(tx Transaction, pkgPath string) (*domain.Package, error) {
 	k := []byte(pkgPath)
 
 	v, err := c.be.Get(TablePackages, k)
-	if err != nil {
+	if err != nil && err != ErrKeyNotFound {
 		return nil, err
 	}
 
@@ -189,7 +228,7 @@ func (c *Client) pkgs(tx Transaction, pkgPaths []string) (map[string]*domain.Pac
 	for _, pkgPath := range pkgPaths {
 		k := []byte(pkgPath)
 		v, err := tx.Get(TablePackages, k)
-		if err != nil {
+		if err != nil && err != ErrKeyNotFound {
 			return pkgs, err
 		}
 		if len(v) == 0 {
@@ -216,14 +255,14 @@ func (c *Client) hierarchicalKeySearch(tx Transaction, key []byte, splitOn []byt
 	if pieces := bytes.Split(key, splitOn); len(pieces) >= 2 {
 		prefix := bytes.Join(pieces[0:2], splitOn)
 		v, err := tx.Get(TablePackages, prefix)
-		if err != nil {
+		if err != nil && err != ErrKeyNotFound {
 			return nil, err
 		} else if len(v) > 0 {
 			return v, nil
 		}
 		for _, piece := range pieces[2:] {
 			prefix = append(prefix, append(splitOn, piece...)...)
-			if v, err = tx.Get(TablePackages, prefix); err != nil {
+			if v, err = tx.Get(TablePackages, prefix); err != nil && err != ErrKeyNotFound {
 				return nil, err
 			} else if len(v) > 0 {
 				return v, nil
@@ -239,9 +278,10 @@ func (c *Client) PathPrefixSearch(prefix string) (map[string]*domain.Package, er
 	err := c.be.Update(func(tx Transaction) error {
 		var (
 			prefixBs = []byte(prefix)
-			cursor   = tx.Cursor()
+			cursor   = tx.Cursor(TablePackages)
 			errs     = []error{}
 		)
+		defer cursor.Close()
 		for k, v := cursor.Seek(prefixBs).Data(); k != nil && bytes.HasPrefix(k, prefixBs); k, v = cursor.Next().Data() {
 			pkg := &domain.Package{}
 			if err := proto.Unmarshal(v, pkg); err != nil {
@@ -440,7 +480,7 @@ func (c *Client) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *QueueOptions) 
 
 	var deserErr error
 
-	if err := c.be.ScanQ(TableToCrawl, opts, func(value []byte) {
+	if err := c.q.Scan(TableToCrawl, opts, func(value []byte) {
 		if deserErr != nil {
 			return
 		}
@@ -473,7 +513,7 @@ func (c *Client) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *QueueOptions) 
 		toAdd = append(toAdd, v)
 	}
 
-	if err := c.be.Enqueue(TableToCrawl, opts.Priority, toAdd...); err != nil {
+	if err := c.q.Enqueue(TableToCrawl, opts.Priority, toAdd...); err != nil {
 		return 0, err
 	}
 
@@ -486,7 +526,7 @@ func (c *Client) ToCrawlRemove(pkgs []string) (int, error) {
 
 // ToCrawlDequeue pops the next *domain.ToCrawlEntry off the from of the crawl queue.
 func (c *Client) ToCrawlDequeue() (*domain.ToCrawlEntry, error) {
-	value, err := c.be.Dequeue(TableToCrawl)
+	value, err := c.q.Dequeue(TableToCrawl)
 	if err != nil {
 		return nil, err
 	}
@@ -499,7 +539,7 @@ func (c *Client) ToCrawlDequeue() (*domain.ToCrawlEntry, error) {
 
 func (c *Client) EachToCrawl(fn func(entry *domain.ToCrawlEntry)) error {
 	var protoErr error
-	err := c.be.ScanQ(TableToCrawl, nil, func(value []byte) {
+	err := c.q.Scan(TableToCrawl, nil, func(value []byte) {
 		if protoErr != nil {
 			return
 		}
@@ -523,7 +563,7 @@ func (c *Client) EachToCrawlWithBreak(fn func(entry *domain.ToCrawlEntry) bool) 
 		keepGoing = true
 		protoErr  error
 	)
-	err := c.be.ScanQ(TableToCrawl, nil, func(value []byte) {
+	err := c.q.Scan(TableToCrawl, nil, func(value []byte) {
 		if !keepGoing {
 			return
 		}
@@ -548,7 +588,7 @@ const numPriorities = 10
 func (c *Client) ToCrawlsLen() (int, error) {
 	total := 0
 	for i := 0; i < numPriorities; i++ {
-		n, err := c.be.LenQ(TableToCrawl, i)
+		n, err := c.q.Len(TableToCrawl, i)
 		if err != nil {
 			return 0, err
 		}
@@ -619,12 +659,13 @@ func (c *Client) applyBatchUpdate(fn BatchUpdateFunc) error {
 	return c.be.Update(func(tx Transaction) error {
 		var (
 			n         = 0
-			cursor    = tx.Cursor()
+			cursor    = tx.Cursor(TablePackages)
 			batchSize = 1000
 			batch     = make([]*domain.Package, 0, batchSize)
 			// batch     = []*domain.Package{} // make([]*domain.Package, 0, batchSize)
 			i = 0
 		)
+		defer cursor.Close()
 		for k, v := cursor.First().Data(); k != nil; k, v = cursor.Next().Data() {
 			if i%1000 == 0 {
 				log.Debugf("i=%v", i)
@@ -663,9 +704,10 @@ func (c *Client) BackupTo(otherBe Backend) error {
 	return c.be.EachTable(func(table string, tx Transaction) error {
 		return otherBe.Update(func(otherTx Transaction) error {
 			var (
-				cursor = tx.Cursor()
+				cursor = tx.Cursor(table)
 				err    error
 			)
+			defer cursor.Close()
 			for k, v := cursor.First().Data(); k != nil; k, v = cursor.Next().Data() {
 				if err = otherTx.Put(table, k, v); err != nil {
 					return err
@@ -686,10 +728,11 @@ func (c *Client) RebuildTo(otherBe Backend, kvFilters ...KeyValueFilterFunc) err
 		}
 		log.WithField("table", table).Debug("Rebuild starting")
 		var (
-			cursor = tx.Cursor()
+			cursor = tx.Cursor(table)
 			n      int // Tracks number of pending items in the current transaction.
 			t      int // Tracks total number of items copied.
 		)
+		defer cursor.Close()
 		for k, v := cursor.First().Data(); k != nil; k, v = cursor.Next().Data() {
 			// TODO : Remove pointless "if" condition.
 			if len(kvFilters) > 0 {
@@ -750,9 +793,10 @@ func (c *Client) pendingReferences(tx Transaction, pkgPathPrefix string) ([]*dom
 	refs := []*domain.PendingReferences{}
 	var (
 		prefixBs = []byte(pkgPathPrefix)
-		cursor   = tx.Cursor()
+		cursor   = tx.Cursor(TablePendingReferences)
 		errs     = []error{}
 	)
+	defer cursor.Close()
 	for k, v := cursor.Seek(prefixBs).Data(); k != nil && bytes.HasPrefix(k, prefixBs); k, v = cursor.Next().Data() {
 		r := &domain.PendingReferences{}
 		if err := proto.Unmarshal(v, r); err != nil {

@@ -49,7 +49,7 @@ func newCrawlCmd() *cobra.Command {
 			initLogging()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient *db.Client) error {
+			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient *db.Client) error {
 				return crawl(dbClient, args...)
 			}); err != nil {
 				log.Fatalf("main: %s", err)
@@ -72,7 +72,7 @@ func newLocalEnqueueCmd() *cobra.Command {
 			initLogging()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient *db.Client) error {
+			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient *db.Client) error {
 				now := time.Now()
 				entries := make([]*domain.ToCrawlEntry, len(args))
 				for i, arg := range args {
@@ -112,7 +112,7 @@ func newQueueDeleteCmd() *cobra.Command {
 			initLogging()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient *db.Client) error {
+			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient *db.Client) error {
 				n, err := dbClient.ToCrawlRemove(args)
 				if err != nil {
 					return err
@@ -141,7 +141,7 @@ func newPurgeTableCmd() *cobra.Command {
 			initLogging()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient *db.Client) error {
+			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient *db.Client) error {
 				switch args[0] {
 				case db.TablePackages, "package", "pkg":
 					if err := dbClient.Purge(db.TablePackages); err != nil {
@@ -180,7 +180,7 @@ func newGetCmd() *cobra.Command {
 			initLogging()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient *db.Client) error {
+			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient *db.Client) error {
 				switch args[0] {
 				case db.TablePackages, "package", "pkg":
 					pkg, err := dbClient.Package(args[1])
@@ -244,7 +244,7 @@ func newLsCmd() *cobra.Command {
 			initLogging()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient *db.Client) error {
+			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient *db.Client) error {
 				switch args[0] {
 				case db.TablePackages, "package", "pkg":
 					if len(args) == 1 {
@@ -408,7 +408,7 @@ func newDeletePackageCmd() *cobra.Command {
 			initLogging()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient *db.Client) error {
+			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient *db.Client) error {
 				return dbClient.PackageDelete(args...)
 			}); err != nil {
 				log.Fatal(err)
