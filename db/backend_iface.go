@@ -11,15 +11,11 @@ type Backend interface {
 	Drop(tables ...string) error
 	Len(table string) (n int, err error)
 	Begin(writable bool) (Transaction, error)
-	View(fn func(tx Transaction) error) error
+	View(fn func(tx Transaction) error) error // Read-only.
 	Update(fn func(tx Transaction) error) error
-	EachRow(table string, fn func(key []byte, value []byte)) error
-	EachRowWithBreak(table string, fn func(key []byte, value []byte) bool) error
-	EachTable(func(table string, tx Transaction) error) error
-	Enqueue(table string, priority int, values ...[]byte) error
-	Dequeue(table string) (value []byte, err error)
-	ScanQ(name string, opts *QueueOptions, fn func(value []byte)) error
-	LenQ(name string, priority int) (int, error)
+	EachRow(table string, fn func(key []byte, value []byte)) error               // Read-only.
+	EachRowWithBreak(table string, fn func(key []byte, value []byte) bool) error // Read-only.
+	EachTable(func(table string, tx Transaction) error) error                    // Read-only.
 }
 
 // Transaction is a generic Tx interface to be provided by each Backend
@@ -30,7 +26,7 @@ type Transaction interface {
 	Delete(table string, keys ...[]byte) error
 	Commit() error
 	Rollback() error
-	Cursor() Cursor
+	Cursor(table string) Cursor
 	Backend() Backend
 }
 

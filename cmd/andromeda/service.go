@@ -73,7 +73,7 @@ func newServerServiceInstallCmd() *cobra.Command {
 			// 	WorkingDirectory: filepath.Dir(os.Args[0])
 			// }
 
-			// dbCfg := db.NewBoltConfig(DBFile)
+			// dbCfg := db.NewConfig(DBDriver, DBFile)
 			// dbCfg.BoltOptions.Timeout = 5 * time.Second
 			// if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
 			// 	master := crawler.NewMaster(dbClient, crawler.NewConfig())

@@ -10,6 +10,7 @@ import (
 )
 
 var (
+	DBDriver      = "bolt"
 	DBFile        = "andromeda.bolt"
 	RebuildDBFile string
 	Quiet         bool
@@ -45,7 +46,8 @@ func newRootCmd() *cobra.Command {
 
 	rootCmd.PersistentFlags().BoolVarP(&Quiet, "quiet", "q", false, "Activate quiet log output")
 	rootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Activate verbose log output")
-	rootCmd.PersistentFlags().StringVarP(&DBFile, "db", "b", DBFile, "Path to BoltDB file")
+	rootCmd.PersistentFlags().StringVarP(&DBDriver, "driver", "", DBDriver, "DB driver backend, one of: bolt, rocks, postgres")
+	rootCmd.PersistentFlags().StringVarP(&DBFile, "db", "", DBFile, "Path to DB storage file or directory.  For postgres this must contain the connection string.")
 
 	rootCmd.AddCommand(
 		newBootstrapCmd(),

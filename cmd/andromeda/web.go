@@ -30,8 +30,10 @@ func newWebCmd() *cobra.Command {
 				defer profile.Start(profile.MemProfile).Stop()
 			}
 
-			dbCfg := db.NewBoltConfig(DBFile)
-			dbCfg.BoltOptions.Timeout = 5 * time.Second
+			dbCfg := db.NewConfig(DBDriver, DBFile)
+			if boltCfg, ok := dbCfg.(*db.BoltConfig); ok {
+				boltCfg.BoltOptions.Timeout = 5 * time.Second
+			}
 			if err := db.WithClient(dbCfg, func(dbClient *db.Client) error {
 				master := crawler.NewMaster(dbClient, crawler.NewConfig())
 				cfg := &web.Config{

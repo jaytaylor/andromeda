@@ -43,7 +43,7 @@ func newDBStatsCmd() *cobra.Command {
 			initLogging()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := db.WithClient(db.NewBoltConfig(DBFile), func(dbClient *db.Client) error {
+			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient *db.Client) error {
 				pl, err := dbClient.PackagesLen()
 				if err != nil {
 					return fmt.Errorf("getting packages count: %s", err)
@@ -78,7 +78,7 @@ func newHostsCmd() *cobra.Command {
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				dbCfg = db.NewBoltConfig(DBFile)
+				dbCfg = db.NewConfig(DBDriver, DBFile)
 				hosts interface{}
 			)
 			if err := db.WithClient(dbCfg, func(dbClient *db.Client) error {

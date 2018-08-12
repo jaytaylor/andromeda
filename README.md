@@ -77,6 +77,8 @@ apt-get install \
 - [ ] Attempt topic extraction from READMEs.
 - [ ] Add usage popularity comparison between 2 pkgs
 - [ ] Generic fork and hierarchy detection: Find packages with the pkg same name, then use `lastCommitedAt` field to derive possibly related packages.  Take this list and inspect commit histories to determine if there is commit-overlap between the two.  Could implement github scraping hacks to verify accuracy.
+- [ ] Implement Postgres backend.
+- [ ] Implement CockroachDB backend.
 
 To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`
 
