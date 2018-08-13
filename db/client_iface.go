@@ -81,7 +81,7 @@ func NewConfig(driver string, dbFile string) Config {
 		return NewRocksConfig(dbFile)
 
 	case "postgres", "postgresl":
-		panic("not yet!")
+		return NewPostgresConfig(dbFile)
 
 	default:
 		panic(fmt.Sprintf("Unrecognized or unsupported DB driver %q", driver))
@@ -117,7 +117,15 @@ func NewClient(config Config) *Client {
 		return newClient(be, q)
 
 	case Postgres:
-		panic("not yet implemented")
+		// MORE TEMPORARY UGLINESS TO MAKE IT WORK FOR NOW:
+		queueFile := "queue.bolt"
+		db, err := bolt.Open(queueFile, 0600, NewBoltConfig("").BoltOptions)
+		if err != nil {
+			panic(fmt.Errorf("Creating bolt queue: %s", err))
+		}
+		q := NewBoltQueue(db)
+		be := NewPostgresBackend(config.(*PostgresConfig))
+		return newClient(be, q)
 
 	default:
 		panic(fmt.Errorf("no client constructor available for db configuration type: %v", typ))
