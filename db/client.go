@@ -233,7 +233,7 @@ func (c *Client) pkgs(tx Transaction, pkgPaths []string) (map[string]*domain.Pac
 		}
 		if len(v) == 0 {
 			// Fallback to hierarchical search.
-			if v, err = c.hierarchicalKeySearch(tx, k, pkgSepB); err != nil {
+			if v, err = c.hierarchicalKeySearch(tx, k, pkgSepB); err != nil && err != ErrKeyNotFound {
 				return pkgs, err
 			}
 		}
@@ -269,7 +269,7 @@ func (c *Client) hierarchicalKeySearch(tx Transaction, key []byte, splitOn []byt
 			}
 		}
 	}
-	return nil, nil
+	return nil, ErrKeyNotFound
 }
 
 // PathPrefixSearch finds all packages with a given prefix.
