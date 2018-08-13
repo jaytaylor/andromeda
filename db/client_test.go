@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -231,7 +232,8 @@ func TestClientPackageOperations(t *testing.T) {
 						t.Fatalf("%v%s", typ, err)
 					}
 
-					{
+					// Skip this test for RocksDB because counts are imprecise.
+					if !isRocks(config) {
 						l, err := client.PackagesLen()
 						if err != nil {
 							t.Fatalf("%v%s", typ, err)
@@ -260,16 +262,18 @@ func TestClientPackageOperations(t *testing.T) {
 					if err != nil {
 						t.Fatalf("%v%s", typ, err)
 					}
-					if expected, actual := 4, l; actual != expected {
-						t.Errorf("%vExpected indexed packages len=%v but actual=%v", typ, expected, actual)
+					if !isRocks(config) {
+						if expected, actual := 4, l; actual != expected {
+							t.Errorf("%vExpected indexed packages len=%v but actual=%v", typ, expected, actual)
+						}
 					}
 				}
 
 				// Test hierarchical pkg resolution 2/2.
 				{
-					_, err := client.Package("jaytaylor.com/archive.is/cmd/archive.is")
+					pkg, err := client.Package("jaytaylor.com/archive.is/cmd/archive.is")
 					if expected, actual := ErrKeyNotFound, err; actual != expected {
-						t.Errorf("%vExpected get of non-existant pkg to return error=%v but actual=%v", typ, expected, actual)
+						t.Fatalf("%vExpected get of non-existant pkg to return error=%v but actual=%v (pkg=%v)", typ, expected, actual, pkg)
 					}
 				}
 
@@ -331,7 +335,7 @@ func TestClientPackageOperations(t *testing.T) {
 					}
 
 					if err := client.EachPackage(func(pkg *domain.Package) {
-						t.Logf("EachPackage: current pkg=%v / %+v", pkg.Path, pkg.ImportedBy)
+						// t.Logf("%vEachPackage: current pkg=%v / %+v", typ, pkg.Path, pkg.ImportedBy)
 					}); err != nil {
 						t.Errorf("%v%s", typ, err)
 					}
@@ -423,4 +427,8 @@ func newFakeRR(repo string, root string) *vcs.RepoRoot {
 		},
 	}
 	return rr
+}
+
+func isRocks(c Config) bool {
+	return strings.Contains(fmt.Sprintf("%T", c), "Rocks")
 }

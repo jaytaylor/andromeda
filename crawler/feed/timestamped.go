@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"jaytaylor.com/andromeda/db"
 )
 
 type timestamped struct {
@@ -24,7 +26,7 @@ func (stamped *timestamped) last() (*time.Time, error) {
 		data = []byte{}
 		ts   = &time.Time{}
 	)
-	if err := stamped.p.Meta(stamped.key(), &data); err != nil {
+	if err := stamped.p.Meta(stamped.key(), &data); err != nil && err != db.ErrKeyNotFound {
 		return nil, err
 	}
 	if len(data) == 0 {

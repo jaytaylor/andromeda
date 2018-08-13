@@ -210,12 +210,24 @@ func (be *RocksBackend) Begin(_ bool) (Transaction, error) {
 // View is read / write capable, just an alias to the update() method.
 func (be *RocksBackend) View(fn func(tx Transaction) error) error {
 	rTx := be.newTx()
-	fn(rTx)
-	return rTx.Rollback()
+	defer func() {
+		if rbErr := rTx.Rollback(); rbErr != nil {
+			log.Errorf("Unexpected error rolling back after .View: %s", rbErr)
+		}
+	}()
+	if err := fn(rTx); err != nil {
+		return err
+	}
+	return nil
 }
 func (be *RocksBackend) Update(fn func(tx Transaction) error) error {
 	rTx := be.newTx()
-	fn(rTx)
+	if err := fn(rTx); err != nil {
+		if rbErr := rTx.Rollback(); rbErr != nil {
+			log.Errorf("Unexpected error rolling back: %s (existing err=%v)", rbErr, err)
+		}
+		return err
+	}
 	return rTx.Commit()
 }
 
@@ -229,6 +241,7 @@ func (be *RocksBackend) EachRow(table string, fn func(key []byte, value []byte))
 			break
 		}
 		fn(k, v)
+		c.Next()
 	}
 	return rTx.Rollback()
 }
@@ -245,6 +258,7 @@ func (be *RocksBackend) EachRowWithBreak(table string, fn func(key []byte, value
 		if !fn(k, v) {
 			break
 		}
+		c.Next()
 	}
 	return rTx.Rollback()
 }
