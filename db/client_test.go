@@ -10,34 +10,20 @@ import (
 	"time"
 
 	"gigawatt.io/testlib"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/tools/go/vcs"
 
 	"jaytaylor.com/andromeda/domain"
 )
 
 func TestClientToCrawlOperations(t *testing.T) {
-	var (
-		filename = filepath.Join(os.TempDir(), testlib.CurrentRunningTest())
-		configs  = []Config{
-			NewBoltConfig(filename),
-			NewRocksConfig(filename),
-			NewPostgresConfig("dbname=andromeda_test host=/var/run/postgresql"),
-		}
-	)
+	configs := newConfigs()
 
 	for _, config := range configs {
 		func(config Config) {
 			typ := fmt.Sprintf("[Config=%T] ", config)
 
-			os.RemoveAll(filename)
-
-			defer func() {
-				if err := os.RemoveAll(filename); err != nil {
-					t.Errorf("%v%s", typ, err)
-				}
-			}()
-
-			if err := WithClient(config, func(client *Client) error {
+			if err := withTestClient(config, func(client *Client) error {
 				pkgPaths := []string{
 					"foo-bar",
 					"jay-tay",
@@ -128,28 +114,13 @@ func TestClientToCrawlOperations(t *testing.T) {
 }
 
 func TestClientPackageOperations(t *testing.T) {
-	var (
-		filename = filepath.Join(os.TempDir(), testlib.CurrentRunningTest())
-		configs  = []Config{
-			NewBoltConfig(filename),
-			NewRocksConfig(filename),
-			NewPostgresConfig("dbname=andromeda_test host=/var/run/postgresql"),
-		}
-	)
+	configs := newConfigs()
 
 	for _, config := range configs {
 		func(config Config) {
 			typ := fmt.Sprintf("[Config=%T] ", config)
 
-			os.RemoveAll(filename)
-
-			defer func() {
-				if err := os.RemoveAll(filename); err != nil {
-					t.Errorf("%v%s", typ, err)
-				}
-			}()
-
-			if err := WithClient(config, func(client *Client) error {
+			if err := withTestClient(config, func(client *Client) error {
 				pkgPaths := []string{
 					"jaytaylor.com/archive.is",
 					"stdpkg",
@@ -351,28 +322,13 @@ func TestClientPackageOperations(t *testing.T) {
 }
 
 func TestClientMetaOperations(t *testing.T) {
-	var (
-		filename = filepath.Join(os.TempDir(), testlib.CurrentRunningTest())
-		configs  = []Config{
-			NewBoltConfig(filename),
-			NewRocksConfig(filename),
-			NewPostgresConfig("dbname=andromeda_test host=/var/run/postgresql"),
-		}
-	)
+	configs := newConfigs()
 
 	for _, config := range configs {
 		func(config Config) {
 			typ := fmt.Sprintf("[Config=%T] ", config)
 
-			os.RemoveAll(filename)
-
-			defer func() {
-				if err := os.RemoveAll(filename); err != nil {
-					t.Errorf("%v%s", typ, err)
-				}
-			}()
-
-			if err := WithClient(config, func(client *Client) error {
+			if err := withTestClient(config, func(client *Client) error {
 				k := "foo"
 
 				{
@@ -421,6 +377,18 @@ func TestClientMetaOperations(t *testing.T) {
 	}
 }
 
+func newConfigs() []Config {
+	var (
+		filename = filepath.Join(os.TempDir(), testlib.CurrentRunningTest())
+		configs  = []Config{
+			NewBoltConfig(filename),
+			NewRocksConfig(filename),
+			NewPostgresConfig("dbname=andromeda_test host=/var/run/postgresql"),
+		}
+	)
+	return configs
+}
+
 func newFakeRR(repo string, root string) *vcs.RepoRoot {
 	rr := &vcs.RepoRoot{
 		Repo: repo,
@@ -432,6 +400,70 @@ func newFakeRR(repo string, root string) *vcs.RepoRoot {
 	return rr
 }
 
+func isBolt(c Config) bool {
+	return strings.Contains(fmt.Sprintf("%T", c), "Bolt")
+}
 func isRocks(c Config) bool {
 	return strings.Contains(fmt.Sprintf("%T", c), "Rocks")
+}
+func isPostgres(c Config) bool {
+	return strings.Contains(fmt.Sprintf("%T", c), "Postgres")
+}
+
+func withTestClient(config Config, fn func(client *Client) error) error {
+	DefaultBoltQueueFilename = fmt.Sprintf("%v-queue.bolt", testlib.CurrentRunningTest())
+
+	filename := filepath.Join(os.TempDir(), testlib.CurrentRunningTest())
+
+	for _, path := range []string{DefaultBoltQueueFilename, filename} {
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("removing %q before creating client: %s", path, err)
+		}
+	}
+
+	return WithClient(config, func(client *Client) (err error) {
+		typ := fmt.Sprintf("[Config=%T] ", config)
+
+		// Setup/defer cleanup of test remnants.  Depends on config type.
+		defer func() {
+			for _, path := range []string{DefaultBoltQueueFilename, filename} {
+				if rmErr := os.RemoveAll(path); rmErr != nil {
+					if err == nil {
+						err = fmt.Errorf("%vRemoving %q: %s", typ, path, rmErr)
+					} else {
+						log.Error("%v[TEST] Error removing %q: %s (logging because existing err=%s", typ, path, rmErr, err)
+					}
+					return
+				}
+			}
+		}()
+
+		if isPostgres(config) {
+			defer func() {
+				tables := []string{}
+				if cleanupErr := client.be.EachTable(func(table string, tx Transaction) error {
+					tables = append(tables, table)
+					return nil
+				}); cleanupErr != nil {
+					if err == nil {
+						err = fmt.Errorf("%vGathering test tables: %s", typ, cleanupErr)
+					} else {
+						log.Error("%v[TEST] Error gathering test tables: %s (logging because existing err=%s", typ, cleanupErr, err)
+					}
+					return
+				}
+				if dropErr := client.be.Drop(tables...); dropErr != nil {
+					if err == nil {
+						err = fmt.Errorf("%vCleaning up test tables: %s", typ, dropErr)
+					} else {
+						log.Error("%v[TEST] Error cleaning up test tables: %s (logging because existing err=%s", typ, dropErr, err)
+					}
+					return
+				}
+			}()
+		}
+
+		err = fn(client)
+		return
+	})
 }

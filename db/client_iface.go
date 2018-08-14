@@ -25,7 +25,8 @@ var (
 	ErrMetadataUnsupportedSrcType = errors.New("unsupported src type: must be an []byte, string, or proto.Message")
 	ErrMetadataUnsupportedDstType = errors.New("unsupported dst type: must be an *[]byte, *string, or proto.Message")
 
-	DefaultQueuePriority = 3
+	DefaultQueuePriority     = 3
+	DefaultBoltQueueFilename = "queue.bolt"
 
 	// pkgSepB is a byte array of the package component separator character.
 	// It's used for hierarchical searches and lookups.
@@ -107,7 +108,7 @@ func NewClient(config Config) *Client {
 		if err := os.MkdirAll(config.(*RocksConfig).Dir, os.FileMode(int(0700))); err != nil {
 			panic(err)
 		}
-		queueFile := filepath.Join(config.(*RocksConfig).Dir, "queue.bolt")
+		queueFile := filepath.Join(config.(*RocksConfig).Dir, DefaultBoltQueueFilename)
 		db, err := bolt.Open(queueFile, 0600, NewBoltConfig("").BoltOptions)
 		if err != nil {
 			panic(fmt.Errorf("Creating bolt queue: %s", err))
@@ -118,8 +119,7 @@ func NewClient(config Config) *Client {
 
 	case Postgres:
 		// MORE TEMPORARY UGLINESS TO MAKE IT WORK FOR NOW:
-		queueFile := "queue.bolt"
-		db, err := bolt.Open(queueFile, 0600, NewBoltConfig("").BoltOptions)
+		db, err := bolt.Open(DefaultBoltQueueFilename, 0600, NewBoltConfig("").BoltOptions)
 		if err != nil {
 			panic(fmt.Errorf("Creating bolt queue: %s", err))
 		}
@@ -151,16 +151,16 @@ func WithClient(config Config, fn func(dbClient *Client) error) (err error) {
 	dbClient := NewClient(config)
 
 	if err = dbClient.Open(); err != nil {
-		err = fmt.Errorf("opening DB client: %s", err)
+		err = fmt.Errorf("opening DB client %T: %s", dbClient, err)
 		return
 	}
 	defer func() {
 		if closeErr := dbClient.Close(); closeErr != nil {
 			if err == nil {
-				err = fmt.Errorf("closing DB client: %s", closeErr)
+				err = fmt.Errorf("closing DB client %T: %s", dbClient, closeErr)
 			} else {
-				log.Errorf("Existing error before attempt to close DB client: %s", err)
-				log.Errorf("Also encountered problem closing DB client: %s", closeErr)
+				log.Errorf("Existing error before attempt to close DB client %T: %s", dbClient, err)
+				log.Errorf("Also encountered problem closing DB client %T: %s", dbClient, closeErr)
 			}
 		}
 	}()
