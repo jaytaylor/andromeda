@@ -392,20 +392,8 @@ func (rc *rocksCursor) First() Cursor {
 	return rc
 }
 
-func (rc *rocksCursor) Last() Cursor {
-	rc.iter.SeekToLast()
-	rc.copyCurrent()
-	return rc
-}
-
 func (rc *rocksCursor) Next() Cursor {
 	rc.iter.Next()
-	rc.copyCurrent()
-	return rc
-}
-
-func (rc *rocksCursor) Prev() Cursor {
-	rc.iter.Prev()
 	rc.copyCurrent()
 	return rc
 }
@@ -454,4 +442,8 @@ func (rc *rocksCursor) copyCurrent() {
 func (rc *rocksCursor) freeCurrent() {
 	rc.iter.Key().Free()
 	rc.iter.Value().Free()
+}
+
+func (rc *rocksCursor) Err() error {
+	return nil
 }
