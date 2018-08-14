@@ -42,8 +42,9 @@ func TestPostgresBackend(t *testing.T) {
 			t.Fatal(err)
 		}
 		c := tx.Cursor(TablePackages)
+		defer c.Close()
+		defer tx.Rollback()
 		for k, v := c.First().Data(); c.Err() == nil && len(k) > 0; k, v = c.Next().Data() {
-			fmt.Printf("k=%v v=%v\n", string(k), string(v))
 			t.Logf("k=%v v=%v", string(k), string(v))
 		}
 		if err := c.Err(); err != nil {

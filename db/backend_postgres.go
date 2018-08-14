@@ -127,9 +127,9 @@ func (be *PostgresBackend) Get(table string, key []byte) ([]byte, error) {
 	var (
 		v []byte
 	)
-	if err := be.View(func(tx Transaction) error {
+	if err := be.withTx(false, func(pTx *pgTx) error {
 		var err error
-		if v, err = be.get(tx, table, key); err != nil {
+		if v, err = be.get(pTx, table, key); err != nil {
 			return err
 		}
 		return nil
@@ -139,10 +139,10 @@ func (be *PostgresBackend) Get(table string, key []byte) ([]byte, error) {
 	return v, nil
 }
 
-func (be *PostgresBackend) get(tx Transaction, table string, key []byte) ([]byte, error) {
+func (be *PostgresBackend) get(pTx *pgTx, table string, key []byte) ([]byte, error) {
 	table = be.normalizeTable(table)
+
 	var (
-		pTx = tx.(*pgTx)
 		v   []byte
 		row = pTx.tx.QueryRow(fmt.Sprintf(`SELECT value FROM %s WHERE key=$1 LIMIT 1`, pq.QuoteIdentifier(table)), key)
 	)
@@ -165,6 +165,8 @@ func (be *PostgresBackend) Put(table string, key []byte, value []byte) error {
 }
 
 func (be *PostgresBackend) put(tx Transaction, table string, key []byte, value []byte) error {
+	table = be.normalizeTable(table)
+
 	pTx := tx.(*pgTx)
 	_, err := pTx.tx.Exec(
 		fmt.Sprintf(
@@ -187,38 +189,42 @@ INSERT INTO %s (key, value) VALUES ($1::bytea, $2::bytea)
 
 func (be *PostgresBackend) Delete(table string, keys ...[]byte) error {
 	return be.withTx(true, func(pTx *pgTx) error {
-		for _, key := range keys {
-			_, err := pTx.tx.Exec(fmt.Sprintf(`DELETE FROM %s WHERE key=$1`, pq.QuoteIdentifier(table)), key)
-			if err != nil {
-				return fmt.Errorf("deleting key=%q from %v: %s", string(key), table, err)
-			}
-		}
-		return nil
-	})
-}
-
-func (be *PostgresBackend) delete(pTx *pgTx, table string, keys ...[]byte) error {
-	return be.withTx(true, func(pTx *pgTx) error {
 		return be.delete(pTx, table, keys...)
 	})
 }
 
+func (be *PostgresBackend) delete(pTx *pgTx, table string, keys ...[]byte) error {
+	table = be.normalizeTable(table)
+
+	for _, key := range keys {
+		_, err := pTx.tx.Exec(fmt.Sprintf(`DELETE FROM %s WHERE key=$1`, pq.QuoteIdentifier(table)), key)
+		if err != nil {
+			return fmt.Errorf("deleting key=%q from %v: %s", string(key), table, err)
+		}
+	}
+	return nil
+}
+
 func (be *PostgresBackend) Drop(tables ...string) error {
 	return be.withTx(true, func(pTx *pgTx) error {
-		for _, table := range tables {
-			_, err := pTx.tx.Exec(fmt.Sprintf("DROP TABLE %s", pq.QuoteIdentifier(table)))
-			if err != nil {
-				return fmt.Errorf("dropping table=%v: %s", table, err)
-			}
-		}
-		if err := be.initDB(pTx); err != nil {
-			return err
-		}
-		return nil
+		return be.drop(pTx, tables...)
 	})
 }
 
+func (be *PostgresBackend) drop(pTx *pgTx, tables ...string) error {
+	for _, table := range tables {
+		table = be.normalizeTable(table)
+		_, err := pTx.tx.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS %s`, pq.QuoteIdentifier(table)))
+		if err != nil {
+			return fmt.Errorf("dropping table=%v: %s", table, err)
+		}
+	}
+	return nil
+}
+
 func (be *PostgresBackend) Len(table string) (int, error) {
+	table = be.normalizeTable(table)
+
 	var n int64
 	if err := be.withTx(false, func(pTx *pgTx) error {
 		row := pTx.tx.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM %s`, pq.QuoteIdentifier(table)))
@@ -282,25 +288,26 @@ func (be *PostgresBackend) EachRowWithBreak(table string, fn func(key []byte, va
 }
 
 func (be *PostgresBackend) EachTable(fn func(table string, tx Transaction) error) error {
-	return be.View(func(tx Transaction) error {
-		var (
-			pTx   = tx.(*pgTx)
-			table string
-		)
-		rows, err := pTx.tx.Query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public'`)
-		if err != nil {
+	return be.withTx(false, func(pTx *pgTx) error {
+		return be.eachTable(pTx, fn)
+	})
+}
+
+func (be *PostgresBackend) eachTable(pTx *pgTx, fn func(table string, tx Transaction) error) error {
+	rows, err := pTx.tx.Query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public'`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for table := ""; rows.Next(); {
+		if err := rows.Scan(&table); err != nil {
 			return err
 		}
-		for {
-			if err := rows.Scan(&table); err != nil {
-				return err
-			}
-			if err := fn(table, tx); err != nil {
-				return err
-			}
+		if err := fn(table, pTx); err != nil {
+			return err
 		}
-		return nil
-	})
+	}
+	return nil
 }
 
 func (be *PostgresBackend) withTx(writable bool, fn func(pTx *pgTx) error) error {
@@ -311,7 +318,7 @@ func (be *PostgresBackend) withTx(writable bool, fn func(pTx *pgTx) error) error
 	pTx := tx.(*pgTx)
 	if err = fn(pTx); err != nil {
 		if rbErr := pTx.Rollback(); rbErr != nil {
-			return rbErr
+			log.Errorf("Additional error rolling back: %s (on top of callback-func error=%s", rbErr, err)
 		}
 		return err
 	} else if !writable {
@@ -327,7 +334,7 @@ func (be *PostgresBackend) withTx(writable bool, fn func(pTx *pgTx) error) error
 
 }
 
-func (be *PostgresBackend) normalizeTable(table string) string {
+func (_ *PostgresBackend) normalizeTable(table string) string {
 	table = strings.Replace(table, "-", "_", -1)
 	return table
 }
@@ -346,17 +353,14 @@ type pgTx struct {
 }
 
 func (pTx *pgTx) Get(table string, key []byte) ([]byte, error) {
-	table = pTx.be.normalizeTable(table)
 	return pTx.be.get(pTx, table, key)
 }
 
 func (pTx *pgTx) Put(table string, key []byte, value []byte) error {
-	table = pTx.be.normalizeTable(table)
 	return pTx.be.put(pTx, table, key, value)
 }
 
 func (pTx *pgTx) Delete(table string, keys ...[]byte) error {
-	table = pTx.be.normalizeTable(table)
 	return pTx.be.delete(pTx, table, keys...)
 }
 
@@ -373,7 +377,6 @@ func (pTx *pgTx) Backend() Backend {
 }
 
 func (pTx *pgTx) Cursor(table string) Cursor {
-	table = pTx.be.normalizeTable(table)
 	c := newPgCursor(pTx, table)
 	return c
 }
@@ -391,7 +394,7 @@ type pgCursor struct {
 func newPgCursor(pTx *pgTx, table string) Cursor {
 	c := &pgCursor{
 		pTx:   pTx,
-		table: table,
+		table: pTx.be.normalizeTable(table),
 	}
 	return c
 }
@@ -399,16 +402,14 @@ func newPgCursor(pTx *pgTx, table string) Cursor {
 func (c *pgCursor) First() Cursor {
 	c.setQuery()
 	if c.rows.Next() {
-		log.Infof("next0")
 		c.scan()
 	}
 	return c
 }
 
 func (c *pgCursor) Next() Cursor {
-	c.clearRow()
+	c.resetRowData()
 	if c.rows != nil {
-		log.Infof("next1")
 		if c.rows.Next() {
 			c.scan()
 		}
@@ -419,7 +420,9 @@ func (c *pgCursor) Next() Cursor {
 func (c *pgCursor) Seek(prefix []byte) Cursor {
 	c.prefix = prefix
 	c.setQuery()
-	c.scan()
+	if c.rows.Next() {
+		c.scan()
+	}
 	return c
 }
 
@@ -428,6 +431,10 @@ func (c *pgCursor) Data() (key []byte, value []byte) {
 }
 
 func (c *pgCursor) Close() {
+	hasRows := true
+	if c.rows == nil {
+		hasRows = false
+	}
 	c.discard()
 }
 
@@ -457,16 +464,11 @@ func (c *pgCursor) discard() {
 		c.rows.Close()
 		c.rows = nil
 
-		c.clearRow()
+		c.resetRowData()
 
 		// Clear out potential error state.
 		c.err = nil
 	}
-}
-
-func (c *pgCursor) clearRow() {
-	c.k = nil
-	c.v = nil
 }
 
 func (c *pgCursor) scan() {
@@ -475,6 +477,11 @@ func (c *pgCursor) scan() {
 		c.err = err
 		return
 	}
+}
+
+func (c *pgCursor) resetRowData() {
+	c.k = nil
+	c.v = nil
 }
 
 func (c *pgCursor) Err() error {
