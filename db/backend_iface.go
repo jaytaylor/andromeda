@@ -36,14 +36,8 @@ type Cursor interface {
 	// First moves the cursor to the beginning of the range of elements.
 	First() Cursor
 
-	// Last moves the cursor to the end of the range of elements.
-	Last() Cursor
-
 	// Next moves the cursor to the next element.
 	Next() Cursor
-
-	// Prev moves the cursor to the previous element.
-	Prev() Cursor
 
 	// Seek moves the
 	Seek(prefix []byte) Cursor
@@ -54,4 +48,7 @@ type Cursor interface {
 
 	// Close cleans up and returns resources to the system.
 	Close()
+
+	// Err returns any collected error state.
+	Err() error
 }

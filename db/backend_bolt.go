@@ -306,18 +306,8 @@ func (bc *boltCursor) First() Cursor {
 	return bc
 }
 
-func (bc *boltCursor) Last() Cursor {
-	bc.k, bc.v = bc.c.Last()
-	return bc
-}
-
 func (bc *boltCursor) Next() Cursor {
 	bc.k, bc.v = bc.c.Next()
-	return bc
-}
-
-func (bc *boltCursor) Prev() Cursor {
-	bc.k, bc.v = bc.c.Prev()
 	return bc
 }
 
@@ -332,4 +322,8 @@ func (bc *boltCursor) Data() (key []byte, value []byte) {
 
 func (bc *boltCursor) Close() {
 	return
+}
+
+func (bc *boltCursor) Err() error {
+	return nil
 }

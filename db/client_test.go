@@ -21,6 +21,7 @@ func TestClientToCrawlOperations(t *testing.T) {
 		configs  = []Config{
 			NewBoltConfig(filename),
 			NewRocksConfig(filename),
+			NewPostgresConfig("dbname=andromeda_test host=/var/run/postgresql"),
 		}
 	)
 
@@ -132,6 +133,7 @@ func TestClientPackageOperations(t *testing.T) {
 		configs  = []Config{
 			NewBoltConfig(filename),
 			NewRocksConfig(filename),
+			NewPostgresConfig("dbname=andromeda_test host=/var/run/postgresql"),
 		}
 	)
 
@@ -354,6 +356,7 @@ func TestClientMetaOperations(t *testing.T) {
 		configs  = []Config{
 			NewBoltConfig(filename),
 			NewRocksConfig(filename),
+			NewPostgresConfig("dbname=andromeda_test host=/var/run/postgresql"),
 		}
 	)
 
