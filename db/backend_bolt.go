@@ -321,9 +321,14 @@ func (bc *boltCursor) Data() (key []byte, value []byte) {
 }
 
 func (bc *boltCursor) Close() {
+	bc.discard()
 	return
 }
 
+func (bc *boltCursor) discard() {
+	bc.k = nil
+	bc.v = nil
+}
 func (bc *boltCursor) Err() error {
 	return nil
 }

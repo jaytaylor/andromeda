@@ -377,6 +377,53 @@ func TestClientMetaOperations(t *testing.T) {
 	}
 }
 
+func TestClientCrossBackendCopy(t *testing.T) {
+	var (
+		filename = filepath.Join(os.TempDir(), testlib.CurrentRunningTest())
+		bc       = NewBoltConfig(filename)
+		pc       = NewPostgresConfig("dbname=andromeda_test host=/var/run/postgresql")
+	)
+	if err := withTestClient(bc, func(b *Client) error {
+		now := time.Now()
+
+		entry := &domain.ToCrawlEntry{
+			PackagePath: "foo-bar",
+			Reason:      "testing force insert",
+			SubmittedAt: &now,
+			Force:       true,
+		}
+
+		if _, err := b.ToCrawlAdd([]*domain.ToCrawlEntry{entry}, nil); err != nil {
+			t.Fatal(err)
+		}
+
+		pkgs := []*domain.Package{
+			domain.NewPackage(newFakeRR("pkg/a", "pkg/a"), &now),
+			domain.NewPackage(newFakeRR("pkg/b", "pkg/b"), &now),
+			domain.NewPackage(newFakeRR("pkg/c", "pkg/c"), &now),
+			domain.NewPackage(newFakeRR("pkg/d", "pkg/d"), &now),
+			domain.NewPackage(newFakeRR("pkg/e", "pkg/e"), &now),
+		}
+		if err := b.PackageSave(pkgs...); err != nil {
+			t.Fatal(err)
+		}
+
+		return withTestClient(pc, func(p *Client) error {
+			// TODO: Expose BE publicly so it can be passed in from another client outside of db pkg.
+			if err := b.RebuildTo(p); err != nil {
+				t.Fatal(err)
+			}
+
+			pL, _ := p.PackagesLen()
+			tceL, _ := p.ToCrawlsLen()
+			t.Logf("pL=%v tceL=%v", pL, tceL)
+			return nil
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func newConfigs() []Config {
 	var (
 		filename = filepath.Join(os.TempDir(), testlib.CurrentRunningTest())
