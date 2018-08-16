@@ -431,10 +431,6 @@ func (c *pgCursor) Data() (key []byte, value []byte) {
 }
 
 func (c *pgCursor) Close() {
-	hasRows := true
-	if c.rows == nil {
-		hasRows = false
-	}
 	c.discard()
 }
 

@@ -10,11 +10,12 @@ import (
 )
 
 var (
-	DBDriver      = "bolt"
-	DBFile        = "andromeda.bolt"
-	RebuildDBFile string
-	Quiet         bool
-	Verbose       bool
+	DBDriver        = "bolt"
+	DBFile          = "andromeda.bolt"
+	RebuildDBDriver string
+	RebuildDBFile   string
+	Quiet           bool
+	Verbose         bool
 
 	BootstrapGoDocPackagesFile string
 
@@ -56,7 +57,7 @@ func newRootCmd() *cobra.Command {
 		newRemoteCmd(),
 		newRemoteCrawlerCmd(),
 		newRebuildDBCmd(),
-		newRebuildAndCleanupDBCmd(),
+		//newRebuildAndCleanupDBCmd(),
 		newRepoRootCmd(),
 		newCheckCmd(),
 		newStatsCmd(),

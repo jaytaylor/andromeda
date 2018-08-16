@@ -282,7 +282,7 @@ func (c *Client) PathPrefixSearch(prefix string) (map[string]*domain.Package, er
 			errs     = []error{}
 		)
 		defer cursor.Close()
-		for k, v := cursor.Seek(prefixBs).Data(); k != nil && bytes.HasPrefix(k, prefixBs); k, v = cursor.Next().Data() {
+		for k, v := cursor.Seek(prefixBs).Data(); cursor.Err() == nil && k != nil && bytes.HasPrefix(k, prefixBs); k, v = cursor.Next().Data() {
 			pkg := &domain.Package{}
 			if err := proto.Unmarshal(v, pkg); err != nil {
 				errs = append(errs, err)
@@ -290,7 +290,13 @@ func (c *Client) PathPrefixSearch(prefix string) (map[string]*domain.Package, er
 			}
 			pkgs[pkg.Path] = pkg
 		}
-		return errorlib.Merge(errs)
+		if err := errorlib.Merge(errs); err != nil {
+			return err
+		}
+		if err := cursor.Err(); err != nil {
+			return err
+		}
+		return nil
 	})
 	if err != nil {
 		return pkgs, err
@@ -666,7 +672,7 @@ func (c *Client) applyBatchUpdate(fn BatchUpdateFunc) error {
 			i = 0
 		)
 		defer cursor.Close()
-		for k, v := cursor.First().Data(); k != nil; k, v = cursor.Next().Data() {
+		for k, v := cursor.First().Data(); cursor.Err() == nil && k != nil; k, v = cursor.Next().Data() {
 			if i%1000 == 0 {
 				log.Debugf("i=%v", i)
 			}
@@ -690,6 +696,9 @@ func (c *Client) applyBatchUpdate(fn BatchUpdateFunc) error {
 				}
 			}
 		}
+		if err := cursor.Err(); err != nil {
+			return err
+		}
 		if len(batch) > 0 {
 			log.WithField("this-batch", len(batch)).WithField("total-added", n).Debug("Saving batch (final)")
 			if err := c.PackageSave(batch...); err != nil {
@@ -700,9 +709,9 @@ func (c *Client) applyBatchUpdate(fn BatchUpdateFunc) error {
 	})
 }
 
-func (c *Client) BackupTo(otherBe Backend) error {
+/*func (c *Client) BackupTo(otherClient *client) error {
 	return c.be.EachTable(func(table string, tx Transaction) error {
-		return otherBe.Update(func(otherTx Transaction) error {
+		return otherClient.be.Update(func(otherTx Transaction) error {
 			var (
 				cursor = tx.Cursor(table)
 				err    error
@@ -716,63 +725,119 @@ func (c *Client) BackupTo(otherBe Backend) error {
 			return nil
 		})
 	})
-}
+}*/
 
 const rebuildBatchSize = 25000
 
-func (c *Client) RebuildTo(otherBe Backend, kvFilters ...KeyValueFilterFunc) error {
-	return c.be.EachTable(func(table string, tx Transaction) error {
-		otherTx, err := otherBe.Begin(true)
-		if err != nil {
-			return err
+func (c *Client) RebuildTo(otherClient *Client, kvFilters ...KeyValueFilterFunc) error {
+	if err := c.copyBackend(otherClient, kvFilters...); err != nil {
+		return err
+	}
+	if err := c.copyQueue(otherClient); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Client) copyBackend(otherClient *Client, kvFilters ...KeyValueFilterFunc) error {
+	return c.be.View(func(tx Transaction) error {
+		tables := []string{
+			TableMetadata,
+			TablePackages,
+			TablePendingReferences,
 		}
-		log.WithField("table", table).Debug("Rebuild starting")
-		var (
-			cursor = tx.Cursor(table)
-			n      int // Tracks number of pending items in the current transaction.
-			t      int // Tracks total number of items copied.
-		)
-		defer cursor.Close()
-		for k, v := cursor.First().Data(); k != nil; k, v = cursor.Next().Data() {
-			// TODO : Remove pointless "if" condition.
-			if len(kvFilters) > 0 {
-				for _, kvF := range kvFilters {
-					k, v = kvF([]byte(table), k, v)
-				}
+
+		for _, table := range tables {
+			otherTx, err := otherClient.be.Begin(true)
+			if err != nil {
+				return err
 			}
-			if n >= rebuildBatchSize {
-				log.WithField("bucket", table).WithField("items-in-tx", n).WithField("total-items-added", t).Debug("Committing batch")
+			log.WithField("table", table).Debug("Rebuild starting")
+			var (
+				//cursor = tx.Cursor(table)
+				n int // Tracks number of pending items in the current transaction.
+				t int // Tracks total number of items copied.
+			)
+			//defer cursor.Close()
+			//for k, v := cursor.First().Data(); cursor.Err() == nil && k != nil; k, v = cursor.Next().Data()
+			if eachErr := c.be.EachRow(table, func(k []byte, v []byte) {
+				if err != nil {
+					return
+				}
+				// TODO : Remove pointless "if" condition.
+				if len(kvFilters) > 0 {
+					for _, kvF := range kvFilters {
+						k, v = kvF([]byte(table), k, v)
+					}
+				}
+				if len(k) > 0 && len(v) > 0 {
+					if n >= rebuildBatchSize {
+						log.WithField("table", table).WithField("items-in-tx", n).WithField("total-items-added", t).Debug("Committing batch")
+						if err = otherTx.Commit(); err != nil {
+							log.Error(err.Error())
+							return
+						}
+						n = 0
+						if otherTx, err = otherClient.be.Begin(true); err != nil {
+							log.Error(err.Error())
+							return
+						}
+					}
+					if err = otherTx.Put(table, k, v); err != nil {
+						log.Error(err.Error())
+						return
+					}
+					n++
+					t++
+				}
+			}); eachErr != nil {
+				return eachErr
+			}
+			if err != nil {
+				return err
+			}
+			//if err := cursor.Err(); err != nil {
+			//	return err
+			//}
+			if n > 0 || t == 0 {
+				if t == 0 {
+					log.WithField("table", table).Debug("Table was empty")
+				} else {
+					log.WithField("table", table).WithField("items-in-tx", n).WithField("total-items-added", t).Debug("Committing batch")
+				}
 				if err = otherTx.Commit(); err != nil {
 					log.Error(err.Error())
 					return err
 				}
 				n = 0
-				if otherTx, err = otherBe.Begin(true); err != nil {
+			} else {
+				// N.B.: Don't leave TX open and hanging.
+				if err = otherTx.Commit(); err != nil {
 					log.Error(err.Error())
 					return err
 				}
 			}
-			if err = otherTx.Put(table, k, v); err != nil {
-				log.Error(err.Error())
-				return err
-			}
-			n++
-			t++
-		}
-		if n > 0 || t == 0 {
-			if t == 0 {
-				log.WithField("table", table).Debug("Table was empty")
-			} else {
-				log.WithField("table", table).WithField("items-in-tx", n).WithField("total-items-added", t).Debug("Committing batch")
-			}
-			if err = otherTx.Commit(); err != nil {
-				log.Error(err.Error())
-				return err
-			}
-			n = 0
 		}
 		return nil
 	})
+}
+
+func (c *Client) copyQueue(otherClient *Client) error {
+	var err error
+	for p := 0; p < 10; p++ {
+		if scanErr := c.q.Scan(TableToCrawl, &QueueOptions{Priority: p}, func(value []byte) {
+			if err != nil {
+				return
+			}
+			err = otherClient.q.Enqueue(TableToCrawl, p, value)
+		}); scanErr != nil {
+			return scanErr
+		}
+	}
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *Client) PendingReferences(pkgPathPrefix string) ([]*domain.PendingReferences, error) {
@@ -797,7 +862,7 @@ func (c *Client) pendingReferences(tx Transaction, pkgPathPrefix string) ([]*dom
 		errs     = []error{}
 	)
 	defer cursor.Close()
-	for k, v := cursor.Seek(prefixBs).Data(); k != nil && bytes.HasPrefix(k, prefixBs); k, v = cursor.Next().Data() {
+	for k, v := cursor.Seek(prefixBs).Data(); cursor.Err() == nil && k != nil && bytes.HasPrefix(k, prefixBs); k, v = cursor.Next().Data() {
 		r := &domain.PendingReferences{}
 		if err := proto.Unmarshal(v, r); err != nil {
 			errs = append(errs, err)
@@ -806,6 +871,9 @@ func (c *Client) pendingReferences(tx Transaction, pkgPathPrefix string) ([]*dom
 		refs = append(refs, r)
 	}
 	if err := errorlib.Merge(errs); err != nil {
+		return nil, err
+	}
+	if err := cursor.Err(); err != nil {
 		return nil, err
 	}
 	return refs, nil

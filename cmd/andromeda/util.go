@@ -1,15 +1,11 @@
 package main
 
 import (
-	"strings"
-
-	"github.com/gogo/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	"jaytaylor.com/andromeda/crawler"
 	"jaytaylor.com/andromeda/db"
-	"jaytaylor.com/andromeda/domain"
 )
 
 // newRepoRootCmd TODO: move this to util sub-command.
@@ -44,25 +40,33 @@ func newRebuildDBCmd() *cobra.Command {
 		Long:  "Rebuilds the entire database",
 		PreRun: func(_ *cobra.Command, _ []string) {
 			initLogging()
+			if len(RebuildDBDriver) == 0 {
+				log.Fatal("rebuild-db-driver value is required")
+			}
+			if len(RebuildDBFile) == 0 {
+				log.Fatal("rebuild-db-file value is required")
+			}
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			dbCfg := db.NewConfig(DBDriver, DBFile)
 			if err := db.WithClient(dbCfg, func(dbClient *db.Client) error {
-				newCfg := db.NewBoltConfig(RebuildDBFile)
-				newBe := db.NewBoltBackend(newCfg)
-				return dbClient.RebuildTo(newBe)
+				newCfg := db.NewConfig(RebuildDBDriver, RebuildDBFile)
+				return db.WithClient(newCfg, func(newClient *db.Client) error {
+					return dbClient.RebuildTo(newClient)
+				})
 			}); err != nil {
 				log.Fatal(err)
 			}
 		},
 	}
 
-	rebuildDBCmd.Flags().StringVarP(&RebuildDBFile, "target", "t", RebuildDBFile, "Target destination filename")
+	rebuildDBCmd.Flags().StringVarP(&RebuildDBDriver, "rebuild-db-driver", "", RebuildDBDriver, "Target destination DB driver")
+	rebuildDBCmd.Flags().StringVarP(&RebuildDBFile, "rebuild-db-file", "", RebuildDBFile, "Target destination filename or db connection string")
 
 	return rebuildDBCmd
 }
 
-// newRebuildAndCleanupDBCmd TODO: move this to util sub-command.
+/*// newRebuildAndCleanupDBCmd TODO: move this to util sub-command.
 func newRebuildAndCleanupDBCmd() *cobra.Command {
 	rebuildAndCleanupDBCmd := &cobra.Command{
 		Use:   "rebuild-cleanup-db",
@@ -112,4 +116,4 @@ func newRebuildAndCleanupDBCmd() *cobra.Command {
 	rebuildAndCleanupDBCmd.Flags().StringVarP(&RebuildDBFile, "target", "t", RebuildDBFile, "Target destination filename")
 
 	return rebuildAndCleanupDBCmd
-}
+}*/
