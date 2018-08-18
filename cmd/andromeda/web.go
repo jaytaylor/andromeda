@@ -27,7 +27,12 @@ func newWebCmd() *cobra.Command {
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if MemoryProfiling {
-				defer profile.Start(profile.MemProfile).Stop()
+				log.Debug("Starting memory profiler")
+				p := profile.Start(profile.MemProfile, profile.ProfilePath("."), profile.NoShutdownHook)
+				defer func() {
+					log.Debug("Stopping memory profiler")
+					p.Stop()
+				}()
 			}
 
 			dbCfg := db.NewConfig(DBDriver, DBFile)

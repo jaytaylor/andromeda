@@ -172,6 +172,31 @@ andromeda -b a -v stats mru -n 1000 | jq -r '.[] | .path' | xargs -n10 andromeda
 rm a
 ```
 
+#### Cross-datastore migrations
+
+##### Migrate from postgres to bolt
+
+```bash
+andromeda util rebuild-db \
+    -v \
+    --driver postgres \
+    --db "dbname=andromeda host=/var/run/postgresql" \
+    --rebuild-db-driver bolt \
+    --rebuild-db-file new.bolt \
+```
+
+##### Migrate from bolt to postgres, filtering out package histories
+
+```bash
+andromeda util rebuild-db \
+    -v \
+    --driver bolt \
+    --db no-history.bolt \
+    --rebuild-db-driver postgres \
+    --rebuild-db-file "dbname=andromeda host=/var/run/postgresql" \
+    --rebuild-db-filters clearHistories
+```
+
 ### License
 
 TBD
