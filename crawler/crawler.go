@@ -159,9 +159,9 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.CrawlRe
 	ctx.pkg = pkg
 	ctx.res.Package = pkg
 
-	pc := domain.NewPackageCrawl()
-
-	pkg.History = append(pkg.History, pc)
+	// Histories were taking up too much resources, so now disabled.
+	//pc := domain.NewPackageCrawl()
+	// pkg.History = append(pkg.History, pc)
 
 	// localPath := filepath.Join(c.Config.SrcPath, rr.Root)
 

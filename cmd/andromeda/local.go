@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pkg/profile"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
@@ -181,6 +182,15 @@ func newGetCmd() *cobra.Command {
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient *db.Client) error {
+			if MemoryProfiling {
+				log.Debug("Starting memory profiler")
+				p := profile.Start(profile.MemProfile, profile.ProfilePath("."), profile.NoShutdownHook)
+				defer func() {
+					log.Debug("Stopping memory profiler")
+					p.Stop()
+				}()
+			}
+
 				switch args[0] {
 				case db.TablePackages, "package", "pkg":
 					pkg, err := dbClient.Package(args[1])
@@ -228,6 +238,10 @@ func newGetCmd() *cobra.Command {
 			}
 		},
 	}
+
+	// TODO: use a withMemoryProfiled(func() { ... }) or something to keep this DRY.
+	getCmd.Flags().BoolVarP(&MemoryProfiling, "memory-profiling", "", MemoryProfiling, "Enable the memory profiler; creates a mem.pprof file while the application is shutting down")
+
 	return getCmd
 }
 
