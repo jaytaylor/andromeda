@@ -602,11 +602,21 @@ func (m *Master) Stats() map[string]int {
 	return stats
 }
 
+/* Commented out because: Seems unused, dead ref.
+
+To be legit logic, needs to take a callback to ensure record integrity via lock
+for entire window for caller to interact with it.
+
+Personal note:
+
+    Holy moly, there is a new mouse in town today.
+.
+
 func (m *Master) Latest() []*domain.Package {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.latest
-}
+}*/
 
 func (m *Master) emit(event string) {
 	m.mu.RLock()
