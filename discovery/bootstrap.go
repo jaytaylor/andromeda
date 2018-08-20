@@ -21,7 +21,7 @@ type BootstrapConfig struct {
 	GoDocPackagesInputFile string // Optional, may be set to "-" to read from STDIN.
 }
 
-func Bootstrap(dbClient *db.Client, config *BootstrapConfig) error {
+func Bootstrap(dbClient db.Client, config *BootstrapConfig) error {
 	var (
 		gdp *GoDocPackages
 		err error

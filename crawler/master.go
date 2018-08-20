@@ -42,7 +42,7 @@ var (
 //     - Overseer
 //     - Master
 type Master struct {
-	db          *db.Client
+	db          db.Client
 	crawler     *Crawler
 	latest      []*domain.Package
 	numCrawls   int
@@ -52,7 +52,7 @@ type Master struct {
 }
 
 // NewMaster constructs and returns a new Master crawler instance.
-func NewMaster(dbClient *db.Client, cfg *Config) *Master {
+func NewMaster(dbClient db.Client, cfg *Config) *Master {
 	m := &Master{
 		db:      dbClient,
 		crawler: New(cfg),
@@ -345,6 +345,7 @@ func (m *Master) Run(stopCh chan struct{}) error {
 		if res.Package == nil {
 			log.WithField("pkg", entry.PackagePath).Debug("Save skipped because pkg==nil")
 		} else if err = m.db.PackageSave(res.Package); err != nil {
+			log.WithField("pkg", entry.PackagePath).Errorf("Package save failed: %s", err)
 			break
 		}
 
@@ -366,6 +367,7 @@ func (m *Master) Run(stopCh chan struct{}) error {
 		if err == io.EOF {
 			return nil
 		}
+		return err
 	}
 	return nil
 }

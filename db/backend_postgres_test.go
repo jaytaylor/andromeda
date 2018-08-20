@@ -8,20 +8,20 @@ import (
 func TestPostgresBackend(t *testing.T) {
 	config := NewPostgresConfig("dbname=andromeda_test host=/var/run/postgresql")
 
-	if err := WithClient(config, func(client *Client) error {
-		if err := client.be.Put(TablePackages, []byte("hello"), []byte("world")); err != nil {
+	if err := WithClient(config, func(client Client) error {
+		if err := client.Backend().Put(TablePackages, []byte("hello"), []byte("world")); err != nil {
 			t.Error(err)
 		}
 
-		if _, err := client.be.Get(TablePackages, []byte("does-not-exist")); err != ErrKeyNotFound {
+		if _, err := client.Backend().Get(TablePackages, []byte("does-not-exist")); err != ErrKeyNotFound {
 			t.Errorf("Expected err=%s but actual=%s", ErrKeyNotFound, err)
 		}
 
-		if err := client.be.Put(TablePackages, []byte("hello"), []byte("world")); err != nil {
+		if err := client.Backend().Put(TablePackages, []byte("hello"), []byte("world")); err != nil {
 			t.Error(err)
 		}
 
-		v, err := client.be.Get(TablePackages, []byte("hello"))
+		v, err := client.Backend().Get(TablePackages, []byte("hello"))
 		if err != nil {
 			t.Error(err)
 		}
@@ -32,12 +32,12 @@ func TestPostgresBackend(t *testing.T) {
 
 		// Test iter.
 		for _, n := range []int{1, 2, 3} {
-			if err := client.be.Put(TablePackages, []byte(fmt.Sprintf("hello%v", n)), []byte(fmt.Sprintf("world%v", n))); err != nil {
+			if err := client.Backend().Put(TablePackages, []byte(fmt.Sprintf("hello%v", n)), []byte(fmt.Sprintf("world%v", n))); err != nil {
 				t.Error(err)
 			}
 		}
 
-		tx, err := client.be.Begin(false)
+		tx, err := client.Backend().Begin(false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -100,7 +100,7 @@ func TestPostgresBackend(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err := client.be.View(func(tx Transaction) error {
+		if err := client.Backend().View(func(tx Transaction) error {
 			c := tx.Cursor(TablePackages)
 			defer c.Close()
 

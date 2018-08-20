@@ -43,7 +43,7 @@ func newDBStatsCmd() *cobra.Command {
 			initLogging()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient *db.Client) error {
+			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient db.Client) error {
 				pl, err := dbClient.PackagesLen()
 				if err != nil {
 					return fmt.Errorf("getting packages count: %s", err)
@@ -81,7 +81,7 @@ func newHostsCmd() *cobra.Command {
 				dbCfg = db.NewConfig(DBDriver, DBFile)
 				hosts interface{}
 			)
-			if err := db.WithClient(dbCfg, func(dbClient *db.Client) error {
+			if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
 				var err error
 				if HostsExtended {
 					hosts, err = uniqueHostsExtended(dbClient)
@@ -104,7 +104,7 @@ func newHostsCmd() *cobra.Command {
 }
 
 // uniqueHosts returns a slice of all unique hosts in the packages table.
-func uniqueHosts(client *db.Client) ([]string, error) {
+func uniqueHosts(client db.Client) ([]string, error) {
 	var (
 		hostsMap = map[string]struct{}{}
 		n        = 0
@@ -135,7 +135,7 @@ func uniqueHosts(client *db.Client) ([]string, error) {
 
 // uniqueHostsExtended returns a map of all unique hosts with repository and
 // package counts per-host.
-func uniqueHostsExtended(client *db.Client) (map[string]map[string]int, error) {
+func uniqueHostsExtended(client db.Client) (map[string]map[string]int, error) {
 	var (
 		hosts = map[string]map[string]int{}
 		n     = 0

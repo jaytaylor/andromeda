@@ -14,15 +14,15 @@ import (
 	"jaytaylor.com/andromeda/domain"
 )
 
-type Client struct {
+type ClientKV struct {
 	be     Backend
 	q      Queue
 	opened map[string]struct{} // Track open resources.
 	mu     sync.Mutex
 }
 
-func newClient(be Backend, q Queue) *Client {
-	c := &Client{
+func newClient(be Backend, q Queue) *ClientKV {
+	c := &ClientKV{
 		be:     be,
 		q:      q,
 		opened: map[string]struct{}{},
@@ -35,7 +35,7 @@ type openclose interface {
 	Close() error
 }
 
-func (c *Client) Open() error {
+func (c *ClientKV) Open() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -51,7 +51,7 @@ func (c *Client) Open() error {
 	return nil
 }
 
-func (c *Client) Close() error {
+func (c *ClientKV) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -67,19 +67,19 @@ func (c *Client) Close() error {
 	return nil
 }
 
-func (c *Client) EachRow(table string, fn func(key []byte, value []byte)) error {
+func (c *ClientKV) EachRow(table string, fn func(key []byte, value []byte)) error {
 	return c.be.EachRow(table, fn)
 }
 
-func (c *Client) EachRowWithBreak(table string, fn func(key []byte, value []byte) bool) error {
+func (c *ClientKV) EachRowWithBreak(table string, fn func(key []byte, value []byte) bool) error {
 	return c.be.EachRowWithBreak(table, fn)
 }
 
-func (c *Client) Purge(tables ...string) error {
+func (c *ClientKV) Purge(tables ...string) error {
 	return c.be.Drop(tables...)
 }
 
-func (c *Client) PackageSave(pkgs ...*domain.Package) error {
+func (c *ClientKV) PackageSave(pkgs ...*domain.Package) error {
 	return c.be.Update(func(tx Transaction) error {
 		// TODO: Detect when package imports have changed, find the deleted ones, and
 		//       go update those packages' imported-by to mark the import as inactive.
@@ -87,7 +87,7 @@ func (c *Client) PackageSave(pkgs ...*domain.Package) error {
 	})
 }
 
-func (c *Client) packageSave(tx Transaction, pkgs []*domain.Package) error {
+func (c *ClientKV) packageSave(tx Transaction, pkgs []*domain.Package) error {
 	for _, pkg := range pkgs {
 		var (
 			k   = []byte(pkg.Path)
@@ -135,7 +135,7 @@ func (c *Client) packageSave(tx Transaction, pkgs []*domain.Package) error {
 }
 
 // mergePendingReferences merges pre-existing pending references.
-func (c *Client) mergePendingReferences(tx Transaction, pkg *domain.Package) error {
+func (c *ClientKV) mergePendingReferences(tx Transaction, pkg *domain.Package) error {
 	pendingRefs, err := c.pendingReferences(tx, pkg.Path)
 	if err != nil {
 		return fmt.Errorf("getting pending references for package %q: %s", pkg.Path, err)
@@ -164,11 +164,11 @@ func stringsToBytes(ss []string) [][]byte {
 }
 
 // PackageDelete N.B. no existence check is performed.
-func (c *Client) PackageDelete(pkgPaths ...string) error {
+func (c *ClientKV) PackageDelete(pkgPaths ...string) error {
 	return c.be.Delete(TablePackages, stringsToBytes(pkgPaths)...)
 }
 
-func (c *Client) Package(pkgPath string) (*domain.Package, error) {
+func (c *ClientKV) Package(pkgPath string) (*domain.Package, error) {
 	var pkg *domain.Package
 
 	if err := c.be.View(func(tx Transaction) error {
@@ -183,7 +183,7 @@ func (c *Client) Package(pkgPath string) (*domain.Package, error) {
 	return pkg, nil
 }
 
-func (c *Client) pkg(tx Transaction, pkgPath string) (*domain.Package, error) {
+func (c *ClientKV) pkg(tx Transaction, pkgPath string) (*domain.Package, error) {
 	pkg := &domain.Package{}
 	k := []byte(pkgPath)
 
@@ -207,7 +207,7 @@ func (c *Client) pkg(tx Transaction, pkgPath string) (*domain.Package, error) {
 	return pkg, nil
 }
 
-func (c *Client) Packages(pkgPaths ...string) (map[string]*domain.Package, error) {
+func (c *ClientKV) Packages(pkgPaths ...string) (map[string]*domain.Package, error) {
 	pkgs := map[string]*domain.Package{}
 
 	if err := c.be.View(func(tx Transaction) error {
@@ -222,7 +222,7 @@ func (c *Client) Packages(pkgPaths ...string) (map[string]*domain.Package, error
 	return pkgs, nil
 }
 
-func (c *Client) pkgs(tx Transaction, pkgPaths []string) (map[string]*domain.Package, error) {
+func (c *ClientKV) pkgs(tx Transaction, pkgPaths []string) (map[string]*domain.Package, error) {
 	pkgs := map[string]*domain.Package{}
 
 	for _, pkgPath := range pkgPaths {
@@ -251,7 +251,7 @@ func (c *Client) pkgs(tx Transaction, pkgPaths []string) (map[string]*domain.Pac
 
 // hierarchicalKeySearch searches for any keys matching the leading part of the
 // input key when split by "/" characters.
-func (c *Client) hierarchicalKeySearch(tx Transaction, key []byte, splitOn []byte) ([]byte, error) {
+func (c *ClientKV) hierarchicalKeySearch(tx Transaction, key []byte, splitOn []byte) ([]byte, error) {
 	if pieces := bytes.Split(key, splitOn); len(pieces) >= 2 {
 		prefix := bytes.Join(pieces[0:2], splitOn)
 		v, err := tx.Get(TablePackages, prefix)
@@ -273,7 +273,7 @@ func (c *Client) hierarchicalKeySearch(tx Transaction, key []byte, splitOn []byt
 }
 
 // PathPrefixSearch finds all packages with a given prefix.
-func (c *Client) PathPrefixSearch(prefix string) (map[string]*domain.Package, error) {
+func (c *ClientKV) PathPrefixSearch(prefix string) (map[string]*domain.Package, error) {
 	pkgs := map[string]*domain.Package{}
 	err := c.be.Update(func(tx Transaction) error {
 		var (
@@ -307,7 +307,7 @@ func (c *Client) PathPrefixSearch(prefix string) (map[string]*domain.Package, er
 	return pkgs, nil
 }
 
-func (c *Client) EachPackage(fn func(pkg *domain.Package)) error {
+func (c *ClientKV) EachPackage(fn func(pkg *domain.Package)) error {
 	var protoErr error
 	if err := c.EachRow(TablePackages, func(k []byte, v []byte) {
 		pkg := &domain.Package{}
@@ -325,7 +325,7 @@ func (c *Client) EachPackage(fn func(pkg *domain.Package)) error {
 	return nil
 }
 
-func (c *Client) EachPackageWithBreak(fn func(pkg *domain.Package) bool) error {
+func (c *ClientKV) EachPackageWithBreak(fn func(pkg *domain.Package) bool) error {
 	var protoErr error
 	if err := c.EachRowWithBreak(TablePackages, func(k []byte, v []byte) bool {
 		pkg := &domain.Package{}
@@ -344,11 +344,11 @@ func (c *Client) EachPackageWithBreak(fn func(pkg *domain.Package) bool) error {
 	return nil
 }
 
-func (c *Client) PackagesLen() (int, error) {
+func (c *ClientKV) PackagesLen() (int, error) {
 	return c.be.Len(TablePackages)
 }
 
-func (c *Client) RecordImportedBy(refPkg *domain.Package, resources map[string]*domain.PackageReferences) error {
+func (c *ClientKV) RecordImportedBy(refPkg *domain.Package, resources map[string]*domain.PackageReferences) error {
 	log.WithField("referenced-pkg", refPkg.Path).Infof("Recording imported by; n-resources=%v", len(resources))
 	var (
 		entries     = []*domain.ToCrawlEntry{}
@@ -423,7 +423,7 @@ func (c *Client) RecordImportedBy(refPkg *domain.Package, resources map[string]*
 }
 
 // pendingReferenceAdd merges or adds a new pending reference into the pending-references table.
-func (c *Client) pendingReferenceAdd(tx Transaction, refPkg *domain.Package, pkgPath string) error {
+func (c *ClientKV) pendingReferenceAdd(tx Transaction, refPkg *domain.Package, pkgPath string) error {
 	existing, err := c.pendingReferences(tx, pkgPath)
 	if err != nil {
 		return err
@@ -474,7 +474,7 @@ func (c *Client) pendingReferenceAdd(tx Transaction, refPkg *domain.Package, pkg
 	return nil
 }
 
-func (c *Client) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *QueueOptions) (int, error) {
+func (c *ClientKV) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *QueueOptions) (int, error) {
 	if opts == nil {
 		opts = NewQueueOptions()
 	}
@@ -526,12 +526,12 @@ func (c *Client) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *QueueOptions) 
 	return numNew, nil
 }
 
-func (c *Client) ToCrawlRemove(pkgs []string) (int, error) {
+func (c *ClientKV) ToCrawlRemove(pkgs []string) (int, error) {
 	return 0, ErrNotImplemented
 }
 
 // ToCrawlDequeue pops the next *domain.ToCrawlEntry off the from of the crawl queue.
-func (c *Client) ToCrawlDequeue() (*domain.ToCrawlEntry, error) {
+func (c *ClientKV) ToCrawlDequeue() (*domain.ToCrawlEntry, error) {
 	value, err := c.q.Dequeue(TableToCrawl)
 	if err != nil {
 		return nil, err
@@ -543,7 +543,7 @@ func (c *Client) ToCrawlDequeue() (*domain.ToCrawlEntry, error) {
 	return entry, nil
 }
 
-func (c *Client) EachToCrawl(fn func(entry *domain.ToCrawlEntry)) error {
+func (c *ClientKV) EachToCrawl(fn func(entry *domain.ToCrawlEntry)) error {
 	var protoErr error
 	err := c.q.Scan(TableToCrawl, nil, func(value []byte) {
 		if protoErr != nil {
@@ -564,7 +564,7 @@ func (c *Client) EachToCrawl(fn func(entry *domain.ToCrawlEntry)) error {
 	return nil
 }
 
-func (c *Client) EachToCrawlWithBreak(fn func(entry *domain.ToCrawlEntry) bool) error {
+func (c *ClientKV) EachToCrawlWithBreak(fn func(entry *domain.ToCrawlEntry) bool) error {
 	var (
 		keepGoing = true
 		protoErr  error
@@ -591,7 +591,7 @@ func (c *Client) EachToCrawlWithBreak(fn func(entry *domain.ToCrawlEntry) bool) 
 
 const numPriorities = 10
 
-func (c *Client) ToCrawlsLen() (int, error) {
+func (c *ClientKV) ToCrawlsLen() (int, error) {
 	total := 0
 	for i := 0; i < numPriorities; i++ {
 		n, err := c.q.Len(TableToCrawl, i)
@@ -605,7 +605,7 @@ func (c *Client) ToCrawlsLen() (int, error) {
 
 // TODO: Add Get (slow, n due to iteration) and Update methods for ToCrawl.
 
-func (c *Client) MetaSave(key string, src interface{}) error {
+func (c *ClientKV) MetaSave(key string, src interface{}) error {
 	var v []byte
 
 	switch src.(type) {
@@ -628,11 +628,11 @@ func (c *Client) MetaSave(key string, src interface{}) error {
 	return c.be.Put(TableMetadata, []byte(key), v)
 }
 
-func (c *Client) MetaDelete(key string) error {
+func (c *ClientKV) MetaDelete(key string) error {
 	return c.be.Delete(TableMetadata, []byte(key))
 }
 
-func (c *Client) Meta(key string, dst interface{}) error {
+func (c *ClientKV) Meta(key string, dst interface{}) error {
 	v, err := c.be.Get(TableMetadata, []byte(key))
 	if err != nil {
 		return err
@@ -657,79 +657,13 @@ func (c *Client) Meta(key string, dst interface{}) error {
 	return nil
 }
 
-func (c *Client) Search(q string) (*domain.Package, error) {
+func (c *ClientKV) Search(q string) (*domain.Package, error) {
 	return nil, fmt.Errorf("not yet implemented")
 }
 
-func (c *Client) applyBatchUpdate(fn BatchUpdateFunc) error {
-	return c.be.Update(func(tx Transaction) error {
-		var (
-			n         = 0
-			cursor    = tx.Cursor(TablePackages)
-			batchSize = 1000
-			batch     = make([]*domain.Package, 0, batchSize)
-			// batch     = []*domain.Package{} // make([]*domain.Package, 0, batchSize)
-			i = 0
-		)
-		defer cursor.Close()
-		for k, v := cursor.First().Data(); cursor.Err() == nil && k != nil; k, v = cursor.Next().Data() {
-			if i%1000 == 0 {
-				log.Debugf("i=%v", i)
-			}
-			i++
-			pkg := &domain.Package{}
-			if err := proto.Unmarshal(v, pkg); err != nil {
-				return err
-			}
-			if changed, err := fn(pkg); err != nil {
-				return err
-			} else if changed {
-				batch = append(batch, pkg)
-				if len(batch) >= batchSize {
-					log.WithField("this-batch", len(batch)).WithField("total-added", n).Debug("Saving batch")
-					if err := c.packageSave(tx, batch); err != nil {
-						return err
-					}
-					n += len(batch)
-					batch = make([]*domain.Package, 0, batchSize)
-					// batch = []*domain.Package{} // make([]*domain.Package, 0, batchSize)
-				}
-			}
-		}
-		if err := cursor.Err(); err != nil {
-			return err
-		}
-		if len(batch) > 0 {
-			log.WithField("this-batch", len(batch)).WithField("total-added", n).Debug("Saving batch (final)")
-			if err := c.PackageSave(batch...); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
-/*func (c *Client) BackupTo(otherClient *client) error {
-	return c.be.EachTable(func(table string, tx Transaction) error {
-		return otherClient.be.Update(func(otherTx Transaction) error {
-			var (
-				cursor = tx.Cursor(table)
-				err    error
-			)
-			defer cursor.Close()
-			for k, v := cursor.First().Data(); k != nil; k, v = cursor.Next().Data() {
-				if err = otherTx.Put(table, k, v); err != nil {
-					return err
-				}
-			}
-			return nil
-		})
-	})
-}*/
-
 const rebuildBatchSize = 25000
 
-func (c *Client) RebuildTo(otherClient *Client, kvFilters ...KeyValueFilterFunc) error {
+func (c *ClientKV) RebuildTo(otherClient Client, kvFilters ...KeyValueFilterFunc) error {
 	if err := c.copyBackend(otherClient, kvFilters...); err != nil {
 		return err
 	}
@@ -739,7 +673,7 @@ func (c *Client) RebuildTo(otherClient *Client, kvFilters ...KeyValueFilterFunc)
 	return nil
 }
 
-func (c *Client) copyBackend(otherClient *Client, kvFilters ...KeyValueFilterFunc) error {
+func (c *ClientKV) copyBackend(otherClient Client, kvFilters ...KeyValueFilterFunc) error {
 	return c.be.View(func(tx Transaction) error {
 		tables := []string{
 			TableMetadata,
@@ -748,7 +682,7 @@ func (c *Client) copyBackend(otherClient *Client, kvFilters ...KeyValueFilterFun
 		}
 
 		for _, table := range tables {
-			otherTx, err := otherClient.be.Begin(true)
+			otherTx, err := otherClient.Backend().Begin(true)
 			if err != nil {
 				return err
 			}
@@ -764,11 +698,8 @@ func (c *Client) copyBackend(otherClient *Client, kvFilters ...KeyValueFilterFun
 				if err != nil {
 					return
 				}
-				// TODO : Remove pointless "if" condition.
-				if len(kvFilters) > 0 {
-					for _, kvF := range kvFilters {
-						k, v = kvF([]byte(table), k, v)
-					}
+				for _, kvF := range kvFilters {
+					k, v = kvF([]byte(table), k, v)
 				}
 				if len(k) > 0 && len(v) > 0 {
 					if n >= rebuildBatchSize {
@@ -778,7 +709,7 @@ func (c *Client) copyBackend(otherClient *Client, kvFilters ...KeyValueFilterFun
 							return
 						}
 						n = 0
-						if otherTx, err = otherClient.be.Begin(true); err != nil {
+						if otherTx, err = otherClient.Backend().Begin(true); err != nil {
 							log.Error(err.Error())
 							return
 						}
@@ -822,14 +753,14 @@ func (c *Client) copyBackend(otherClient *Client, kvFilters ...KeyValueFilterFun
 	})
 }
 
-func (c *Client) copyQueue(otherClient *Client) error {
+func (c *ClientKV) copyQueue(otherClient Client) error {
 	var err error
 	for p := 0; p < 10; p++ {
 		if scanErr := c.q.Scan(TableToCrawl, &QueueOptions{Priority: p}, func(value []byte) {
 			if err != nil {
 				return
 			}
-			err = otherClient.q.Enqueue(TableToCrawl, p, value)
+			err = otherClient.Queue().Enqueue(TableToCrawl, p, value)
 		}); scanErr != nil {
 			return scanErr
 		}
@@ -840,7 +771,7 @@ func (c *Client) copyQueue(otherClient *Client) error {
 	return nil
 }
 
-func (c *Client) PendingReferences(pkgPathPrefix string) ([]*domain.PendingReferences, error) {
+func (c *ClientKV) PendingReferences(pkgPathPrefix string) ([]*domain.PendingReferences, error) {
 	refs := []*domain.PendingReferences{}
 	if err := c.be.View(func(tx Transaction) error {
 		var err error
@@ -854,7 +785,7 @@ func (c *Client) PendingReferences(pkgPathPrefix string) ([]*domain.PendingRefer
 	return refs, nil
 }
 
-func (c *Client) pendingReferences(tx Transaction, pkgPathPrefix string) ([]*domain.PendingReferences, error) {
+func (c *ClientKV) pendingReferences(tx Transaction, pkgPathPrefix string) ([]*domain.PendingReferences, error) {
 	refs := []*domain.PendingReferences{}
 	var (
 		prefixBs = []byte(pkgPathPrefix)
@@ -879,13 +810,13 @@ func (c *Client) pendingReferences(tx Transaction, pkgPathPrefix string) ([]*dom
 	return refs, nil
 }
 
-func (c *Client) PendingReferencesSave(pendingRefs ...*domain.PendingReferences) error {
+func (c *ClientKV) PendingReferencesSave(pendingRefs ...*domain.PendingReferences) error {
 	return c.be.Update(func(tx Transaction) error {
 		return c.pendingReferencesSave(tx, pendingRefs)
 	})
 }
 
-func (c *Client) pendingReferencesSave(tx Transaction, pendingRefs []*domain.PendingReferences) error {
+func (c *ClientKV) pendingReferencesSave(tx Transaction, pendingRefs []*domain.PendingReferences) error {
 	for _, prs := range pendingRefs {
 		v, err := proto.Marshal(prs)
 		if err != nil {
@@ -898,13 +829,13 @@ func (c *Client) pendingReferencesSave(tx Transaction, pendingRefs []*domain.Pen
 	return nil
 }
 
-func (c *Client) PendingReferencesDelete(keys ...string) error {
+func (c *ClientKV) PendingReferencesDelete(keys ...string) error {
 	return c.be.Update(func(tx Transaction) error {
 		return c.pendingReferencesDelete(tx, keys)
 	})
 }
 
-func (c *Client) pendingReferencesDelete(tx Transaction, keys []string) error {
+func (c *ClientKV) pendingReferencesDelete(tx Transaction, keys []string) error {
 	var err error
 	log.Debugf("Deleting %v pending-references: %+v", len(keys), keys)
 	for _, key := range keys {
@@ -915,11 +846,11 @@ func (c *Client) pendingReferencesDelete(tx Transaction, keys []string) error {
 	return nil
 }
 
-func (c *Client) PendingReferencesLen() (int, error) {
+func (c *ClientKV) PendingReferencesLen() (int, error) {
 	return c.be.Len(TablePendingReferences)
 }
 
-func (c *Client) EachPendingReferences(fn func(pendingRefs *domain.PendingReferences)) error {
+func (c *ClientKV) EachPendingReferences(fn func(pendingRefs *domain.PendingReferences)) error {
 	var protoErr error
 	if err := c.EachRow(TablePendingReferences, func(k []byte, v []byte) {
 		pendingRefs := &domain.PendingReferences{}
@@ -937,7 +868,7 @@ func (c *Client) EachPendingReferences(fn func(pendingRefs *domain.PendingRefere
 	return nil
 }
 
-func (c *Client) EachPendingReferencesWithBreak(fn func(pendingRefs *domain.PendingReferences) bool) error {
+func (c *ClientKV) EachPendingReferencesWithBreak(fn func(pendingRefs *domain.PendingReferences) bool) error {
 	var protoErr error
 	if err := c.EachRowWithBreak(TablePendingReferences, func(k []byte, v []byte) bool {
 		pendingRefs := &domain.PendingReferences{}
@@ -954,6 +885,14 @@ func (c *Client) EachPendingReferencesWithBreak(fn func(pendingRefs *domain.Pend
 		return protoErr
 	}
 	return nil
+}
+
+func (c *ClientKV) Backend() Backend {
+	return c.be
+}
+
+func (c *ClientKV) Queue() Queue {
+	return c.q
 }
 
 /*func compress(bs []byte) ([]byte, error) {

@@ -159,9 +159,8 @@ func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.CrawlRe
 	ctx.pkg = pkg
 	ctx.res.Package = pkg
 
-	// Histories were taking up too much resources, so now disabled.
-	//pc := domain.NewPackageCrawl()
-	// pkg.History = append(pkg.History, pc)
+	pc := domain.NewPackageCrawl()
+	pkg.History = []*domain.PackageCrawl{pc} // append(pkg.History, pc)
 
 	// localPath := filepath.Join(c.Config.SrcPath, rr.Root)
 
@@ -251,6 +250,9 @@ func (c *Crawler) Hydrate(ctx *crawlerContext) error {
 	}
 
 	ctx.pkg.Data = ctx.pkg.Data.Merge(ctx.pkg.LatestCrawl().Data)
+	// History wipe.
+	ctx.pkg.History = ctx.pkg.History[0:1]
+
 	ctx.pkg.LatestCrawl().JobSucceeded = true
 	return nil
 }

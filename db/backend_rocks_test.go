@@ -25,20 +25,20 @@ func TestRocksBackend(t *testing.T) {
 		}
 	}()
 
-	if err := WithClient(config, func(client *Client) error {
-		if err := client.be.Put("test0", []byte("hello"), []byte("world")); err != nil {
+	if err := WithClient(config, func(client Client) error {
+		if err := client.Backend().Put("test0", []byte("hello"), []byte("world")); err != nil {
 			t.Error(err)
 		}
 
-		if _, err := client.be.Get("test1", []byte("does-not-exist")); err != ErrKeyNotFound {
+		if _, err := client.Backend().Get("test1", []byte("does-not-exist")); err != ErrKeyNotFound {
 			t.Errorf("Expected err=%s but actual=%s", ErrKeyNotFound, err)
 		}
 
-		if err := client.be.Put("test1", []byte("hello"), []byte("world")); err != nil {
+		if err := client.Backend().Put("test1", []byte("hello"), []byte("world")); err != nil {
 			t.Error(err)
 		}
 
-		v, err := client.be.Get("test1", []byte("hello"))
+		v, err := client.Backend().Get("test1", []byte("hello"))
 		if err != nil {
 			t.Error(err)
 		}
@@ -67,7 +67,7 @@ func TestRocksBackendCursor(t *testing.T) {
 		}
 	}()
 
-	if err := WithClient(config, func(client *Client) error {
+	if err := WithClient(config, func(client Client) error {
 		pkgPaths := []string{
 			"jaytaylor.com/archive.is",
 			"stdpkg",
@@ -97,7 +97,7 @@ func TestRocksBackendCursor(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err := client.be.View(func(tx Transaction) error {
+		if err := client.Backend().View(func(tx Transaction) error {
 			c := tx.Cursor(TablePackages)
 			defer c.Close()
 

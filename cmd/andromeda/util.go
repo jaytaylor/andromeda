@@ -115,7 +115,7 @@ func newRebuildDBCmd() *cobra.Command {
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			dbCfg := db.NewConfig(DBDriver, DBFile)
-			if err := db.WithClient(dbCfg, func(dbClient *db.Client) error {
+			if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
 				newCfg := db.NewConfig(RebuildDBDriver, RebuildDBFile)
 
 				applyFilters := []db.KeyValueFilterFunc{}

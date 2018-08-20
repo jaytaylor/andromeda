@@ -39,7 +39,7 @@ func newWebCmd() *cobra.Command {
 			if boltCfg, ok := dbCfg.(*db.BoltConfig); ok {
 				boltCfg.BoltOptions.Timeout = 5 * time.Second
 			}
-			if err := db.WithClient(dbCfg, func(dbClient *db.Client) error {
+			if err := db.WithClient(dbCfg, func(dbClient db.Client) error {
 				master := crawler.NewMaster(dbClient, crawler.NewConfig())
 				cfg := &web.Config{
 					Addr: WebAddr,
@@ -87,7 +87,7 @@ func newWebCmd() *cobra.Command {
 	return webCmd
 }
 
-func newFeed(dbClient *db.Client) *feed.Feed {
+func newFeed(dbClient db.Client) *feed.Feed {
 	cfg := feed.Config{
 		Sources: []feed.DataSource{
 			feed.NewHackerNews(dbClient),
@@ -99,7 +99,7 @@ func newFeed(dbClient *db.Client) *feed.Feed {
 	return f
 }
 
-func runFeedConnector(dbClient *db.Client, f *feed.Feed) {
+func runFeedConnector(dbClient db.Client, f *feed.Feed) {
 	for {
 		ch := f.Channel()
 		if ch == nil {

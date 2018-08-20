@@ -17,7 +17,7 @@ func newBootstrapCmd() *cobra.Command {
 			initLogging()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient *db.Client) error {
+			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient db.Client) error {
 				return bootstrap(dbClient)
 			}); err != nil {
 				log.Fatalf("main: %s", err)
@@ -33,7 +33,7 @@ func newBootstrapCmd() *cobra.Command {
 	return bootstrapCmd
 }
 
-func bootstrap(dbClient *db.Client) error {
+func bootstrap(dbClient db.Client) error {
 	cfg := &discovery.BootstrapConfig{
 		GoDocPackagesInputFile: BootstrapGoDocPackagesFile,
 	}

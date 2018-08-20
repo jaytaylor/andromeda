@@ -23,7 +23,7 @@ func TestClientToCrawlOperations(t *testing.T) {
 		func(config Config) {
 			typ := fmt.Sprintf("[Config=%T] ", config)
 
-			if err := withTestClient(config, func(client *Client) error {
+			if err := withTestClient(config, func(client Client) error {
 				pkgPaths := []string{
 					"foo-bar",
 					"jay-tay",
@@ -120,7 +120,7 @@ func TestClientPackageOperations(t *testing.T) {
 		func(config Config) {
 			typ := fmt.Sprintf("[Config=%T] ", config)
 
-			if err := withTestClient(config, func(client *Client) error {
+			if err := withTestClient(config, func(client Client) error {
 				pkgPaths := []string{
 					"jaytaylor.com/archive.is",
 					"stdpkg",
@@ -328,7 +328,7 @@ func TestClientMetaOperations(t *testing.T) {
 		func(config Config) {
 			typ := fmt.Sprintf("[Config=%T] ", config)
 
-			if err := withTestClient(config, func(client *Client) error {
+			if err := withTestClient(config, func(client Client) error {
 				k := "foo"
 
 				{
@@ -383,7 +383,7 @@ func TestClientCrossBackendCopy(t *testing.T) {
 		bc       = NewBoltConfig(filename)
 		pc       = NewPostgresConfig("dbname=andromeda_test host=/var/run/postgresql")
 	)
-	if err := withTestClient(bc, func(b *Client) error {
+	if err := withTestClient(bc, func(b Client) error {
 		now := time.Now()
 
 		entry := &domain.ToCrawlEntry{
@@ -408,7 +408,7 @@ func TestClientCrossBackendCopy(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		return withTestClient(pc, func(p *Client) error {
+		return withTestClient(pc, func(p Client) error {
 			// TODO: Expose BE publicly so it can be passed in from another client outside of db pkg.
 			if err := b.RebuildTo(p); err != nil {
 				t.Fatal(err)
@@ -457,7 +457,7 @@ func isPostgres(c Config) bool {
 	return strings.Contains(fmt.Sprintf("%T", c), "Postgres")
 }
 
-func withTestClient(config Config, fn func(client *Client) error) error {
+func withTestClient(config Config, fn func(client Client) error) error {
 	DefaultBoltQueueFilename = fmt.Sprintf("%v-queue.bolt", testlib.CurrentRunningTest())
 
 	filename := filepath.Join(os.TempDir(), testlib.CurrentRunningTest())
@@ -468,7 +468,7 @@ func withTestClient(config Config, fn func(client *Client) error) error {
 		}
 	}
 
-	return WithClient(config, func(client *Client) (err error) {
+	return WithClient(config, func(client Client) (err error) {
 		typ := fmt.Sprintf("[Config=%T] ", config)
 
 		// Setup/defer cleanup of test remnants.  Depends on config type.
@@ -488,7 +488,7 @@ func withTestClient(config Config, fn func(client *Client) error) error {
 		if isPostgres(config) {
 			defer func() {
 				tables := []string{}
-				if cleanupErr := client.be.EachTable(func(table string, tx Transaction) error {
+				if cleanupErr := client.Backend().EachTable(func(table string, tx Transaction) error {
 					tables = append(tables, table)
 					return nil
 				}); cleanupErr != nil {
@@ -499,7 +499,7 @@ func withTestClient(config Config, fn func(client *Client) error) error {
 					}
 					return
 				}
-				if dropErr := client.be.Drop(tables...); dropErr != nil {
+				if dropErr := client.Backend().Drop(tables...); dropErr != nil {
 					if err == nil {
 						err = fmt.Errorf("%vCleaning up test tables: %s", typ, dropErr)
 					} else {
