@@ -36,6 +36,7 @@ type openclose interface {
 }
 
 func (c *ClientKV) Open() error {
+	log.Info("ClientKV opening..")
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -48,10 +49,12 @@ func (c *ClientKV) Open() error {
 		}
 	}
 
+	log.Info("ClientKV opened")
 	return nil
 }
 
 func (c *ClientKV) Close() error {
+	log.Info("ClientKV closing..")
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -64,6 +67,7 @@ func (c *ClientKV) Close() error {
 		}
 	}
 
+	log.Info("ClientKV closed")
 	return nil
 }
 
