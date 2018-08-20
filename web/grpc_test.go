@@ -38,7 +38,7 @@ func TestRemote(t *testing.T) {
 		&domain.ToCrawlEntry{PackagePath: "os"},
 	}
 
-	if err := db.WithClient(db.NewBoltConfig(dbFile), func(dbClient *db.Client) error {
+	if err := db.WithClient(db.NewBoltConfig(dbFile), func(dbClient db.Client) error {
 		var (
 			cfg    = crawler.NewConfig()
 			master = crawler.NewMaster(dbClient, cfg)

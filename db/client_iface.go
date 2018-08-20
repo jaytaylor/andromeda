@@ -33,9 +33,7 @@ var (
 	pkgSepB = []byte{'/'}
 )
 
-type BatchUpdateFunc func(pkg *domain.Package) (changed bool, err error)
-
-/*type ClientInterface interface {
+type Client interface {
 	Open() error                                                                                   // Open / start DB client connection.
 	Close() error                                                                                  // Close / shutdown the DB client connection.
 	Purge(tables ...string) error                                                                  // Reset a DB table.
@@ -65,9 +63,12 @@ type BatchUpdateFunc func(pkg *domain.Package) (changed bool, err error)
 	EachPendingReferences(fn func(pendingRefs *domain.PendingReferences)) error                    // Iterate over each *domain.PrendingReferences object from the pending-references table.
 	EachPendingReferencesWithBreak(fn func(pendingRefs *domain.PendingReferences) bool) error      // Iterate over each *domain.PrendingReferences object from the pending-references table until callback returns false.
 	PendingReferencesLen() (int, error)                                                            // Number of pending references keys.
-	BackupTo(otherBe Backend) error                                                                // Create a backup copy of the DB.  Return ErrNotImplemented if not supported.
-	RebuildTo(otherBe Backend, kvFilters ...KeyValueFilterFunc) error                              // Rebuild a fresh copy of the DB at destination.  Return ErrNotImplmented if not supported.  Optionally pass in one or more KeyValueFilterFunc functions.
-}*/
+	RebuildTo(otherClient Client, kvFilters ...KeyValueFilterFunc) error                           // Rebuild a fresh copy of the DB at destination.  Return ErrNotImplmented if not supported.  Optionally pass in one or more KeyValueFilterFunc functions.
+	Backend() Backend                                                                              // Expose backend impl.
+	Queue() Queue                                                                                  // Expose queue impl.
+}
+
+type KeyValueFilterFunc func(table []byte, key []byte, value []byte) (keyOut []byte, valueOut []byte)
 
 type Config interface {
 	Type() Type // Configuration type specifier.
@@ -90,7 +91,7 @@ func NewConfig(driver string, dbFile string) Config {
 }
 
 // NewClient constructs a new DB client based on the passed configuration.
-func NewClient(config Config) *Client {
+func NewClient(config Config) Client {
 	typ := config.Type()
 
 	switch typ {
@@ -143,11 +144,9 @@ func NewQueueOptions() *QueueOptions {
 	return opts
 }
 
-type KeyValueFilterFunc func(bucket []byte, key []byte, value []byte) (keyOut []byte, valueOut []byte)
-
 // WithClient is a convenience utility which handles DB client construction,
 // open, and close..
-func WithClient(config Config, fn func(dbClient *Client) error) (err error) {
+func WithClient(config Config, fn func(dbClient Client) error) (err error) {
 	dbClient := NewClient(config)
 
 	if err = dbClient.Open(); err != nil {

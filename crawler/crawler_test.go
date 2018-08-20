@@ -1,14 +1,13 @@
 package crawler
 
 import (
-	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"gigawatt.io/testlib"
 	log "github.com/sirupsen/logrus"
 
 	"jaytaylor.com/andromeda/db"
@@ -16,14 +15,10 @@ import (
 	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/cfg"
 )
 
-func init() {
-	if testing.Verbose() {
-		log.SetLevel(log.DebugLevel)
-	}
-}
-
 func TestCrawlerRun(t *testing.T) {
-	dbFile := filepath.Join(os.TempDir(), "andromeda-crawler-correctness.bolt")
+	initLog()
+
+	dbFile := filepath.Join(os.TempDir(), testlib.CurrentRunningTest()+".bolt")
 	if err := os.RemoveAll(dbFile); err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +32,7 @@ func TestCrawlerRun(t *testing.T) {
 		&domain.ToCrawlEntry{PackagePath: "os"},
 	}
 
-	if err := db.WithClient(db.NewBoltConfig(dbFile), func(dbClient *db.Client) error {
+	if err := db.WithClient(db.NewBoltConfig(dbFile), func(dbClient db.Client) error {
 		// Add several (3+) to-crawl entries.
 		if _, err := dbClient.ToCrawlAdd(toCrawls, nil); err != nil {
 			return err
@@ -51,7 +46,7 @@ func TestCrawlerRun(t *testing.T) {
 
 		// Run the crawler.
 		doneCh := make(chan error)
-		stopCh := make(chan struct{}, 1)
+		stopCh := make(chan struct{})
 		cfg := NewConfig()
 		cfg.IncludeStdLib = true
 		cfg.SrcPath = filepath.Join(os.TempDir(), "andromeda-crawler-correctness")
@@ -66,48 +61,52 @@ func TestCrawlerRun(t *testing.T) {
 		}()
 
 		var (
-			waitingSince = time.Now()
-			waitTimeout  = 3 * time.Minute
+			lastNumPackages = -1
+			waitingSince    = time.Now()
+			waitTimeout     = 5 * time.Minute
 		)
 
-		for {
-			select {
-			case err := <-doneCh:
-				if err != nil {
-					t.Fatal(err)
-				}
-
-			case <-time.After(5 * time.Second):
-				{
-					l1, _ := dbClient.ToCrawlsLen()
-					l2, _ := dbClient.PackagesLen()
-					t.Logf("Checking for crawl result; Queue len=%v; Packages len=%v", l1, l2)
-				}
-
-				// Verify results.
-				{
-					pkg, err := dbClient.Package("runtime")
+		func() {
+			for {
+				select {
+				case err := <-doneCh:
+					t.Logf("doneCh received result: %s", err)
 					if err != nil {
-						if time.Now().After(waitingSince.Add(waitTimeout)) {
-							t.Logf("Timed out after %s waiting for crawl of runtime package to be accepted", waitTimeout)
-							return fmt.Errorf("fetching pkg %q: %s", "runtime", err)
-						}
-						continue
-						// return fmt.Errorf("fetching pkg %q: %s", "runtime", err)
+						t.Fatal(err)
 					}
-					if expected, actual := 10, len(pkg.ImportedBy); actual < expected {
-						j, _ := json.MarshalIndent(pkg, "", "    ")
-						t.Logf("\"runtime\" package JSON:\n%v", string(j))
-						if time.Now().After(waitingSince.Add(180 * time.Second)) {
-							t.Logf("Timed out after %s waiting for crawl of runtime package to be accepted", waitTimeout)
-							return fmt.Errorf("Expected \"runtime\" to be imported by > %v others but actual=%v", expected, actual)
-						}
-					} else {
-						// Success!
-						return nil
+
+				case <-time.After(5 * time.Second):
+					if time.Now().After(waitingSince.Add(waitTimeout)) {
+						t.Fatalf("Timed out after %s waiting for crawl of runtime package to be accepted", waitTimeout)
 					}
+
+					nT, _ := dbClient.ToCrawlsLen()
+					nP, _ := dbClient.PackagesLen()
+					t.Logf("Checking for crawl result; Queue len=%v; Packages len=%v", nT, nP)
+					t.Logf("nP=%v lastNumPackages=%v", nP, lastNumPackages)
+
+					if nP == lastNumPackages {
+						t.Logf("Num packages=%v stabilized after %s", nP, time.Now().Sub(waitingSince))
+						go func() {
+							stopCh <- struct{}{}
+							t.Logf("stopCh send finished")
+						}()
+						time.Sleep(10 * time.Second)
+						return
+					}
+					t.Logf("Num packages=%v, waited %s so far", nP, time.Now().Sub(waitingSince))
+					lastNumPackages = nP
 				}
 			}
+		}()
+
+		// Verify results.
+		pkg, err := dbClient.Package("runtime")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if expected, actual := 10, len(pkg.ImportedBy); actual < expected {
+			t.Errorf("Expected num imported-by for pkg=runtime >= %v, but actual=%v", expected, actual)
 		}
 
 		return nil
@@ -117,6 +116,8 @@ func TestCrawlerRun(t *testing.T) {
 }
 
 func TestImportsStd(t *testing.T) {
+	initLog()
+
 	goPkg, err := loadPackageDynamic(filepath.Join(cfg.BuildContext.GOPATH, "src"), "testing")
 	if err != nil {
 		t.Fatal(err)
@@ -126,6 +127,8 @@ func TestImportsStd(t *testing.T) {
 }
 
 func TestImportsNonStd(t *testing.T) {
+	initLog()
+
 	var (
 		pkgPath   = "andromedadynimporttest"
 		parentDir = filepath.Join(os.TempDir(), "src")
@@ -175,6 +178,8 @@ func main() {
 }
 
 func TestGitStats(t *testing.T) {
+	initLog()
+
 	srcPath := filepath.Join(os.Getenv("GOPATH"), "src", "jaytaylor.com", "andromeda")
 	snap := &domain.PackageSnapshot{
 		Repo: "git@github.com:jaytaylor/andromeda",
@@ -183,4 +188,10 @@ func TestGitStats(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("snap: %# v", snap)
+}
+
+func initLog() {
+	if testing.Verbose() {
+		log.SetLevel(log.DebugLevel)
+	}
 }
