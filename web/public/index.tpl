@@ -152,7 +152,7 @@
     <h3>Latest Crawled Packages</h3>
     <ul style="list-style-type: none">
 {{ range $pkg := $latest }}
-        <li>{{ $pkg.Data.CreatedAt }} <a href="/{{ $pkg.Path }}">{{ $pkg.Path }}</a></li>
+        <li>{{ index $pkg "CreatedAt" }} <a href="/{{ index $pkg "Path" }}">{{ index $pkg "Path" }}</a></li>
 {{ end }}
     </ul>
 </div>
