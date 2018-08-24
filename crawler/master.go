@@ -611,12 +611,12 @@ Personal note:
 
     Holy moly, there is a new mouse in town today.
 .
-
+*/
 func (m *Master) Latest() []*domain.Package {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.latest
-}*/
+}
 
 func (m *Master) emit(event string) {
 	m.mu.RLock()
