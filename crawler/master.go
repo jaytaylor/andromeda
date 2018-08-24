@@ -611,11 +611,21 @@ Personal note:
 
     Holy moly, there is a new mouse in town today.
 .
+
+Actually, this is used by frontend templates.
 */
-func (m *Master) Latest() []*domain.Package {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.latest
+func (m *Master) Latest() []map[string]interface{} {
+	m.mu.RLock()
+	latest := []map[string]interface{}{}
+	for _, pkg := range m.latest {
+		m := map[string]interface{}{
+			"CreatedAt": pkg.Data.CreatedAt,
+			"Path":      pkg.Path,
+		}
+		latest = append(latest, m)
+	}
+	m.mu.RUnlock()
+	return latest
 }
 
 func (m *Master) emit(event string) {
@@ -640,15 +650,12 @@ func (m *Master) emit(event string) {
 
 func (m *Master) Subscribe(ch chan string) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	m.subscribers = append(m.subscribers, ch)
+	m.mu.Unlock()
 }
 
 func (m *Master) Unsubscribe(ch chan string) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	newSubs := []chan string{}
 	for _, s := range m.subscribers {
 		if s != ch {
@@ -656,4 +663,5 @@ func (m *Master) Unsubscribe(ch chan string) {
 		}
 	}
 	m.subscribers = newSubs
+	m.mu.Unlock()
 }

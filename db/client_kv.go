@@ -93,6 +93,7 @@ func (c *ClientKV) PackageSave(pkgs ...*domain.Package) error {
 
 func (c *ClientKV) packageSave(tx Transaction, pkgs []*domain.Package) error {
 	for _, pkg := range pkgs {
+		log.WithField("pkg", pkg.Path).Debug("Save starting")
 		var (
 			k   = []byte(pkg.Path)
 			v   []byte
@@ -137,12 +138,16 @@ func (c *ClientKV) packageSave(tx Transaction, pkgs []*domain.Package) error {
 		if err = tx.Put(TablePackages, k, v); err != nil {
 			return fmt.Errorf("saving Package %q: %s", pkg.Path, err)
 		}
+		log.WithField("pkg", pkg.Path).Debug("Save finished")
 	}
 	return nil
 }
 
 // mergePendingReferences merges pre-existing pending references.
 func (c *ClientKV) mergePendingReferences(tx Transaction, pkg *domain.Package) error {
+	log.WithField("pkg", pkg.Path).Debug("Merging pending references starting")
+	defer log.WithField("pkg", pkg.Path).Debug("Merging pending references finished")
+
 	pendingRefs, err := c.pendingReferences(tx, pkg.Path)
 	if err != nil {
 		return fmt.Errorf("getting pending references for package %q: %s", pkg.Path, err)
@@ -373,7 +378,7 @@ func (c *ClientKV) RecordImportedBy(refPkg *domain.Package, resources map[string
 		if err != nil {
 			return err
 		}
-		log.WithField("referenced-pkg", refPkg.Path).Infof("%v/%v importing packages already exist in the %v table", len(pkgs), len(pkgPaths), TablePackages)
+		log.WithField("referenced-pkg", refPkg.Path).Debugf("%v/%v importing packages already exist in the %v table", len(pkgs), len(pkgPaths), TablePackages)
 
 		for pkgPath, refs := range resources {
 			pkg, ok := pkgs[pkgPath]
@@ -417,6 +422,7 @@ func (c *ClientKV) RecordImportedBy(refPkg *domain.Package, resources map[string
 		for _, pkg := range pkgs {
 			pkgsSlice = append(pkgsSlice, pkg)
 		}
+		log.WithField("referenced-pkg", refPkg.Path).Debugf("Saving %v updated packages", len(pkgsSlice))
 		return c.packageSave(tx, pkgsSlice)
 	}); err != nil {
 		return err
