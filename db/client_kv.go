@@ -103,9 +103,10 @@ func (c *ClientKV) packageSave(tx Transaction, pkgs []*domain.Package) error {
 		if err != nil {
 			return err
 		}*/
-		if err = c.mergePendingReferences(tx, pkg); err != nil {
+
+		/*if err = c.mergePendingReferences(tx, pkg); err != nil {
 			return err
-		}
+		}*/
 
 		// TODO: Figure out how to handle IDs.  Put burden on backends.
 		/*if v == nil || pkg.ID == 0 {
@@ -164,6 +165,11 @@ func (c *ClientKV) mergePendingReferences(tx Transaction, pkg *domain.Package) e
 		return fmt.Errorf("removing prending references after merge for package %q: %s", pkg.Path, err)
 	}
 	log.WithField("pkg", pkg.Path).Debugf("Merged %v pending references", len(pendingRefs))
+	return nil
+}
+
+// MergePendingReferences tries merges all outstanding pending references.
+func (c *ClientKV) MergePendingReferences() error {
 	return nil
 }
 
@@ -380,8 +386,15 @@ func (c *ClientKV) RecordImportedBy(refPkg *domain.Package, resources map[string
 		}
 		log.WithField("referenced-pkg", refPkg.Path).Debugf("%v/%v importing packages already exist in the %v table", len(pkgs), len(pkgPaths), TablePackages)
 
+		// To reduce the number of SET operations required, we maintain a pool of
+		// pkgRoot->*domain.Package associations.
+		//
+		// Then when multiple pkgPaths reference the same package, the single
+		// item from the pool will be used.
+		pkgsPool := map[string]*domain.Package{}
+
 		for pkgPath, refs := range resources {
-			pkg, ok := pkgs[pkgPath]
+			instance, ok := pkgs[pkgPath]
 			if !ok {
 				// Submit for a future crawl and add a pending reference.
 				entry := &domain.ToCrawlEntry{
@@ -394,6 +407,11 @@ func (c *ClientKV) RecordImportedBy(refPkg *domain.Package, resources map[string
 					return err
 				}
 				continue
+			}
+			pkg, ok := pkgsPool[instance.Path]
+			if !ok {
+				pkgsPool[instance.Path] = instance
+				pkg = instance
 			}
 			if pkg.ImportedBy == nil {
 				pkg.ImportedBy = map[string]*domain.PackageReferences{}
@@ -419,7 +437,7 @@ func (c *ClientKV) RecordImportedBy(refPkg *domain.Package, resources map[string
 			}
 		}
 		pkgsSlice := make([]*domain.Package, 0, len(pkgs))
-		for _, pkg := range pkgs {
+		for _, pkg := range pkgsPool {
 			pkgsSlice = append(pkgsSlice, pkg)
 		}
 		log.WithField("referenced-pkg", refPkg.Path).Debugf("Saving %v updated packages", len(pkgsSlice))

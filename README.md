@@ -80,6 +80,7 @@ apt-get install \
 - [X] Implement Postgres backend.
 - [ ] Implement pure-postgres native db.Client interface, then run the scientific process against hypothesis that we can do better than dumb K/V.
 - [ ] Implement CockroachDB backend.
+- [ ] Implement pending references updates as a batch job (currently it's been disabled due to low performance).
 
 
 To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`
