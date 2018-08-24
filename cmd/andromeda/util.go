@@ -84,7 +84,7 @@ func newRebuildDBCmd() *cobra.Command {
 			if err := proto.Unmarshal(v, pkg); err != nil {
 				log.Fatalf("Unexpected problem unmarshaling protobuf for key=%v: %s", string(k), err)
 			}
-			pkg.History = []*domain.PackageCrawl{}
+			pkg.History = []*domain.PackageCrawl{pkg.History[0]}
 
 			v, err := proto.Marshal(pkg)
 			if err != nil {
