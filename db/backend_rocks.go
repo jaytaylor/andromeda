@@ -59,11 +59,7 @@ func (be *RocksBackend) Open() error {
 	}
 	be.dbs = map[string]*rocks.TransactionDB{}
 
-	for _, table := range []string{
-		TablePackages,
-		TablePendingReferences,
-		TableMetadata,
-	} {
+	for _, table := range tables {
 		db, err := be.db(table, true)
 		if err != nil {
 			return err

@@ -18,7 +18,7 @@ import (
 
 var (
 	MaxNumLatest        = 25
-	ToCrawlErrorLimit   = 25 // Record will be discarded after this number of crawl attempts is exceeded.
+	ToCrawlErrorLimit   = 3 // Record will not be requeued and instead discarded after this number of crawl attempt errors is exceeded.
 	MaxNumCrawls        = 2
 	MinAgeBeforeRefresh = 31 * 24 * time.Hour
 )
@@ -102,6 +102,9 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			}
 			return err
 		}
+		if entry.PackagePath == "github.com/kubernetes/kubernetes" {
+			goto Dequeue
+		}
 		if entry.Errors > uint32(ToCrawlErrorLimit) || (entry.Errors > 0 && strings.Contains(entry.Reason, "feed crawler")) {
 			log.WithField("pkg", entry.PackagePath).WithField("num-attempts", entry.Errors).Info("Discarding to-crawl due to excessive crawler errors")
 			goto Dequeue
@@ -165,7 +168,7 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			continue
 		}
 
-		if err := m.save(res); err != nil {
+		if err := m.add(res); err != nil {
 			log.WithField("pkg", entry.PackagePath).Errorf("Hard error saving: %s", err)
 			return err
 		}
@@ -180,7 +183,7 @@ func (m *Master) Receive(ctx context.Context, res *domain.CrawlResult) (*domain.
 	if res == nil {
 		return domain.NewOperationResult(nil), nil
 	}
-	if err := m.save(res); err != nil {
+	if err := m.add(res); err != nil {
 		err = fmt.Errorf("saving received crawl result: %s", err)
 		log.Errorf("%s", err)
 		return domain.NewOperationResult(err), err
@@ -192,58 +195,104 @@ func (m *Master) Receive(ctx context.Context, res *domain.CrawlResult) (*domain.
 	return domain.NewOperationResult(nil), nil
 }
 
-func (m *Master) save(res *domain.CrawlResult) error {
-	// Lock to guard against data clobbering.
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if res == nil || res.Package == nil {
-		if res == nil {
-			log.Error("Refusing to attempt to save nil result")
-		} else {
-			log.Errorf("Crawl result contained error message: %s", res.ErrMsg)
-		}
+// add a crawl result for later processing.
+func (m *Master) add(cr *domain.CrawlResult) error {
+	if cr == nil || cr.Package == nil {
 		return nil
 	}
-
-	pkgPath := res.Package.Path
-
-	log.WithField("pkg", pkgPath).Debug("Starting index update process..")
-
-	var (
-		existing *domain.Package
-		err      error
-	)
-	if existing, err = m.db.Package(res.Package.Path); err != nil && err != db.ErrKeyNotFound {
-		return err
-	} else if existing != nil {
-		if existing.Data.Equals(res.Package.Data) {
-			log.WithField("pkg", pkgPath).Debug("Nothing seems to have changed, discarding crawl")
-			return nil
-		}
-		res.Package = existing.Merge(res.Package)
-	}
-
-	if res.Package.Data == nil || res.Package.Data.NumGoFiles == 0 {
-		if res.Package.Data == nil {
-			log.WithField("pkg", pkgPath).Debug("Save skipped because res.Package.Data==nil")
-		} else if res.Package.Data.NumGoFiles == 0 {
-			log.WithField("pkg", pkgPath).Debug("Save skipped because res.Package.Data.NumGoFiles==0")
-		}
-		return nil
-	} else if err = m.db.PackageSave(res.Package); err != nil {
+	if err := m.db.CrawlResultAdd(cr, &db.QueueOptions{Priority: 5}); err != nil {
 		return err
 	}
-	log.WithField("pkg", pkgPath).Debug("Index updated with crawl result")
-	if err = m.db.RecordImportedBy(res.Package, res.ImportedResources); err != nil {
-		return err
-	}
-	m.latest = append(m.latest, res.Package)
-	if len(m.latest) > MaxNumLatest {
-		m.latest = m.latest[len(m.latest)-MaxNumLatest:]
-	}
-	m.logStats()
 	return nil
+}
+
+func (m *Master) SaveLoop(stopCh chan struct{}) {
+	for {
+		var (
+			cr *domain.CrawlResult
+			ch = make(chan error)
+		)
+
+		go func() {
+			var err error
+			if cr, err = m.db.CrawlResultDequeue(); err != nil {
+				ch <- err
+			}
+			ch <- nil
+		}()
+
+		select {
+		case err := <-ch:
+			if err != nil {
+				log.Errorf("Getting next crawl result: %s", err)
+				// TODO: Use backoff here.
+				time.Sleep(1 * time.Second)
+				continue
+			}
+
+		case <-stopCh:
+			log.Info("Save-loop stop request received, shutting down")
+			return
+		}
+
+		if cr.Package != nil && cr.Package.Path == "github.com/kubernetes/kubernetes" {
+			continue
+		}
+
+		// Lock to guard against data clobbering.
+		//m.mu.Lock()
+		//defer m.mu.Unlock()
+
+		if cr == nil || cr.Package == nil {
+			if cr == nil {
+				log.Error("Refusing to attempt to save nil crawl-result")
+			} else {
+				log.Errorf("Crawl crult contained error message: %s", cr.ErrMsg)
+			}
+			continue
+		}
+
+		pkgPath := cr.Package.Path
+
+		log.WithField("pkg", pkgPath).Debug("Starting index update process..")
+
+		var (
+			existing *domain.Package
+			err      error
+		)
+		if existing, err = m.db.Package(cr.Package.Path); err != nil && err != db.ErrKeyNotFound {
+			log.WithField("pkg", pkgPath).Error("Problem getting existing package for merge: %s", err)
+			continue
+		} else if existing != nil {
+			if existing.Data.Equals(cr.Package.Data) {
+				log.WithField("pkg", pkgPath).Debug("Nothing seems to have changed, discarding crawl")
+				continue
+			}
+			cr.Package = existing.Merge(cr.Package)
+		}
+
+		if cr.Package.Data == nil || cr.Package.Data.NumGoFiles == 0 {
+			if cr.Package.Data == nil {
+				log.WithField("pkg", pkgPath).Debug("Save skipped because cr.Package.Data==nil")
+			} else if cr.Package.Data.NumGoFiles == 0 {
+				log.WithField("pkg", pkgPath).Debug("Save skipped because cr.Package.Data.NumGoFiles==0")
+			}
+			continue
+		} else if err = m.db.PackageSave(cr.Package); err != nil {
+			log.WithField("pkg", pkgPath).Errorf("Saving package: %s")
+			continue
+		}
+		log.WithField("pkg", pkgPath).Debug("Index updated with crawl crult")
+		if err = m.db.RecordImportedBy(cr.Package, cr.ImportedResources); err != nil {
+			log.WithField("pkg", pkgPath).Errorf("Recording imported-by: %s", err)
+			continue
+		}
+		m.latest = append(m.latest, cr.Package)
+		if len(m.latest) > MaxNumLatest {
+			m.latest = m.latest[len(m.latest)-MaxNumLatest:]
+		}
+		m.logStats()
+	}
 }
 
 func (m *Master) Enqueue(ctx context.Context, req *domain.EnqueueRequest) (*domain.EnqueueResponse, error) {

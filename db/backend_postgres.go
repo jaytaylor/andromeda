@@ -88,12 +88,6 @@ func (be *PostgresBackend) Close() error {
 }
 
 func (be *PostgresBackend) initDB(pTx *pgTx) error {
-	tables := []string{
-		TableMetadata,
-		TablePackages,
-		TableToCrawl,
-		TablePendingReferences,
-	}
 	for _, table := range tables {
 		table = be.normalizeTable(table)
 		//	id bigserial PRIMARY KEY DEFAULT nextval('serial'),
