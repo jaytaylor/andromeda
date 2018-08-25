@@ -37,6 +37,14 @@ No additional packages or work necessary.
 
 [gorocksdb package installation instructions](https://github.com/tecbot/gorocksdb#install).
 
+3. Build andromeda with the RocksDB backend enabled
+
+```bash
+go get jaytaylor.com/andromeda/...
+cd "${GOPATH}/src/jaytaylor.com/andromeda
+go build -o andromeda -tags rocks
+```
+
 #### Postgresql
 
 1. Install postgresql
