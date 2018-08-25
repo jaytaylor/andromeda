@@ -203,6 +203,7 @@ func (m *Master) add(cr *domain.CrawlResult) error {
 	if err := m.db.CrawlResultAdd(cr, &db.QueueOptions{Priority: 5}); err != nil {
 		return err
 	}
+	log.Infof("Added crawl result for %s", cr.Package.Path)
 	return nil
 }
 

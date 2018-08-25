@@ -160,7 +160,9 @@
 {{ end }}
 Number of packages in index: {{ .DB.PackagesLen }}
 <br>
-Crawl queue length: {{ .DB.ToCrawlsLen }}
+Crawl queue: {{ .DB.ToCrawlsLen }}
+<br>
+Unprocessed crawl results: {{ .DB.CrawlResultsLen }}
 <br>
 Active workers: {{ index .Config.Master.Stats "remotes" }}
 <br>
