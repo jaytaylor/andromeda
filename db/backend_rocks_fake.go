@@ -2,6 +2,8 @@
 
 package db
 
+const rocksSupportAvailable = false
+
 type RocksConfig struct {
 	Dir string
 }

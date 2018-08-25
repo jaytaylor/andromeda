@@ -16,6 +16,8 @@ import (
 	rocks "github.com/tecbot/gorocksdb"
 )
 
+const rocksSupportAvailable = true
+
 type RocksConfig struct {
 	Dir            string
 	RocksOptions   *rocks.Options

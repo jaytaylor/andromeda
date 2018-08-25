@@ -129,7 +129,9 @@ func (c *ClientKV) packageSave(tx Transaction, pkgs []*domain.Package) error {
 			pkg.Data.Sync()
 			// Assuming single history entry, only.
 			// This data will be restored during get package().
-			pkg.History[0].Data = nil
+			if len(pkg.History) > 0 {
+				pkg.History[0].Data = nil
+			}
 		}
 
 		if v, err = proto.Marshal(pkg); err != nil {
@@ -223,7 +225,9 @@ func (c *ClientKV) pkg(tx Transaction, pkgPath string) (*domain.Package, error) 
 		return nil, err
 	}
 	// Populate the single historical record with latest data.
-	pkg.History[0].Data = pkg.Data
+	if len(pkg.History) > 0 {
+		pkg.History[0].Data = pkg.Data
+	}
 	return pkg, nil
 }
 

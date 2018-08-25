@@ -159,7 +159,7 @@ func (m *Master) Attach(stream domain.RemoteCrawlerService_AttachServer) error {
 			log.WithField("pkg", entry.PackagePath).Warnf("Problem receiving crawl res: %s (attach returning)", err)
 			return err
 		} else if remoteErr := res.Error(); remoteErr != nil {
-			log.WithField("pkg", entry.PackagePath).Errorf("Received error inside crawl res: %s", remoteErr)
+			log.WithField("pkg", entry.PackagePath).Warnf("Received error inside crawl res: %s", remoteErr)
 			if err2 := m.requeue(entry, fmt.Errorf("remote crawler: %s", remoteErr)); err2 != nil {
 				// TODO: Consider placing entries in an intermediate table while in-flight,
 				//       so they'll never get lost.
