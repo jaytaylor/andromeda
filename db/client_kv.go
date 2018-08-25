@@ -507,6 +507,86 @@ func (c *ClientKV) pendingReferenceAdd(tx Transaction, refPkg *domain.Package, p
 	return nil
 }
 
+func (c *ClientKV) CrawlResultAdd(cr *domain.CrawlResult, opts *QueueOptions) error {
+	if opts == nil {
+		opts = NewQueueOptions()
+	}
+
+	v, err := proto.Marshal(cr)
+	if err != nil {
+		return err
+	}
+
+	if err := c.q.Enqueue(TableCrawlResults, opts.Priority, v); err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+func (c *ClientKV) CrawlResultDequeue() (*domain.CrawlResult, error) {
+	value, err := c.q.Dequeue(TableCrawlResults)
+	if err != nil {
+		return nil, err
+	}
+	cr := &domain.CrawlResult{}
+	if err := proto.Unmarshal(value, cr); err != nil {
+		return nil, err
+	}
+	return cr, nil
+}
+
+func (c *ClientKV) EachCrawlResult(fn func(cr *domain.CrawlResult)) error {
+	var protoErr error
+	err := c.q.Scan(TableCrawlResults, nil, func(value []byte) {
+		if protoErr != nil {
+			return
+		}
+		cr := &domain.CrawlResult{}
+		if protoErr = proto.Unmarshal(value, cr); protoErr != nil {
+			return
+		}
+		fn(cr)
+	})
+	if err != nil {
+		return err
+	}
+	if protoErr != nil {
+		return protoErr
+	}
+	return nil
+}
+
+func (c *ClientKV) EachCrawlResultWithBreak(fn func(cr *domain.CrawlResult) bool) error {
+	var (
+		keepGoing = true
+		protoErr  error
+	)
+	err := c.q.Scan(TableCrawlResults, nil, func(value []byte) {
+		if !keepGoing {
+			return
+		}
+		cr := &domain.CrawlResult{}
+		if protoErr = proto.Unmarshal(value, cr); protoErr != nil {
+			keepGoing = false
+			return
+		}
+		keepGoing = fn(cr)
+	})
+	if err != nil {
+		return err
+	}
+	if protoErr != nil {
+		return protoErr
+	}
+	return nil
+}
+
+func (c *ClientKV) CrawlResultsLen() (int, error) {
+	return c.qLen(TableCrawlResults)
+}
+
 func (c *ClientKV) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *QueueOptions) (int, error) {
 	if opts == nil {
 		opts = NewQueueOptions()
@@ -607,7 +687,7 @@ func (c *ClientKV) EachToCrawlWithBreak(fn func(entry *domain.ToCrawlEntry) bool
 			return
 		}
 		entry := &domain.ToCrawlEntry{}
-		if protoErr := proto.Unmarshal(value, entry); protoErr != nil {
+		if protoErr = proto.Unmarshal(value, entry); protoErr != nil {
 			keepGoing = false
 			return
 		}
@@ -625,9 +705,14 @@ func (c *ClientKV) EachToCrawlWithBreak(fn func(entry *domain.ToCrawlEntry) bool
 const numPriorities = 10
 
 func (c *ClientKV) ToCrawlsLen() (int, error) {
+	return c.qLen(TableToCrawl)
+}
+
+// qLen returns the length of a priority queue.
+func (c *ClientKV) qLen(table string) (int, error) {
 	total := 0
 	for i := 0; i < numPriorities; i++ {
-		n, err := c.q.Len(TableToCrawl, i)
+		n, err := c.q.Len(table, i)
 		if err != nil {
 			return 0, err
 		}

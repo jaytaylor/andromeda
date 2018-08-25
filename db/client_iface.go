@@ -16,6 +16,7 @@ const (
 	TableMetadata          = "andromeda-metadata"
 	TablePackages          = "packages"
 	TablePendingReferences = "pending-references"
+	TableCrawlResults      = "crawl-result"
 	TableToCrawl           = "to-crawl"
 )
 
@@ -27,6 +28,14 @@ var (
 
 	DefaultQueuePriority     = 3
 	DefaultBoltQueueFilename = "queue.bolt"
+
+	tables = []string{
+		TableMetadata,
+		TablePackages,
+		TableToCrawl,
+		TablePendingReferences,
+		TableCrawlResults,
+	}
 
 	// pkgSepB is a byte array of the package component separator character.
 	// It's used for hierarchical searches and lookups.
@@ -48,6 +57,11 @@ type Client interface {
 	PathPrefixSearch(prefix string) (map[string]*domain.Package, error)                            // Search for packages with paths matching a specific prefix.
 	PackagesLen() (int, error)                                                                     // Number of packages in index.
 	RecordImportedBy(refPkg *domain.Package, resources map[string]*domain.PackageReferences) error // Save imported-by relationship updates.
+	CrawlResultAdd(cr *domain.CrawlResult, opts *QueueOptions) error                               // Append a crawl-result to the queue for later merging and save.
+	CrawlResultDequeue() (*domain.CrawlResult, error)                                              // Pop a crawl-result from the queue.
+	EachCrawlResult(func(cr *domain.CrawlResult)) error                                            // Iterates over all crawl-results and invokes callback on each.
+	EachCrawlResultWithBreak(func(cr *domain.CrawlResult) bool) error                              // Iterates over all crawl-results and invokes callback until callback returns false.
+	CrawlResultsLen() (int, error)                                                                 // Number of unprocessed crawl results.
 	ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *QueueOptions) (int, error)                    // Only adds entries which don't already exist.  Returns number of new items added.
 	ToCrawlRemove(pkgs []string) (int, error)                                                      // Scrubs items from queue.
 	ToCrawlDequeue() (*domain.ToCrawlEntry, error)                                                 // Pop an entry from the crawl queue.
@@ -64,8 +78,8 @@ type Client interface {
 	EachPendingReferencesWithBreak(fn func(pendingRefs *domain.PendingReferences) bool) error      // Iterate over each *domain.PrendingReferences object from the pending-references table until callback returns false.
 	PendingReferencesLen() (int, error)                                                            // Number of pending references keys.
 	RebuildTo(otherClient Client, kvFilters ...KeyValueFilterFunc) error                           // Rebuild a fresh copy of the DB at destination.  Return ErrNotImplmented if not supported.  Optionally pass in one or more KeyValueFilterFunc functions.
-	Backend() Backend                                                                              // Expose backend impl.
-	Queue() Queue                                                                                  // Expose queue impl.
+	Backend() Backend                                                                              // Expose underlying backend impl.
+	Queue() Queue                                                                                  // Expose underlying queue impl.
 }
 
 type KeyValueFilterFunc func(table []byte, key []byte, value []byte) (keyOut []byte, valueOut []byte)

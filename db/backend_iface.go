@@ -1,5 +1,13 @@
 package db
 
+import (
+	"errors"
+)
+
+var (
+	ErrBackendBuildNotSupported = errors.New("andromeda wasn't built with support for this backend enabled")
+)
+
 // Backend is a generic K/V persistence interface.
 type Backend interface {
 	Open() error

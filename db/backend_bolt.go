@@ -80,13 +80,7 @@ func (be *BoltBackend) Close() error {
 
 func (be *BoltBackend) initDB() error {
 	return be.db.Update(func(tx *bolt.Tx) error {
-		buckets := []string{
-			TableMetadata,
-			TablePackages,
-			TableToCrawl,
-			TablePendingReferences,
-		}
-		for _, name := range buckets {
+		for _, name := range tables {
 			if _, err := tx.CreateBucketIfNotExists([]byte(name)); err != nil {
 				return fmt.Errorf("initDB: creating bucket %q: %s", name, err)
 			}

@@ -18,6 +18,8 @@ import (
 )
 
 func newWebCmd() *cobra.Command {
+	var runSaveLoop bool
+
 	webCmd := &cobra.Command{
 		Use:   "web",
 		Short: "Andromeda web server",
@@ -51,6 +53,13 @@ func newWebCmd() *cobra.Command {
 					return err
 				}
 				log.Infof("Web service started on %s", ws.Addr())
+
+				saveLoopStopCh := make(chan struct{})
+				if runSaveLoop {
+					go master.SaveLoop(saveLoopStopCh)
+					log.Info("Save loop started")
+				}
+
 				if FeedsEnabled {
 					f := newFeed(dbClient)
 					if err := f.Start(); err != nil {
@@ -68,6 +77,11 @@ func newWebCmd() *cobra.Command {
 				select {
 				case s := <-sigCh:
 					log.WithField("sig", s).Info("Received signal, shutting down web service..")
+					if runSaveLoop {
+						log.Debug("Stopping save-loop..")
+						saveLoopStopCh <- struct{}{}
+					}
+					log.Debug("Stopping web-server..")
 					if err := ws.Stop(); err != nil {
 						return err
 					}
@@ -82,6 +96,7 @@ func newWebCmd() *cobra.Command {
 	webCmd.Flags().StringVarP(&WebAddr, "addr", "a", "", "Interface bind address:port spec")
 	webCmd.Flags().BoolVarP(&FeedsEnabled, "feeds", "", FeedsEnabled, "Enable feed data sources crawler for HN and reddit.com/r/golang")
 	webCmd.Flags().StringVarP(&feed.DefaultSchedule, "feeds-refresh-schedule", "", feed.DefaultSchedule, "Feeds refresh update cron schedule")
+	webCmd.Flags().BoolVarP(&runSaveLoop, "save-loop", "", runSaveLoop, "Spawn async save-loop goroutine")
 	webCmd.Flags().BoolVarP(&MemoryProfiling, "memory-profiling", "", MemoryProfiling, "Enable the memory profiler; creates a mem.pprof file while the application is shutting down")
 
 	return webCmd
