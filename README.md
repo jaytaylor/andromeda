@@ -88,7 +88,8 @@ apt-get install \
 - [X] Implement Postgres backend.
 - [ ] Implement pure-postgres native db.Client interface, then run the scientific process against hypothesis that we can do better than dumb K/V.
 - [ ] Implement CockroachDB backend.
-- [ ] Implement pending references updates as a batch job (currently it's been disabled due to low performance).
+- [ ] Implement pending references updates as a batch job (currently it's been disabled due to low performance).  Another way to solve it would be to only save pending references sometimes - just add an extra parameter on the internal save method.
+- [ ] To avoid dropping items across restarts, implement some kind of a WAL and resume functionality.
 
 
 To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`

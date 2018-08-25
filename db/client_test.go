@@ -105,6 +105,37 @@ func TestClientToCrawlOperations(t *testing.T) {
 						t.Errorf("%vExpected crawl queue len=%v but actual=%v", typ, expected, actual)
 					}
 				}
+
+				// Test CrawlResult functionality.
+				{
+					{
+						l, err := client.CrawlResultsLen()
+						if err != nil {
+							t.Fatal(err)
+						}
+						if expected, actual := 0, l; actual != expected {
+							t.Fatalf("Expected initial crawl results len=%v but actual=%v", expected, actual)
+						}
+					}
+
+					cr := &domain.CrawlResult{
+						Package: domain.NewPackage(newFakeRR("jaytaylor.com/andromeda", "jaytaylor.com/andromeda")),
+					}
+
+					if err := client.CrawlResultAdd(cr, &QueueOptions{Priority: 5}); err != nil {
+						t.Fatal(err)
+					}
+
+					{
+						l, err := client.CrawlResultsLen()
+						if err != nil {
+							t.Fatal(err)
+						}
+						if expected, actual := 1, l; actual != expected {
+							t.Fatalf("Expected initial crawl results len=%v but actual=%v", expected, actual)
+						}
+					}
+				}
 				return nil
 			}); err != nil {
 				t.Errorf("%v%s", typ, err)
@@ -429,10 +460,12 @@ func newConfigs() []Config {
 		filename = filepath.Join(os.TempDir(), testlib.CurrentRunningTest())
 		configs  = []Config{
 			NewBoltConfig(filename),
-			NewRocksConfig(filename),
 			NewPostgresConfig("dbname=andromeda_test host=/var/run/postgresql"),
 		}
 	)
+	if rocksSupportAvailable {
+		configs = append(configs, NewRocksConfig(filename))
+	}
 	return configs
 }
 
