@@ -90,6 +90,7 @@ apt-get install \
 - [ ] Implement CockroachDB backend.
 - [ ] Implement pending references updates as a batch job (currently it's been disabled due to low performance).  Another way to solve it would be to only save pending references sometimes - just add an extra parameter on the internal save method.
 - [ ] To avoid dropping items across restarts, implement some kind of a WAL and resume functionality.
+- [ ] Easy one: Add client ID and emit it to frontend messaging.
 
 
 To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`
