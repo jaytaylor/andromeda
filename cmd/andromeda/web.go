@@ -18,7 +18,7 @@ import (
 )
 
 func newWebCmd() *cobra.Command {
-	var runSaveLoop bool
+	var runUpdateProcessor bool
 
 	webCmd := &cobra.Command{
 		Use:   "web",
@@ -54,10 +54,10 @@ func newWebCmd() *cobra.Command {
 				}
 				log.Infof("Web service started on %s", ws.Addr())
 
-				saveLoopStopCh := make(chan struct{})
-				if runSaveLoop {
-					go master.SaveLoop(saveLoopStopCh)
-					log.Info("Save loop started")
+				updateProcessorStopCh := make(chan struct{})
+				if runUpdateProcessor {
+					go master.SaveLoop(updateProcessorStopCh)
+					log.Info("Async updates processor started")
 				}
 
 				if FeedsEnabled {
@@ -77,9 +77,9 @@ func newWebCmd() *cobra.Command {
 				select {
 				case s := <-sigCh:
 					log.WithField("sig", s).Info("Received signal, shutting down web service..")
-					if runSaveLoop {
-						log.Debug("Stopping save-loop..")
-						saveLoopStopCh <- struct{}{}
+					if runUpdateProcessor {
+						log.Debug("Stopping updates processor..")
+						updateProcessorStopCh <- struct{}{}
 					}
 					log.Debug("Stopping web-server..")
 					if err := ws.Stop(); err != nil {
@@ -96,7 +96,7 @@ func newWebCmd() *cobra.Command {
 	webCmd.Flags().StringVarP(&WebAddr, "addr", "a", "", "Interface bind address:port spec")
 	webCmd.Flags().BoolVarP(&FeedsEnabled, "feeds", "", FeedsEnabled, "Enable feed data sources crawler for HN and reddit.com/r/golang")
 	webCmd.Flags().StringVarP(&feed.DefaultSchedule, "feeds-refresh-schedule", "", feed.DefaultSchedule, "Feeds refresh update cron schedule")
-	webCmd.Flags().BoolVarP(&runSaveLoop, "save-loop", "", runSaveLoop, "Spawn async save-loop goroutine")
+	webCmd.Flags().BoolVarP(&runUpdateProcessor, "update-processor", "", runUpdateProcessor, "Run update-processor routine as a background task; makes the most sense to turn this on when not using postgres as the backing data store")
 	webCmd.Flags().BoolVarP(&MemoryProfiling, "memory-profiling", "", MemoryProfiling, "Enable the memory profiler; creates a mem.pprof file while the application is shutting down")
 
 	return webCmd

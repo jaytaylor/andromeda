@@ -54,6 +54,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd.AddCommand(
 		newBootstrapCmd(),
 		newWebCmd(),
+		newUpdatesProcessorCmd(),
 		newLocalCmd(),
 		newRemoteCmd(),
 		newRemoteCrawlerCmd(),
