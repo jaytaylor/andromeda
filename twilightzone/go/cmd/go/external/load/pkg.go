@@ -183,10 +183,18 @@ func (p *Package) Vendored(imports []string) []string {
 	if len(imports) > 0 && len(p.Imports) > 0 && &imports[0] == &p.Imports[0] {
 		panic("internal error: p.vendored(p.Imports) called")
 	}
-	seen := make(map[string]bool)
-	var all []string
+	var (
+		seen = make(map[string]bool)
+		all  []string
+		err  error
+	)
 	for _, path := range imports {
-		path = VendoredImportPath(p, path)
+		if path, err = VendoredImportPath(p, path); err != nil {
+			p.Error = &PackageError{
+				Err: err.Error(),
+			}
+			return nil
+		}
 		if !seen[path] {
 			seen[path] = true
 			all = append(all, path)
@@ -426,7 +434,16 @@ func LoadImport(path, srcDir string, parent *Package, stk *ImportStack, importPo
 		// find out the key to use in packageCache without the
 		// overhead of repeated calls to buildContext.Import.
 		// The code is also needed in a few other places anyway.
-		path = VendoredImportPath(parent, path)
+		var err error
+		if path, err = VendoredImportPath(parent, path); err != nil {
+			return &Package{
+				PackagePublic: PackagePublic{
+					Error: &PackageError{
+						Err: err.Error(),
+					},
+				},
+			}
+		}
 		importPath = path
 	}
 
@@ -546,16 +563,16 @@ func isDir(path string) bool {
 // If parent is x/y/z, then path might expand to x/y/z/vendor/path, x/y/vendor/path,
 // x/vendor/path, vendor/path, or else stay path if none of those exist.
 // VendoredImportPath returns the expanded path or, if no expansion is found, the original.
-func VendoredImportPath(parent *Package, path string) (found string) {
+func VendoredImportPath(parent *Package, path string) (found string, err error) {
 	if DebugDeprecatedImportcfg.enabled {
 		if d, i := DebugDeprecatedImportcfg.lookup(parent, path); d != "" {
-			return i
+			return i, nil
 		}
-		return path
+		return path, nil
 	}
 
 	if parent == nil || parent.Root == "" {
-		return path
+		return path, nil
 	}
 
 	dir := filepath.Clean(parent.Dir)
@@ -567,7 +584,7 @@ func VendoredImportPath(parent *Package, path string) (found string) {
 	}
 
 	if !str.HasFilePathPrefix(dir, root) || len(dir) <= len(root) || dir[len(root)] != filepath.Separator || parent.ImportPath != "command-line-arguments" && !parent.Internal.Local && filepath.Join(root, parent.ImportPath) != dir {
-		base.Fatalf("unexpected directory layout:\n"+
+		return "", fmt.Errorf("unexpected directory layout:\n"+
 			"	import path: %s\n"+
 			"	root: %s\n"+
 			"	dir: %s\n"+
@@ -616,12 +633,12 @@ func VendoredImportPath(parent *Package, path string) (found string) {
 				// and found c:\gopath\src\vendor\path.
 				// We chopped \foo\bar (length 8) but the import path is "foo/bar" (length 7).
 				// Use "vendor/path" without any prefix.
-				return vpath
+				return vpath, nil
 			}
-			return importPath[:len(importPath)-chopped] + "/" + vpath
+			return importPath[:len(importPath)-chopped] + "/" + vpath, nil
 		}
 	}
-	return path
+	return path, nil
 }
 
 // hasGoFiles reports whether dir contains any files with names ending in .go.
@@ -980,7 +997,10 @@ func (p *Package) load(stk *ImportStack, bp *build.Package, err error) {
 			shlibnamefile := p.Target[:len(p.Target)-2] + ".shlibname"
 			shlib, err := ioutil.ReadFile(shlibnamefile)
 			if err != nil && !os.IsNotExist(err) {
-				base.Fatalf("reading shlibname: %v", err)
+				p.Error = &PackageError{
+					Err: fmt.Sprintf("reading shlibname: %v", err),
+				}
+				return
 			}
 			if err == nil {
 				libname := strings.TrimSpace(string(shlib))
