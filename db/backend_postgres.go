@@ -91,18 +91,18 @@ func (be *PostgresBackend) initDB(pTx *pgTx) error {
 	for _, table := range tables {
 		table = be.normalizeTable(table)
 		//	id bigserial PRIMARY KEY DEFAULT nextval('serial'),
-		_, err := pTx.tx.Exec(fmt.Sprintf(`
-CREATE TABLE IF NOT EXISTS %s (
-	key bytea NOT NULL,
-	value bytea NOT NULL
+		_, err := pTx.tx.Exec(fmt.Sprintf(
+			`CREATE TABLE IF NOT EXISTS %v (
+	key BYTEA NOT NULL,
+	value BYTEA NOT NULL
 )
 `, pq.QuoteIdentifier(table)))
 		if err != nil {
 			return fmt.Errorf("creating table %q: %s", table, err)
 		}
 		_, err = pTx.tx.Exec(fmt.Sprintf(
-			`CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s (%s)`,
-			pq.QuoteIdentifier(fmt.Sprintf("unique_%s_key_index", table)),
+			`CREATE UNIQUE INDEX IF NOT EXISTS %v ON %v (%v)`,
+			pq.QuoteIdentifier(fmt.Sprintf("unique_%v_key_index", table)),
 			pq.QuoteIdentifier(table),
 			pq.QuoteIdentifier("key"),
 		))
@@ -138,7 +138,7 @@ func (be *PostgresBackend) get(pTx *pgTx, table string, key []byte) ([]byte, err
 
 	var (
 		v   []byte
-		row = pTx.tx.QueryRow(fmt.Sprintf(`SELECT value FROM %s WHERE key=$1 LIMIT 1`, pq.QuoteIdentifier(table)), key)
+		row = pTx.tx.QueryRow(fmt.Sprintf(`SELECT value FROM %v WHERE key=$1 LIMIT 1`, pq.QuoteIdentifier(table)), key)
 	)
 	if err := row.Scan(&v); err != nil {
 		if err == sql.ErrNoRows {
@@ -164,8 +164,7 @@ func (be *PostgresBackend) put(tx Transaction, table string, key []byte, value [
 	pTx := tx.(*pgTx)
 	_, err := pTx.tx.Exec(
 		fmt.Sprintf(
-			`
-INSERT INTO %s (key, value) VALUES ($1::bytea, $2::bytea)
+			`INSERT INTO %v (key, value) VALUES ($1::BYTEA, $2::BYTEA)
     ON CONFLICT (key)
     DO UPDATE SET
 	value=EXCLUDED.value
@@ -191,7 +190,7 @@ func (be *PostgresBackend) delete(pTx *pgTx, table string, keys ...[]byte) error
 	table = be.normalizeTable(table)
 
 	for _, key := range keys {
-		_, err := pTx.tx.Exec(fmt.Sprintf(`DELETE FROM %s WHERE key=$1`, pq.QuoteIdentifier(table)), key)
+		_, err := pTx.tx.Exec(fmt.Sprintf(`DELETE FROM %v WHERE key=$1`, pq.QuoteIdentifier(table)), key)
 		if err != nil {
 			return fmt.Errorf("deleting key=%q from %v: %s", string(key), table, err)
 		}
@@ -208,7 +207,7 @@ func (be *PostgresBackend) Drop(tables ...string) error {
 func (be *PostgresBackend) drop(pTx *pgTx, tables ...string) error {
 	for _, table := range tables {
 		table = be.normalizeTable(table)
-		_, err := pTx.tx.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS %s`, pq.QuoteIdentifier(table)))
+		_, err := pTx.tx.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS %v`, pq.QuoteIdentifier(table)))
 		if err != nil {
 			return fmt.Errorf("dropping table=%v: %s", table, err)
 		}
@@ -221,7 +220,7 @@ func (be *PostgresBackend) Len(table string) (int, error) {
 
 	var n int64
 	if err := be.withTx(false, func(pTx *pgTx) error {
-		row := pTx.tx.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM %s`, pq.QuoteIdentifier(table)))
+		row := pTx.tx.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM %v`, pq.QuoteIdentifier(table)))
 		if err := row.Scan(&n); err != nil {
 			return fmt.Errorf("getting length of table=%v: %s", table, err)
 		}
@@ -433,12 +432,12 @@ func (c *pgCursor) setQuery() {
 	var err error
 	if len(c.prefix) > 0 {
 		c.rows, err = c.pTx.tx.Query(
-			fmt.Sprintf(`SELECT "key", "value" FROM %s WHERE "key" LIKE $1 ORDER BY "key" ASC`, pq.QuoteIdentifier(c.table)),
+			fmt.Sprintf(`SELECT "key", "value" FROM %v WHERE "key" LIKE $1 ORDER BY "key" ASC`, pq.QuoteIdentifier(c.table)),
 			[]byte(fmt.Sprintf("%v%%", string(c.prefix))),
 		)
 	} else {
 		c.rows, err = c.pTx.tx.Query(
-			fmt.Sprintf(`SELECT "key", "value" FROM %s ORDER BY "key" ASC`, pq.QuoteIdentifier(c.table)),
+			fmt.Sprintf(`SELECT "key", "value" FROM %v ORDER BY "key" ASC`, pq.QuoteIdentifier(c.table)),
 		)
 	}
 	if err != nil {

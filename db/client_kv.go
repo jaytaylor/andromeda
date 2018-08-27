@@ -706,8 +706,6 @@ func (c *ClientKV) EachToCrawlWithBreak(fn func(entry *domain.ToCrawlEntry) bool
 	return nil
 }
 
-const numPriorities = 10
-
 func (c *ClientKV) ToCrawlsLen() (int, error) {
 	return c.qLen(TableToCrawl)
 }
