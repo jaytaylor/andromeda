@@ -91,6 +91,24 @@ type Client interface {
 
 type KeyValueFilterFunc func(table []byte, key []byte, value []byte) (keyOut []byte, valueOut []byte)
 
+// skipKVFilterFunc is an internal reference used by SkipKVFilter.
+func skipKVFilterFunc(table []byte, key []byte, value []byte) (keyOut []byte, valueOut []byte) {
+	panic("software author error: should never be invoked")
+	return key, value
+}
+
+// SkipKVFilter is a signal filter sentinel value to skip Key-Value tables.
+var SkipKVFilter = skipKVFilterFunc
+
+// skipQFilterFunc is an internal reference used by SkipQFilter.
+func skipQFilterFunc(table []byte, key []byte, value []byte) (keyOut []byte, valueOut []byte) {
+	panic("software author error: should never be invoked")
+	return key, value
+}
+
+// SkipQFilter is a signal filter sentinel value to skip Queue tables.
+var SkipQFilter = skipQFilterFunc
+
 type Config interface {
 	Type() Type // Configuration type specifier.
 }
@@ -103,7 +121,7 @@ func NewConfig(driver string, dbFile string) Config {
 	case "rocks", "rocksdb":
 		return NewRocksConfig(dbFile)
 
-	case "postgres", "postgresl":
+	case "postgres", "postgresql", "pg":
 		return NewPostgresConfig(dbFile)
 
 	default:
@@ -140,12 +158,7 @@ func NewClient(config Config) Client {
 		return newClient(be, q)
 
 	case Postgres:
-		// MORE TEMPORARY UGLINESS TO MAKE IT WORK FOR NOW:
-		db, err := bolt.Open(DefaultBoltQueueFilename, 0600, NewBoltConfig("").BoltOptions)
-		if err != nil {
-			panic(fmt.Errorf("Creating bolt queue: %s", err))
-		}
-		q := NewBoltQueue(db)
+		q := NewPostgresQueue(config.(*PostgresConfig))
 		be := NewPostgresBackend(config.(*PostgresConfig))
 		return newClient(be, q)
 
@@ -190,4 +203,34 @@ func WithClient(config Config, fn func(dbClient Client) error) (err error) {
 	}
 
 	return
+}
+
+// kvTables returns the names of the "regular" key-value tables.
+func kvTables() []string {
+	kv := []string{}
+	for _, table := range tables {
+		regular := true
+		for _, irregularTable := range qTables {
+			if table == irregularTable {
+				regular = false
+				break
+			}
+		}
+		if regular {
+			kv = append(kv, table)
+		}
+	}
+	return kv
+}
+
+// KVTables publicly exported version of kvTables.
+func KVTables() []string { return kvTables() }
+
+// QTables returns slice of queue table names.
+func QTables() []string {
+	tables := []string{}
+	for _, table := range qTables {
+		tables = append(tables, table)
+	}
+	return tables
 }

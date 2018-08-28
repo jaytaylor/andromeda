@@ -48,7 +48,7 @@ func newUpdatesProcessorCmd() *cobra.Command {
 				select {
 				case s := <-sigCh:
 					log.WithField("sig", s).Info("Received signal, shutting down updates processor..")
-					log.Debug("Stopping updatse processor..")
+					log.Debug("Stopping updates processor..")
 					processorStopCh <- struct{}{}
 				}
 				return nil
