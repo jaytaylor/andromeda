@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cenkalti/backoff"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -39,6 +40,7 @@ func (r *Remote) Run(stopCh chan struct{}) {
 	var (
 		res    *domain.CrawlResult
 		crawls int
+		b      = newBackoff()
 	)
 
 	for {
@@ -60,6 +62,8 @@ func (r *Remote) Run(stopCh chan struct{}) {
 			if err != nil {
 				return fmt.Errorf("attaching %v: %s", r.Addr, err)
 			}
+
+			b.Reset()
 
 			if res != nil && res.Package != nil {
 				log.WithField("pkg", res.Package.Path).Debugf("Sending previously unsent result")
@@ -149,11 +153,12 @@ func (r *Remote) Run(stopCh chan struct{}) {
 			}
 		}
 		// TODO: Use backoff instead of sleep.
-		log.Debug("Sleeping for 10s..")
+		duration := b.NextBackOff()
+		log.Debugf("Backoff: sleeping for %s..", duration)
 		select {
 		case <-stopCh:
 			return
-		case <-time.After(SleepDuration):
+		case <-time.After(duration):
 		}
 	}
 }
@@ -227,4 +232,14 @@ func (r *Remote) conn() (*grpc.ClientConn, error) {
 		return nil, fmt.Errorf("Dialing %v: %s", r.Addr, err)
 	}
 	return conn, nil
+}
+
+func newBackoff() backoff.BackOff {
+	b := backoff.NewExponentialBackOff()
+	b.InitialInterval = 100 * time.Millisecond
+	b.MaxElapsedTime = time.Duration(0)
+	b.MaxInterval = 10 * time.Second
+	b.Multiplier = 1.5
+	b.RandomizationFactor = 0.5
+	return b
 }
