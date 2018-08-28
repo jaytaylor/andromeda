@@ -590,7 +590,7 @@ func (c *ClientKV) EachCrawlResultWithBreak(fn func(cr *domain.CrawlResult) bool
 }
 
 func (c *ClientKV) CrawlResultsLen() (int, error) {
-	return c.qLen(TableCrawlResults)
+	return c.q.Len(TableCrawlResults, 0)
 }
 
 func (c *ClientKV) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *QueueOptions) (int, error) {
@@ -709,20 +709,7 @@ func (c *ClientKV) EachToCrawlWithBreak(fn func(entry *domain.ToCrawlEntry) bool
 }
 
 func (c *ClientKV) ToCrawlsLen() (int, error) {
-	return c.qLen(TableToCrawl)
-}
-
-// qLen returns the length of a priority queue.
-func (c *ClientKV) qLen(table string) (int, error) {
-	total := 0
-	for i := 0; i < numPriorities; i++ {
-		n, err := c.q.Len(table, i)
-		if err != nil {
-			return 0, err
-		}
-		total += n
-	}
-	return total, nil
+	return c.q.Len(TableToCrawl, 0)
 }
 
 // TODO: Add Get (slow, n due to iteration) and Update methods for ToCrawl.
