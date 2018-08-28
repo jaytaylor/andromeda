@@ -6,7 +6,7 @@
 # Add this to root crontab, substituting "myuser" with your real username.
 # Adjust paths as necessary or desired.
 #
-#     * * * * * /home/myuser/go/src/jaytaylor.com/andromeda/scripts/check-mem.sh 2>&1 1>>/var/log/andromeda-check-mem.log
+#     * * * * * /home/myuser/go/src/jaytaylor.com/andromeda/scripts/check-mem.sh 1>>/var/log/andromeda-check-mem.log 2>&1
 #
 
 if [ "${UID:-}" != '0' ] ; then
