@@ -28,7 +28,7 @@ func newWebCmd() *cobra.Command {
 			initLogging()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			if MemoryProfiling {
+			if MemoryProfiler {
 				log.Debug("Starting memory profiler")
 				p := profile.Start(profile.MemProfile, profile.ProfilePath("."), profile.NoShutdownHook)
 				defer func() {
@@ -97,7 +97,7 @@ func newWebCmd() *cobra.Command {
 	webCmd.Flags().BoolVarP(&FeedsEnabled, "feeds", "", FeedsEnabled, "Enable feed data sources crawler for HN and reddit.com/r/golang")
 	webCmd.Flags().StringVarP(&feed.DefaultSchedule, "feeds-refresh-schedule", "", feed.DefaultSchedule, "Feeds refresh update cron schedule")
 	webCmd.Flags().BoolVarP(&runUpdateProcessor, "update-processor", "", runUpdateProcessor, "Run update-processor routine as a background task; makes the most sense to turn this on when not using postgres as the backing data store")
-	webCmd.Flags().BoolVarP(&MemoryProfiling, "memory-profiling", "", MemoryProfiling, "Enable the memory profiler; creates a mem.pprof file while the application is shutting down")
+	webCmd.Flags().BoolVarP(&MemoryProfiler, "memory-profiler", "", MemoryProfiler, "Enable the memory profiler; creates a mem.pprof file while the application is shutting down")
 
 	return webCmd
 }
