@@ -89,11 +89,11 @@ func (c *ClientKV) PackageSave(pkgs ...*domain.Package) error {
 	return c.be.Update(func(tx Transaction) error {
 		// TODO: Detect when package imports have changed, find the deleted ones, and
 		//       go update those packages' imported-by to mark the import as inactive.
-		return c.packageSave(tx, pkgs)
+		return c.packageSave(tx, pkgs, true)
 	})
 }
 
-func (c *ClientKV) packageSave(tx Transaction, pkgs []*domain.Package) error {
+func (c *ClientKV) packageSave(tx Transaction, pkgs []*domain.Package, mergePending bool) error {
 	for _, pkg := range pkgs {
 		log.WithField("pkg", pkg.Path).Debug("Save starting")
 		var (
@@ -106,9 +106,11 @@ func (c *ClientKV) packageSave(tx Transaction, pkgs []*domain.Package) error {
 			return err
 		}*/
 
-		/*if err = c.mergePendingReferences(tx, pkg); err != nil {
-			return err
-		}*/
+		if mergePending {
+			if err = c.mergePendingReferences(tx, pkg); err != nil {
+				return err
+			}
+		}
 
 		// TODO: Figure out how to handle IDs.  Put burden on backends.
 		/*if v == nil || pkg.ID == 0 {
@@ -447,7 +449,7 @@ func (c *ClientKV) RecordImportedBy(refPkg *domain.Package, resources map[string
 			pkgsSlice = append(pkgsSlice, pkg)
 		}
 		log.WithField("referenced-pkg", refPkg.Path).Debugf("Saving %v updated packages", len(pkgsSlice))
-		return c.packageSave(tx, pkgsSlice)
+		return c.packageSave(tx, pkgsSlice, false)
 	}); err != nil {
 		return err
 	}
