@@ -36,7 +36,7 @@ var (
 
 	FeedsEnabled = true
 
-	MemoryProfiling bool
+	MemoryProfiler bool
 )
 
 func newRootCmd() *cobra.Command {

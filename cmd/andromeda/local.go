@@ -181,7 +181,7 @@ func newGetCmd() *cobra.Command {
 			initLogging()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			if MemoryProfiling {
+			if MemoryProfiler {
 				log.Debug("Starting memory profiler")
 				p := profile.Start(profile.MemProfile, profile.ProfilePath("."), profile.NoShutdownHook)
 				defer func() {
@@ -240,7 +240,7 @@ func newGetCmd() *cobra.Command {
 	}
 
 	// TODO: use a withMemoryProfiled(func() { ... }) or something to keep this DRY.
-	getCmd.Flags().BoolVarP(&MemoryProfiling, "memory-profiling", "", MemoryProfiling, "Enable the memory profiler; creates a mem.pprof file while the application is shutting down")
+	getCmd.Flags().BoolVarP(&MemoryProfiler, "memory-profiler", "", MemoryProfiler, "Enable the memory profiler; creates a mem.pprof file while the application is shutting down")
 
 	return getCmd
 }
