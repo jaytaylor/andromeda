@@ -88,9 +88,8 @@ func (be *PostgresBackend) Close() error {
 }
 
 func (be *PostgresBackend) initDB(pTx *pgTx) error {
-	for _, table := range tables {
+	for _, table := range kvTables() {
 		table = be.normalizeTable(table)
-		//	id bigserial PRIMARY KEY DEFAULT nextval('serial'),
 		_, err := pTx.tx.Exec(fmt.Sprintf(
 			`CREATE TABLE IF NOT EXISTS %v (
 	key BYTEA NOT NULL,

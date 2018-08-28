@@ -3,6 +3,8 @@ package db
 import (
 	"bytes"
 	"fmt"
+	"reflect"
+	"runtime"
 	"sync"
 	"time"
 
@@ -781,27 +783,49 @@ func (c *ClientKV) Search(q string) (*domain.Package, error) {
 	return nil, fmt.Errorf("not yet implemented")
 }
 
-const rebuildBatchSize = 25000
+// RebuildBatchSize is the number of entries to include per transaction during
+// rebuild.
+var RebuildBatchSize = 25000
 
 func (c *ClientKV) RebuildTo(otherClient Client, kvFilters ...KeyValueFilterFunc) error {
-	if err := c.copyBackend(otherClient, kvFilters...); err != nil {
-		return err
+	var (
+		skipKV bool
+		skipQ  bool
+	)
+	nextFilters := []KeyValueFilterFunc{}
+	for _, f := range kvFilters {
+		switch funcName(f) {
+		case "jaytaylor.com/andromeda/db.skipKVFilterFunc":
+			log.Debug("SkipKVFilter activated")
+			skipKV = true
+		case "jaytaylor.com/andromeda/db.skipQFilterFunc":
+			log.Debug("SkipQFilter activated")
+			skipQ = true
+		default:
+			log.Debugf("Func %q not a sentinel filter", funcName(f))
+			nextFilters = append(nextFilters, f)
+		}
 	}
-	if err := c.copyQueue(otherClient); err != nil {
-		return err
+	if !skipKV {
+		if err := c.copyBackend(otherClient, nextFilters...); err != nil {
+			return err
+		}
+	}
+	if !skipQ {
+		if err := c.copyQueue(otherClient); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
+func funcName(i interface{}) string {
+	return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
+}
+
 func (c *ClientKV) copyBackend(otherClient Client, kvFilters ...KeyValueFilterFunc) error {
 	return c.be.View(func(tx Transaction) error {
-		tables := []string{
-			TableMetadata,
-			TablePackages,
-			TablePendingReferences,
-		}
-
-		for _, table := range tables {
+		for _, table := range kvTables() {
 			otherTx, err := otherClient.Backend().Begin(true)
 			if err != nil {
 				return err
@@ -822,7 +846,7 @@ func (c *ClientKV) copyBackend(otherClient Client, kvFilters ...KeyValueFilterFu
 					k, v = kvF([]byte(table), k, v)
 				}
 				if len(k) > 0 && len(v) > 0 {
-					if n >= rebuildBatchSize {
+					if n >= RebuildBatchSize {
 						log.WithField("table", table).WithField("items-in-tx", n).WithField("total-items-added", t).Debug("Committing batch")
 						if err = otherTx.Commit(); err != nil {
 							log.Error(err.Error())
@@ -873,20 +897,28 @@ func (c *ClientKV) copyBackend(otherClient Client, kvFilters ...KeyValueFilterFu
 	})
 }
 
+// copyQueue note: this implementation / API does not support preserving
+// priority.  New items will be inserted in priority order with
+// priority=DefaultQueuePriority.
 func (c *ClientKV) copyQueue(otherClient Client) error {
 	var err error
-	for p := 0; p < 10; p++ {
-		if scanErr := c.q.Scan(TableToCrawl, &QueueOptions{Priority: p}, func(value []byte) {
+	for _, table := range qTables {
+		var l int
+		if l, err = c.q.Len(table, 0); err != nil {
+			return err
+		}
+		log.WithField("table", table).WithField("len", l).Debug("Enqueueing values")
+		if scanErr := c.q.Scan(table, nil, func(value []byte) {
 			if err != nil {
 				return
 			}
-			err = otherClient.Queue().Enqueue(TableToCrawl, p, value)
+			err = otherClient.Queue().Enqueue(table, DefaultQueuePriority, value)
 		}); scanErr != nil {
 			return scanErr
 		}
-	}
-	if err != nil {
-		return err
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

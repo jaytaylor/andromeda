@@ -99,6 +99,11 @@ func newRebuildDBCmd() *cobra.Command {
 		filterNames = append(filterNames, filterName)
 	}
 
+	var (
+		skipKV bool
+		skipQ  bool
+	)
+
 	rebuildDBCmd := &cobra.Command{
 		Use:     "rebuild-db",
 		Aliases: []string{"rebuild"},
@@ -110,7 +115,7 @@ func newRebuildDBCmd() *cobra.Command {
 				log.Fatal("rebuild-db-driver value is required")
 			}
 			if len(RebuildDBFile) == 0 {
-				log.Fatal("rebuild-db-file value is required")
+				log.Fatal("rebuild-db value is required")
 			}
 		},
 		Run: func(cmd *cobra.Command, args []string) {
@@ -127,6 +132,13 @@ func newRebuildDBCmd() *cobra.Command {
 					}
 				}
 
+				if skipKV {
+					applyFilters = append(applyFilters, db.SkipKVFilter)
+				}
+				if skipQ {
+					applyFilters = append(applyFilters, db.SkipQFilter)
+				}
+
 				return db.WithClient(newCfg, func(newClient db.Client) error {
 					return dbClient.RebuildTo(newClient, applyFilters...)
 				})
@@ -136,9 +148,12 @@ func newRebuildDBCmd() *cobra.Command {
 		},
 	}
 
-	rebuildDBCmd.Flags().StringVarP(&RebuildDBDriver, "rebuild-db-driver", "", RebuildDBDriver, "Target destination DB driver")
-	rebuildDBCmd.Flags().StringVarP(&RebuildDBFile, "rebuild-db-file", "", RebuildDBFile, "Target destination filename or db connection string")
-	rebuildDBCmd.Flags().StringSliceVarP(&RebuildDBFilters, "rebuild-db-filters", "", RebuildDBFilters, fmt.Sprintf("Comma-delimited list of filter function(s) to apply; available filters: %s", strings.Join(filterNames, ", ")))
+	rebuildDBCmd.Flags().StringVarP(&RebuildDBDriver, "rebuild-driver", "", RebuildDBDriver, "Target destination DB driver")
+	rebuildDBCmd.Flags().StringVarP(&RebuildDBFile, "rebuild-db", "", RebuildDBFile, "Target destination filename or db connection string")
+	rebuildDBCmd.Flags().StringSliceVarP(&RebuildDBFilters, "rebuild-filters", "", RebuildDBFilters, fmt.Sprintf("Comma-delimited list of filter function(s) to apply; available filters: %s", strings.Join(filterNames, ", ")))
+	rebuildDBCmd.Flags().IntVarP(&db.RebuildBatchSize, "batch-size", "", db.RebuildBatchSize, "Transaction batch size")
+	rebuildDBCmd.Flags().BoolVar(&skipKV, "skip-kv", skipKV, "Skip Key/Value stores")
+	rebuildDBCmd.Flags().BoolVar(&skipQ, "skip-q", skipQ, "Skip Queue stores")
 
 	return rebuildDBCmd
 }

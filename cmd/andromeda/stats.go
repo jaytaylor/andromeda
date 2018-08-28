@@ -44,20 +44,20 @@ func newDBStatsCmd() *cobra.Command {
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient db.Client) error {
-				pl, err := dbClient.PackagesLen()
-				if err != nil {
-					return fmt.Errorf("getting packages count: %s", err)
+				counts := map[string]int{}
+				for _, table := range db.KVTables() {
+					l, err := dbClient.Backend().Len(table)
+					if err != nil {
+						return fmt.Errorf("getting len(%v): %s", table, err)
+					}
+					counts[table] = l
 				}
-				log.WithField("packages", pl).Debug("count")
-
-				tcl, err := dbClient.ToCrawlsLen()
-				if err != nil {
-					return fmt.Errorf("getting to-crawls count: %s", err)
-				}
-				log.WithField("to-crawls", tcl).Debug("count")
-				counts := map[string]int{
-					"packages":  pl,
-					"to-crawls": tcl,
+				for _, table := range db.QTables() {
+					l, err := dbClient.Queue().Len(table, 0)
+					if err != nil {
+						return fmt.Errorf("getting len(%v): %s", table, err)
+					}
+					counts[table] = l
 				}
 				return emitJSON(counts)
 			}); err != nil {

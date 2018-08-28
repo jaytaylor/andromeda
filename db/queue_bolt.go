@@ -71,13 +71,26 @@ func (bq *BoltQueue) Dequeue(table string) ([]byte, error) {
 
 func (bq *BoltQueue) Scan(name string, opts *QueueOptions, fn func(value []byte)) error {
 	return bq.q.Scan(name, func(m *boltqueue.Message) {
-		if opts != nil && m.Priority() != opts.Priority {
-			return
+		if opts != nil {
+			if p := m.Priority(); p > 0 && p != opts.Priority {
+				return
+			}
 		}
 		fn(m.Value)
 	})
 }
 
 func (bq *BoltQueue) Len(name string, priority int) (int, error) {
-	return bq.q.Len(name, priority)
+	if priority <= 0 {
+		return bq.q.Len(name, priority)
+	}
+	sum := 0
+	for i := 1; i <= numPriorities; i++ {
+		n, err := bq.q.Len(name, i)
+		if err != nil {
+			return 0, err
+		}
+		sum += n
+	}
+	return sum, nil
 }
