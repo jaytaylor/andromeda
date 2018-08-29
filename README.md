@@ -63,35 +63,58 @@ apt-get install \
 
 ### TODOs
 
+#### Fancy Data
+
 - [ ] Add attribute "CanGoGet" to indicate if package is buildable via `go get`.  Then provide a search filter to only include such packages.
-- [ ] Add git version check to crawler (because it's easy to forget to upgrade git!)
-- [ ] Add a monitor and require that the disk where the DB is stored always has at least X GB free, where X is based on a multiple of the Bolt database file.  This is to ensure safety that things don't get into a state where data cannot be written to the DB or even worse it gets corrupt.  Remember that DB size may grow non-linearly (need to double check this, but this is what I recall observing).
-- [ ] Fix `-s` strangeness, should only specify the base path and auto-append "/src".
-- [ ] Handle relative imports (x2).
-- [ ] Add analysis of RepoRoot sub-package paths and import names.
-- [ ] Detect and persist whether each import is vendored or not in the reverse-imports mapping data.
-- [ ] Add errors counter to ToCrawlEntry and throw away when error count exceeds N.
-- [ ] Move failed to-crawls to different table instead of dropping them outright.
-- [ ] Add queue monitor, when it is empty add N least recently updated packages to crawl.
-- [ ] Protect against losing queue items from process restarts / interruptions; Add in-flight TCE's to an intermediate table, and at startup move items from said table back into the to-crawl queue.
-- [ ] Remote-crawler: Store crawl result on disk when sending failed, then when remote starts, check for failed transmit and send it.  Possible complexity due to server not expecting _that_ crawl result.  May need to expose via different gRPC API endpoint than `Attach`.
-- [ ] Add counts for total number of packages tracked, globally (currently repos are tracked and called "packages" everywhere, ugh).
-- [ ] Add process-level concurrency support for remote crawlers (to increase throughput without resorting to trying to manage multiple crawler processes per host).
-- [ ] Add git commit hash to builds, and has gRPC client send it with requests.
-- [ ] 1/2 Distinguish between pkg and repo by refactoring what is currently called a "package" in andromeda into a "repo".
-- [ ] 2/2 Add alias tracking table
-- [ ] Consider refactoring "Package" to "Repo", since a go repo contains an arbitrary number of packages (I known, "yuck", but..).
 - [ ] Add `deprecated` attribute and set based on detection of phrases like "is deprecated" and "superceded by" in README.
 - [ ] Attempt topic extraction from READMEs.
-- [ ] Add usage popularity comparison between 2 pkgs
+- [ ] Add usage popularity comparison between 2 pkgs.
 - [ ] Generic fork and hierarchy detection: Find packages with the pkg same name, then use `lastCommitedAt` field to derive possibly related packages.  Take this list and inspect commit histories to determine if there is commit-overlap between the two.  Could implement github scraping hacks to verify accuracy.
-- [X] Implement Postgres backend.
-- [ ] Implement pure-postgres native db.Client interface, then run the scientific process against hypothesis that we can do better than dumb K/V.
-- [ ] Implement CockroachDB backend.
-- [ ] Implement pending references updates as a batch job (currently it's been disabled due to low performance).  Another way to solve it would be to only save pending references sometimes - just add an extra parameter on the internal save method.
-- [ ] To avoid dropping items across restarts, implement some kind of a WAL and resume functionality.
-- [ ] Easy one: Add client ID and emit it to frontend messaging.
+- [ ] Handle relative imports (x2).
+- [ ] Detect and persist whether each import is vendored or not in the reverse-imports mapping data.
+- [ ] Add analysis of RepoRoot sub-package paths and import names.
+- [ ] Add counts for total number of packages tracked, globally (currently repos are tracked and called "packages" everywhere, ugh..).
+- [ ] 1/2 Distinguish between pkg and repo by refactoring what is currently called a "package" in andromeda into a "repo".
+- [ ] 2/2 Add alias tracking table.
 
+#### Remote Crawlers
+
+- [ ] 1/4 Add a `--id` flag for remote crawlers to uniquely identify them (x2).
+- [ ] 2/4 Remote crawlers should track and store their own statistics in a local bolt db file, per crawler-id.  For example, keep track of number of crawls done per day, total size of crawled content, number of successful and failed crawls.
+- [ ] 3/4 Server-side: Track crawlers by ID, and track when they were last seen, IP addresses, number of packages crawled, number of successful crawls vs errors.
+- [ ] 4/4 Provide live-query mechanism for server to ping all crawlers to get an accurate count of actives.  Would also be interesting to have the crawlers include their version (git hash) and crawl stats in the response.
+
+#### Fully Autonomous System
+
+- [ ] Add queue monitor, when it is empty add N least recently updated packages to crawl.
+- [X] Add errors counter to ToCrawlEntry and throw away when error count exceeds N.
+- [ ] Add process-level concurrency support for remote crawlers (to increase throughput without resorting to trying to manage multiple crawler processes per host).
+
+#### Data Integrity
+
+- [ ] To avoid dropping items across restarts, implement some kind of a WAL and resume functionality (x2, see next item below).
+- [ ] Protect against losing queue items from process restarts / interruptions; Add in-flight TCE's to an intermediate table, and at startup move items from said table back into the to-crawl queue.
+- [ ] Remote-crawler: Store crawl result on disk when sending failed, then when remote starts, check for failed transmit and send it.  Possible complexity due to server not expecting _that_ crawl result.  May need to expose via different gRPC API endpoint than `Attach`.
+
+#### Operational and Performance
+
+- [ ] Fix `-s` strangeness, should only specify the base path and auto-append "/src".
+- [ ] Consider refactoring "Package" to "Repo", since a go repo contains an arbitrary number of packages (I known, "yuck", but..).
+- [X] Implement Postgres backend.
+- [X] Implement Postgres queue.
+- [ ] Implement CockroachDB backend.
+- [ ] Implement CockroachDB queue.
+- [ ] Add git commit hash to builds, and has gRPC client send it with requests.
+- [ ] Implement pure-postgres native db.Client interface and see if or how much better we can do compared to K/V approach.
+- [X] Implement pending references updates as a batch job (currently it's been disabled due to low performance).  Another way to solve it would be to only save pending references sometimes - just add an extra parameter on the internal save method (went with this, was very simple to add a single param to the save functions to avoid merging pending references for recursively-triggered saves.
+
+#### Uncategorized
+
+- [X] Add git version check to crawler (because it's easy to forget to upgrade git!).  Note: This is part of the `check` command, also verifies availability of openssl binary.
+- [ ] Add a monitor and require that the disk where the DB is stored always has at least X GB free, where X is based on a multiple of the Bolt database file.  This is to ensure safety that things don't get into a state where data cannot be written to the DB or even worse it gets corrupt.  Remember that DB size may grow non-linearly (need to double check this, but this is what I recall observing).
+- [ ] Move failed to-crawls to different table instead of dropping them outright.
+- [ ] 1/2 Expose queue contents over rest API.
+- [ ] 2/2 Frontend viewer for queue head and tail contents.
 
 To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`
 
