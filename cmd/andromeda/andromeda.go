@@ -34,7 +34,7 @@ var (
 	TLSCAFile   string
 	AutoTLSCert bool // When true, will use OpenSSL to automatically retrieve the SSL/TLS public key of the gRPC server.
 
-	FeedsEnabled = true
+	FeedsEnabled bool
 
 	MemoryProfiler bool
 )
@@ -54,6 +54,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd.AddCommand(
 		newBootstrapCmd(),
 		newWebCmd(),
+		newFeedsCmd(),
 		newUpdatesProcessorCmd(),
 		newLocalCmd(),
 		newRemoteCmd(),

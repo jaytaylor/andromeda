@@ -46,12 +46,13 @@ func (f *Feed) Start() error {
 	f.cron = cron.New()
 	for _, s := range f.Config.Sources {
 		func(s DataSource) {
-			log.WithField("data-source", fmt.Sprintf("%T", s)).WithField("schedule", f.Config.Schedule).Debug("Adding feed to cron")
+			dsName := fmt.Sprintf("%T", s)
+			log.WithField("data-source", dsName).WithField("schedule", f.Config.Schedule).Debug("Adding feed to cron")
 			f.cron.AddFunc(f.Config.Schedule, func() {
-				log.WithField("data-source", fmt.Sprintf("%T", s)).Debug("Starting refresh")
+				log.WithField("data-source", dsName).Debug("Starting refresh")
 				possiblePkgs, err := s.Refresh()
 				if err != nil {
-					log.WithField("data-source", fmt.Sprintf("%T", s)).Errorf("Refresh failed: %s", err)
+					log.WithField("data-source", dsName).Errorf("Refresh failed: %s", err)
 					return
 				}
 				if len(possiblePkgs) == 0 {

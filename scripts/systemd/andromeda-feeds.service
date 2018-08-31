@@ -1,0 +1,15 @@
+[Unit]
+Description=Andromeda feeds service
+After=network.target
+
+[Service]
+Type=simple
+User=myuser
+EnvironmentFile=-/etc/default/andromeda
+WorkingDirectory=/home/myuser/go/src/jaytaylor.com/andromeda
+ExecStart=/home/myuser/go/bin/andromeda feeds -v --driver postgres --db "dbname=andromeda host=/var/run/postgresql" -a 127.0.0.1:8001
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+Alias=andromeda.service

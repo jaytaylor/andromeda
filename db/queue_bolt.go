@@ -85,7 +85,7 @@ func (bq *BoltQueue) Len(name string, priority int) (int, error) {
 		return bq.q.Len(name, priority)
 	}
 	sum := 0
-	for i := 1; i <= numPriorities; i++ {
+	for i := 1; i <= MaxPriority; i++ {
 		n, err := bq.q.Len(name, i)
 		if err != nil {
 			return 0, err
