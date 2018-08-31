@@ -94,7 +94,7 @@ func (q *PostgresQueue) Enqueue(table string, priority int, values ...[]byte) er
 
 	if priority <= 0 {
 		// Default to lowest priority when an unsupported value is received.
-		priority = numPriorities
+		priority = MaxPriority
 	}
 
 	var (

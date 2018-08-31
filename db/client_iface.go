@@ -19,7 +19,7 @@ const (
 	TableCrawlResults      = "crawl-result"
 	TableToCrawl           = "to-crawl"
 
-	numPriorities = 10 // Number of supported priorities, 0-based.
+	MaxPriority = 10 // Number of supported priorities, 1-indexed.
 )
 
 var (
