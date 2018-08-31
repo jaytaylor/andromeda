@@ -107,6 +107,7 @@ apt-get install \
 - [ ] Add git commit hash to builds, and has gRPC client send it with requests.
 - [ ] Implement pure-postgres native db.Client interface and see if or how much better we can do compared to K/V approach.
 - [X] Implement pending references updates as a batch job (currently it's been disabled due to low performance).  Another way to solve it would be to only save pending references sometimes - just add an extra parameter on the internal save method (went with this, was very simple to add a single param to the save functions to avoid merging pending references for recursively-triggered saves.
+- [ ] Implement a configuration file to avoid having to pass `--driver`/`--db` all the time.
 
 #### Uncategorized
 

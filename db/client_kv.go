@@ -124,7 +124,8 @@ func (c *ClientKV) packageSave(tx Transaction, pkgs []*domain.Package, mergePend
 
 		if len(pkg.History) > 0 {
 			if pc := pkg.History[len(pkg.History)-1]; len(pc.JobMessages) > 0 {
-				log.WithField("pkg", pkg.Path).Debugf("Discarding JobMessages: %v", pc.JobMessages)
+				// Disabled due to too much logspam.
+				// log.WithField("pkg", pkg.Path).Debugf("Discarding JobMessages: %v", pc.JobMessages)
 				pc.JobMessages = nil
 			}
 		}
