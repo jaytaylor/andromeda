@@ -187,6 +187,13 @@ Ensure that the user which you have added above is not listed in the 'Deny log o
 ```bash
 andromeda service crawler install -v --delete-after -s /tmp/src -a <host.name>:443 -c <path-to-letsencrypt-cert.pem> -u .\<windows-username> -p <windows-password>
 ```
+
+### Avoiding SSD burnout on Windows
+
+A [ramdisk partition mount](https://sourceforge.net/projects/imdisk-toolkit/) can be used on windows.  The only configuration change required is to set `core.symlinks = false` in .gitconfig.
+
+See [52830545-git-clone-not-works-with-some-ramdisk-and-ntfs](https://www.bountysource.com/issues/52830545-git-clone-not-works-with-some-ramdisk-and-ntfs) for an explanation about why.
+
 ### Running remote-crawler behind a proxy
 
 #### Linux
