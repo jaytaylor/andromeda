@@ -3,8 +3,11 @@ package db
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"reflect"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -95,7 +98,18 @@ func (c *ClientKV) PackageSave(pkgs ...*domain.Package) error {
 
 func (c *ClientKV) packageSave(tx Transaction, pkgs []*domain.Package, mergePending bool) error {
 	for _, pkg := range pkgs {
+		if pkg == nil {
+			log.Warnf("Skipping nil pkg entry")
+			continue
+		}
 		log.WithField("pkg", pkg.Path).Debug("Save starting")
+
+		if mergePending {
+			// TODO: REMOVE ME
+			// TEMPORARY: For figuring out what's eating so much memory.
+			ioutil.WriteFile("/tmp/andromeda-saving", []byte(pkg.Path), os.FileMode(int(0600)))
+		}
+
 		var (
 			k   = []byte(pkg.Path)
 			v   []byte
@@ -146,7 +160,6 @@ func (c *ClientKV) packageSave(tx Transaction, pkgs []*domain.Package, mergePend
 		if err = tx.Put(TablePackages, k, v); err != nil {
 			return fmt.Errorf("saving Package %q: %s", pkg.Path, err)
 		}
-		log.WithField("pkg", pkg.Path).Debug("Save finished")
 	}
 	return nil
 }
@@ -154,7 +167,6 @@ func (c *ClientKV) packageSave(tx Transaction, pkgs []*domain.Package, mergePend
 // mergePendingReferences merges pre-existing pending references.
 func (c *ClientKV) mergePendingReferences(tx Transaction, pkg *domain.Package) error {
 	log.WithField("pkg", pkg.Path).Debug("Merging pending references starting")
-	defer log.WithField("pkg", pkg.Path).Debug("Merging pending references finished")
 
 	pendingRefs, err := c.pendingReferences(tx, pkg.Path)
 	if err != nil {
@@ -241,7 +253,7 @@ func (c *ClientKV) Packages(pkgPaths ...string) (map[string]*domain.Package, err
 
 	if err := c.be.View(func(tx Transaction) error {
 		var err error
-		if pkgs, err = c.pkgs(tx, pkgPaths); err != nil {
+		if pkgs, err = c.pkgs(tx, pkgPaths, false); err != nil {
 			return err
 		}
 		return nil
@@ -251,22 +263,37 @@ func (c *ClientKV) Packages(pkgPaths ...string) (map[string]*domain.Package, err
 	return pkgs, nil
 }
 
-func (c *ClientKV) pkgs(tx Transaction, pkgPaths []string) (map[string]*domain.Package, error) {
+// pkgs results will be pooled (shared pkg pointers) when pool=true.
+//
+// To reduce the number of SET operations required, we maintain a pool of
+// pkgRoot->*domain.Package associations.
+//
+// Then when multiple pkgPaths reference the same package, the single
+// ptr from the pool will be shared amongst all pkgPath keys.
+func (c *ClientKV) pkgs(tx Transaction, pkgPaths []string, pool bool) (map[string]*domain.Package, error) {
 	pkgs := map[string]*domain.Package{}
 
 	for _, pkgPath := range pkgPaths {
+		if pool {
+			if pkg := c.findPkg(pkgs, pkgPath); pkg != nil {
+				pkgs[pkgPath] = pkg
+				continue
+			}
+		}
 		k := []byte(pkgPath)
 		v, err := tx.Get(TablePackages, k)
 		if err != nil && err != ErrKeyNotFound {
 			return pkgs, err
 		}
 		if len(v) == 0 {
+			log.Debugf("Hierarchical searching for %v", pkgPath)
 			// Fallback to hierarchical search.
 			if v, err = c.hierarchicalKeySearch(tx, k, pkgSepB); err != nil && err != ErrKeyNotFound {
 				return pkgs, err
 			}
 		}
 		if len(v) > 0 {
+			log.Debugf("Unmarshaling %v", pkgPath)
 			pkg := &domain.Package{}
 			if err := proto.Unmarshal(v, pkg); err != nil {
 				return pkgs, err
@@ -276,6 +303,15 @@ func (c *ClientKV) pkgs(tx Transaction, pkgPaths []string) (map[string]*domain.P
 	}
 
 	return pkgs, nil
+}
+
+func (_ *ClientKV) findPkg(pool map[string]*domain.Package, searchPkgPath string) *domain.Package {
+	for pkgPath, pkg := range pool {
+		if strings.HasPrefix(searchPkgPath, pkgPath) && pkg.Contains(searchPkgPath) {
+			return pkg
+		}
+	}
+	return nil
 }
 
 // hierarchicalKeySearch searches for any keys matching the leading part of the
@@ -389,21 +425,22 @@ func (c *ClientKV) RecordImportedBy(refPkg *domain.Package, resources map[string
 		for pkgPath, _ := range resources {
 			pkgPaths = append(pkgPaths, pkgPath)
 		}
-		pkgs, err := c.pkgs(tx, pkgPaths)
+		pkgs, err := c.pkgs(tx, pkgPaths, true)
 		if err != nil {
 			return err
 		}
 		log.WithField("referenced-pkg", refPkg.Path).Debugf("%v/%v importing packages already exist in the %v table", len(pkgs), len(pkgPaths), TablePackages)
 
-		// To reduce the number of SET operations required, we maintain a pool of
-		// pkgRoot->*domain.Package associations.
-		//
-		// Then when multiple pkgPaths reference the same package, the single
-		// item from the pool will be used.
-		pkgsPool := map[string]*domain.Package{}
+		var (
+			// Marking all seen refs all the time creates too much fan out writes and is
+			// too expensive and slow, IO-wise, and is clogging the up the system.
+			// So we're doing this for now instead.
+			modifiedPkgs = map[string]struct{}{}
+			//structuralChanges bool
+		)
 
 		for pkgPath, refs := range resources {
-			instance, ok := pkgs[pkgPath]
+			pkg, ok := pkgs[pkgPath]
 			if !ok {
 				// Submit for a future crawl and add a pending reference.
 				entry := &domain.ToCrawlEntry{
@@ -412,15 +449,10 @@ func (c *ClientKV) RecordImportedBy(refPkg *domain.Package, resources map[string
 				}
 				entries = append(entries, entry)
 				discoveries = append(discoveries, pkgPath)
-				if err = c.pendingReferenceAdd(tx, refPkg, pkgPath); err != nil {
+				if _, err = c.pendingReferenceAdd(tx, refPkg, pkgPath); err != nil {
 					return err
 				}
 				continue
-			}
-			pkg, ok := pkgsPool[instance.Path]
-			if !ok {
-				pkgsPool[instance.Path] = instance
-				pkg = instance
 			}
 			if pkg.ImportedBy == nil {
 				pkg.ImportedBy = map[string]*domain.PackageReferences{}
@@ -437,20 +469,29 @@ func (c *ClientKV) RecordImportedBy(refPkg *domain.Package, resources map[string
 					}
 					if !found {
 						pkgRefs.Refs = append(pkgRefs.Refs, ref)
+						modifiedPkgs[pkg.Path] = struct{}{}
+						//structuralChanges = true
 					}
 				} else {
 					pkg.ImportedBy[ref.Path] = &domain.PackageReferences{
 						Refs: []*domain.PackageReference{ref},
 					}
+					modifiedPkgs[pkg.Path] = struct{}{}
+					//structuralChanges = true
 				}
 			}
 		}
 		pkgsSlice := make([]*domain.Package, 0, len(pkgs))
-		for _, pkg := range pkgsPool {
-			pkgsSlice = append(pkgsSlice, pkg)
+		for pkgPath, _ := range modifiedPkgs {
+			pkgsSlice = append(pkgsSlice, pkgs[pkgPath])
 		}
-		log.WithField("referenced-pkg", refPkg.Path).Debugf("Saving %v updated packages", len(pkgsSlice))
-		return c.packageSave(tx, pkgsSlice, false)
+		//if structuralChanges
+		if len(modifiedPkgs) > 0 {
+			log.WithField("referenced-pkg", refPkg.Path).Debugf("Saving %v updated packages", len(pkgsSlice))
+			return c.packageSave(tx, pkgsSlice, false)
+		}
+		log.WithField("referenced-pkg", refPkg.Path).Debugf("No structural updates; save skipped")
+		return nil
 	}); err != nil {
 		return err
 	}
@@ -465,10 +506,10 @@ func (c *ClientKV) RecordImportedBy(refPkg *domain.Package, resources map[string
 }
 
 // pendingReferenceAdd merges or adds a new pending reference into the pending-references table.
-func (c *ClientKV) pendingReferenceAdd(tx Transaction, refPkg *domain.Package, pkgPath string) error {
+func (c *ClientKV) pendingReferenceAdd(tx Transaction, refPkg *domain.Package, pkgPath string) (bool, error) {
 	existing, err := c.pendingReferences(tx, pkgPath)
 	if err != nil {
-		return err
+		return false, err
 	}
 	var (
 		now   = time.Now()
@@ -509,11 +550,11 @@ func (c *ClientKV) pendingReferenceAdd(tx Transaction, refPkg *domain.Package, p
 				refPkg.Path: domain.NewPackageReferences(pr),
 			},
 		}
+		if err = c.pendingReferencesSave(tx, []*domain.PendingReferences{prs}); err != nil {
+			return false, err
+		}
 	}
-	if err = c.pendingReferencesSave(tx, []*domain.PendingReferences{prs}); err != nil {
-		return err
-	}
-	return nil
+	return !found, nil
 }
 
 func (c *ClientKV) CrawlResultAdd(cr *domain.CrawlResult, opts *QueueOptions) error {
