@@ -207,6 +207,10 @@ func (m *Master) add(cr *domain.CrawlResult) error {
 	return nil
 }
 
+// SaveLoop is the CrawlResult updates processor loop.
+//
+// To protect against clobbering with this current architecture, only 1 process
+// should ever be running this loop at a given time.
 func (m *Master) SaveLoop(stopCh chan struct{}) {
 	for {
 		var (
@@ -248,7 +252,7 @@ func (m *Master) SaveLoop(stopCh chan struct{}) {
 			if cr == nil {
 				log.Error("Refusing to attempt to save nil crawl-result")
 			} else {
-				log.Errorf("Crawl crult contained error message: %s", cr.ErrMsg)
+				log.Errorf("Crawl result contained error message: %s", cr.ErrMsg)
 			}
 			continue
 		}
@@ -262,13 +266,14 @@ func (m *Master) SaveLoop(stopCh chan struct{}) {
 			err      error
 		)
 		if existing, err = m.db.Package(cr.Package.Path); err != nil && err != db.ErrKeyNotFound {
-			log.WithField("pkg", pkgPath).Error("Problem getting existing package for merge: %s", err)
+			log.WithField("pkg", pkgPath).Errorf("Problem getting existing package for merge: %s", err)
 			continue
 		} else if existing != nil {
 			if existing.Data.Equals(cr.Package.Data) {
 				log.WithField("pkg", pkgPath).Debug("Nothing seems to have changed, discarding crawl")
 				continue
 			}
+			log.WithField("pkg", pkgPath).Infof("Merging previous snapshot from %v (commit %v) into latest %v (%v)", existing.Data.CommittedAt, existing.Data.CommitHash, cr.Package.Data.CommittedAt, cr.Package.Data.CommitHash)
 			cr.Package = existing.Merge(cr.Package)
 		}
 
@@ -280,7 +285,7 @@ func (m *Master) SaveLoop(stopCh chan struct{}) {
 			}
 			continue
 		} else if err = m.db.PackageSave(cr.Package); err != nil {
-			log.WithField("pkg", pkgPath).Errorf("Saving package: %s")
+			log.WithField("pkg", pkgPath).Errorf("Saving: %s", err)
 			continue
 		}
 		log.WithField("pkg", pkgPath).Debug("Index updated with crawl crult")
