@@ -69,8 +69,42 @@ func TestPackageMergePending(t *testing.T) {
 }
 
 func TestSubPackagePathNormalize(t *testing.T) {
-	res := SubPackagePathNormalize("github.om/14rcole/os-explode", "github.om/14rcole/os-explode/pkg/watchclient")
+	res := SubPackagePathNormalize("https://github.com/14rcole/os-explode", "github.com/14rcole/os-explode/pkg/watchclient")
 	t.Logf("res=%v", res)
+}
+
+func TestPackageContains(t *testing.T) {
+	pkg := NewPackage(newFakeRR("git@github.com:spf13/cobra", "github.com/spf13/cobra"))
+	pkg.Data = &PackageSnapshot{
+		SubPackages: map[string]*SubPackage{
+			"": &SubPackage{
+				Name: "cobra",
+			},
+			"something": &SubPackage{
+				Name: "something",
+			},
+			"something/else": &SubPackage{
+				Name: "else",
+			},
+		},
+	}
+
+	testCases := map[string]bool{
+		"":  false,
+		"/": false,
+		"github.com/spf13/dobra":                     false,
+		"github.com/spf13/cobra":                     true,
+		"github.com/spf13/cobra/foo":                 false,
+		"github.com/spf13/cobra/something":           true,
+		"github.com/spf13/cobra/something/else":      true,
+		"github.com/spf13/cobra/something/else/oops": false,
+	}
+
+	for path, expected := range testCases {
+		if actual := pkg.Contains(path); actual != expected {
+			t.Errorf("Expected contains for path=%v to return %v but actual=%v", path, expected, actual)
+		}
+	}
 }
 
 func newFakeRR(repo string, root string) *vcs.RepoRoot {

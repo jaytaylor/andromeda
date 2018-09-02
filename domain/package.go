@@ -151,6 +151,19 @@ func (pkg *Package) MergePending(pendingRefs *PendingReferences) {
 	}
 }
 
+func (pkg Package) Contains(path string) bool {
+	if !strings.HasPrefix(path, pkg.Path) {
+		return false
+	}
+	path = SubPackagePathNormalize(pkg.Path, path)
+	for sub, _ := range pkg.Data.SubPackages {
+		if sub == path {
+			return true
+		}
+	}
+	return false
+}
+
 func (ref *PackageReference) Merge(other *PackageReference) {
 	if ref.Path != other.Path {
 		log.WithField("ref", ref.Path).WithField("other", other.Path).Warn("Refusing to merge mismatched package reference")
