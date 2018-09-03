@@ -137,7 +137,7 @@ func (be *BoltBackend) Delete(table string, keys ...[]byte) error {
 	})
 }
 
-func (be *BoltBackend) Drop(tables ...string) error {
+func (be *BoltBackend) Destroy(tables ...string) error {
 	return be.db.Update(func(tx *bolt.Tx) error {
 		for _, table := range tables {
 			if err := tx.DeleteBucket([]byte(table)); err != nil {

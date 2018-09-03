@@ -163,7 +163,7 @@ func (be *RocksBackend) Delete(table string, keys ...[]byte) error {
 	return tx.Commit()
 }
 
-func (be *RocksBackend) Drop(tables ...string) error {
+func (be *RocksBackend) Destroy(tables ...string) error {
 	if err := be.Close(); err != nil {
 		return err
 	}
@@ -171,7 +171,7 @@ func (be *RocksBackend) Drop(tables ...string) error {
 	errs := []error{}
 	for _, table := range tables {
 		if err := rocks.DestroyDb(table, be.config.RocksOptions); err != nil {
-			errs = append(errs, fmt.Errorf("purging %q: %s", table, err))
+			errs = append(errs, fmt.Errorf("destroying %q: %s", table, err))
 		}
 	}
 	if err := errorlib.Merge(errs); err != nil {
