@@ -29,19 +29,19 @@ func newLocalCmd() *cobra.Command {
 	}
 
 	localCmd.AddCommand(
-		newCrawlCmd(),
+		newLocalCrawlCmd(),
 		newLocalEnqueueCmd(),
-		newDeletePackageCmd(),
-		newGetCmd(),
-		newLsCmd(),
-		newQueueDeleteCmd(),
-		newPurgeTableCmd(),
+		newLocalDeletePackageCmd(),
+		newLocalGetCmd(),
+		newLocalListCmd(),
+		newLocalDeleteQueueCmd(),
+		newLocalDestroyCmd(),
 	)
 
 	return localCmd
 }
 
-func newCrawlCmd() *cobra.Command {
+func newLocalCrawlCmd() *cobra.Command {
 	crawlCmd := &cobra.Command{
 		Use:   "crawl",
 		Short: "Local crawl",
@@ -65,7 +65,7 @@ func newCrawlCmd() *cobra.Command {
 
 func newLocalEnqueueCmd() *cobra.Command {
 	localEnqueueCmd := &cobra.Command{
-		Use:   "enqueue",
+		Use:   "enqueue <package-path-1> [<package-path-2> ...]",
 		Short: "Add packages to the to-crawl queue",
 		Long:  "Add one or more packages to the to-crawl queue",
 		Args:  cobra.MinimumNArgs(1),
@@ -102,7 +102,7 @@ func newLocalEnqueueCmd() *cobra.Command {
 	return localEnqueueCmd
 }
 
-func newQueueDeleteCmd() *cobra.Command {
+func newLocalDeleteQueueCmd() *cobra.Command {
 	queueDeleteCmd := &cobra.Command{
 		Use:     "queue-delete",
 		Aliases: []string{"queue-del", "queue-remove", "queue-rm"},
@@ -132,18 +132,19 @@ func newQueueDeleteCmd() *cobra.Command {
 	return queueDeleteCmd
 }
 
-func newPurgeTableCmd() *cobra.Command {
-	purgeTableCmd := &cobra.Command{
-		Use:   "purge",
-		Short: "[table]",
-		Long:  ".. jay will fill this long one out sometime ..",
+func newLocalDestroyCmd() *cobra.Command {
+	purgeTablesCmd := &cobra.Command{
+		Use:   "destroy <table-or-queue-1> [<table-or-queue-2> ...]",
+		Short: "Destroy the named tables and / or queues",
+		Long:  "Destroy the named tables and / or queues",
 		Args:  cobra.MinimumNArgs(1),
 		PreRun: func(_ *cobra.Command, _ []string) {
 			initLogging()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient db.Client) error {
-				switch args[0] {
+				return dbClient.Destroy(args...)
+				/*switch args[0] {
 				case db.TablePackages, "package", "pkg":
 					if err := dbClient.Purge(db.TablePackages); err != nil {
 						return fmt.Errorf("delete all packages: %s", err)
@@ -162,16 +163,16 @@ func newPurgeTableCmd() *cobra.Command {
 				default:
 					return fmt.Errorf("unrecognized table %q", args[0])
 				}
-				return nil
+				return nil*/
 			}); err != nil {
 				log.Fatalf("main: %s", err)
 			}
 		},
 	}
-	return purgeTableCmd
+	return purgeTablesCmd
 }
 
-func newGetCmd() *cobra.Command {
+func newLocalGetCmd() *cobra.Command {
 	getCmd := &cobra.Command{
 		Use:   "get",
 		Short: "[table] [key]",
@@ -245,7 +246,7 @@ func newGetCmd() *cobra.Command {
 	return getCmd
 }
 
-func newLsCmd() *cobra.Command {
+func newLocalListCmd() *cobra.Command {
 	max := -1
 
 	lsCmd := &cobra.Command{
@@ -411,9 +412,9 @@ func resolveLessFn(name string) (domain.PackagesLessFunc, error) {
 	return lessFn, nil
 }
 
-func newDeletePackageCmd() *cobra.Command {
+func newLocalDeletePackageCmd() *cobra.Command {
 	deletePackageCmd := &cobra.Command{
-		Use:     "delete-package",
+		Use:     "delete-package <package-path-1> [<package-path-2> ...]",
 		Aliases: []string{"delete-packages"},
 		Short:   "Delete a package from the database",
 		Long:    "Delete a package from the database",

@@ -24,7 +24,6 @@ func newFeedsCmd() *cobra.Command {
 		Aliases: []string{"feed"},
 		Short:   "Feeds collector",
 		Long:    "Stand-alone feeds collector service, can insert directly to the DB or submit over gRPC to an Andromeda web-server",
-		//		Args: cobra.MinimumNArgs(1),
 		//		ArgAliases: []string{}"
 		PreRun: func(_ *cobra.Command, _ []string) {
 			initLogging()

@@ -43,7 +43,7 @@ func newRemoteCmd() *cobra.Command {
 
 func newRemoteEnqueueCmd() *cobra.Command {
 	remoteEnqueueCmd := &cobra.Command{
-		Use:   "enqueue",
+		Use:   "enqueue <pkg-path-1> [<pkg-path-2> ...]",
 		Short: "Add items to the to-crawl queue",
 		Long:  "Add items to the to-crawl queue",
 		Args:  cobra.MinimumNArgs(1),

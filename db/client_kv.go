@@ -84,8 +84,35 @@ func (c *ClientKV) EachRowWithBreak(table string, fn func(key []byte, value []by
 	return c.be.EachRowWithBreak(table, fn)
 }
 
-func (c *ClientKV) Purge(tables ...string) error {
-	return c.be.Drop(tables...)
+func (c *ClientKV) Destroy(args ...string) error {
+	var (
+		kvTables = []string{}
+		queues   = []string{}
+	)
+	for _, arg := range args {
+		if IsKV(arg) {
+			kvTables = append(kvTables, arg)
+		} else if IsQ(arg) {
+			queues = append(queues, arg)
+		} else {
+			return fmt.Errorf("unrecognized table or queue name %q", arg)
+		}
+	}
+	if err := c.Backend().Destroy(kvTables...); err != nil {
+		plural := ""
+		if len(queues) > 0 {
+			plural = "s"
+		}
+		return fmt.Errorf("destroying table%v: %s", plural, err)
+	}
+	if err := c.Queue().Destroy(queues...); err != nil {
+		plural := ""
+		if len(queues) > 0 {
+			plural = "s"
+		}
+		return fmt.Errorf("destroying queue%v: %s", plural, err)
+	}
+	return nil
 }
 
 func (c *ClientKV) PackageSave(pkgs ...*domain.Package) error {
@@ -498,7 +525,11 @@ func (c *ClientKV) RecordImportedBy(refPkg *domain.Package, resources map[string
 	// TODO: Put all in a single transaction.
 	if len(entries) > 0 {
 		log.WithField("ref-pkg", refPkg.Path).WithField("to-crawls", len(entries)).Debugf("Adding discovered to-crawls: %v", discoveries)
-		if _, err := c.ToCrawlAdd(entries, nil); err != nil {
+		priority := DefaultQueuePriority - 1
+		if priority <= 0 {
+			priority = 1
+		}
+		if _, err := c.ToCrawlAdd(entries, &QueueOptions{Priority: priority}); err != nil {
 			return err
 		}
 	}

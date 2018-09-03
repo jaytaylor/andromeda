@@ -52,7 +52,7 @@ var (
 type Client interface {
 	Open() error                                                                                   // Open / start DB client connection.
 	Close() error                                                                                  // Close / shutdown the DB client connection.
-	Purge(tables ...string) error                                                                  // Reset a DB table.
+	Destroy(tables ...string) error                                                                // Destroy K/V tables and / or queue topics.
 	EachRow(table string, fn func(k []byte, v []byte)) error                                       // Invoke a callback on the key/value pair for each row of the named table.
 	EachRowWithBreak(table string, fn func(k []byte, v []byte) bool) error                         // Invoke a callback on the key/value pair for each row of the named table until cb returns false.
 	PackageSave(pkgs ...*domain.Package) error                                                     // Performs an upsert merge operation on a fully crawled package.
@@ -146,20 +146,20 @@ func NewClient(config Config) Client {
 	case Rocks:
 		// MORE TEMPORARY UGLINESS TO MAKE IT WORK FOR NOW:
 		if err := os.MkdirAll(config.(*RocksConfig).Dir, os.FileMode(int(0700))); err != nil {
-			panic(err)
+			panic(fmt.Errorf("Creating rocks directory %q: %s", config.(*RocksConfig).Dir, err))
 		}
+		be := NewRocksBackend(config.(*RocksConfig))
 		queueFile := filepath.Join(config.(*RocksConfig).Dir, DefaultBoltQueueFilename)
 		db, err := bolt.Open(queueFile, 0600, NewBoltConfig("").BoltOptions)
 		if err != nil {
 			panic(fmt.Errorf("Creating bolt queue: %s", err))
 		}
 		q := NewBoltQueue(db)
-		be := NewRocksBackend(config.(*RocksConfig))
 		return newClient(be, q)
 
 	case Postgres:
-		q := NewPostgresQueue(config.(*PostgresConfig))
 		be := NewPostgresBackend(config.(*PostgresConfig))
+		q := NewPostgresQueue(config.(*PostgresConfig))
 		return newClient(be, q)
 
 	default:
@@ -226,6 +226,18 @@ func kvTables() []string {
 // KVTables publicly exported version of kvTables.
 func KVTables() []string { return kvTables() }
 
+// IsKV returns true when s is the name of a Key-Value oriented table.
+//
+// Note: Does not normalize postgres_formatted_names..
+func IsKV(s string) bool {
+	for _, t := range kvTables() {
+		if s == t {
+			return true
+		}
+	}
+	return false
+}
+
 // QTables returns slice of queue table names.
 func QTables() []string {
 	tables := []string{}
@@ -233,4 +245,16 @@ func QTables() []string {
 		tables = append(tables, table)
 	}
 	return tables
+}
+
+// Returns true when the name corresponds with a table.
+//
+// Note: Does not normalize postgres_formatted_names..
+func IsQ(s string) bool {
+	for _, qT := range QTables() {
+		if s == qT {
+			return true
+		}
+	}
+	return false
 }

@@ -16,11 +16,11 @@ type Backend interface {
 	Get(table string, key []byte) (value []byte, err error)
 	Put(table string, key []byte, value []byte) error
 	Delete(table string, keys ...[]byte) error
-	Drop(tables ...string) error
+	Destroy(tables ...string) error
 	Len(table string) (n int, err error)
 	Begin(writable bool) (Transaction, error)
-	View(fn func(tx Transaction) error) error // Read-only.
-	Update(fn func(tx Transaction) error) error
+	Update(fn func(tx Transaction) error) error                                  // Read-write.
+	View(fn func(tx Transaction) error) error                                    // Read-only.
 	EachRow(table string, fn func(key []byte, value []byte)) error               // Read-only.
 	EachRowWithBreak(table string, fn func(key []byte, value []byte) bool) error // Read-only.
 	EachTable(func(table string, tx Transaction) error) error                    // Read-only.
