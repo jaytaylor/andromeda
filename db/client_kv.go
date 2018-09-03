@@ -19,15 +19,15 @@ import (
 	"jaytaylor.com/andromeda/domain"
 )
 
-type ClientKV struct {
+type KVClient struct {
 	be     Backend
 	q      Queue
 	opened map[string]struct{} // Track open resources.
 	mu     sync.Mutex
 }
 
-func newClient(be Backend, q Queue) *ClientKV {
-	c := &ClientKV{
+func newKVClient(be Backend, q Queue) *KVClient {
+	c := &KVClient{
 		be:     be,
 		q:      q,
 		opened: map[string]struct{}{},
@@ -40,8 +40,8 @@ type openclose interface {
 	Close() error
 }
 
-func (c *ClientKV) Open() error {
-	log.Info("ClientKV opening..")
+func (c *KVClient) Open() error {
+	log.Info("KVClient opening..")
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -54,12 +54,12 @@ func (c *ClientKV) Open() error {
 		}
 	}
 
-	log.Info("ClientKV opened")
+	log.Info("KVClient opened")
 	return nil
 }
 
-func (c *ClientKV) Close() error {
-	log.Info("ClientKV closing..")
+func (c *KVClient) Close() error {
+	log.Info("KVClient closing..")
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -72,19 +72,19 @@ func (c *ClientKV) Close() error {
 		}
 	}
 
-	log.Info("ClientKV closed")
+	log.Info("KVClient closed")
 	return nil
 }
 
-func (c *ClientKV) EachRow(table string, fn func(key []byte, value []byte)) error {
+func (c *KVClient) EachRow(table string, fn func(key []byte, value []byte)) error {
 	return c.be.EachRow(table, fn)
 }
 
-func (c *ClientKV) EachRowWithBreak(table string, fn func(key []byte, value []byte) bool) error {
+func (c *KVClient) EachRowWithBreak(table string, fn func(key []byte, value []byte) bool) error {
 	return c.be.EachRowWithBreak(table, fn)
 }
 
-func (c *ClientKV) Destroy(args ...string) error {
+func (c *KVClient) Destroy(args ...string) error {
 	var (
 		kvTables = []string{}
 		queues   = []string{}
@@ -115,7 +115,7 @@ func (c *ClientKV) Destroy(args ...string) error {
 	return nil
 }
 
-func (c *ClientKV) PackageSave(pkgs ...*domain.Package) error {
+func (c *KVClient) PackageSave(pkgs ...*domain.Package) error {
 	return c.be.Update(func(tx Transaction) error {
 		// TODO: Detect when package imports have changed, find the deleted ones, and
 		//       go update those packages' imported-by to mark the import as inactive.
@@ -123,7 +123,7 @@ func (c *ClientKV) PackageSave(pkgs ...*domain.Package) error {
 	})
 }
 
-func (c *ClientKV) packageSave(tx Transaction, pkgs []*domain.Package, mergePending bool) error {
+func (c *KVClient) packageSave(tx Transaction, pkgs []*domain.Package, mergePending bool) error {
 	for _, pkg := range pkgs {
 		if pkg == nil {
 			log.Warnf("Skipping nil pkg entry")
@@ -192,7 +192,7 @@ func (c *ClientKV) packageSave(tx Transaction, pkgs []*domain.Package, mergePend
 }
 
 // mergePendingReferences merges pre-existing pending references.
-func (c *ClientKV) mergePendingReferences(tx Transaction, pkg *domain.Package) error {
+func (c *KVClient) mergePendingReferences(tx Transaction, pkg *domain.Package) error {
 	log.WithField("pkg", pkg.Path).Debug("Merging pending references starting")
 
 	pendingRefs, err := c.pendingReferences(tx, pkg.Path)
@@ -215,7 +215,7 @@ func (c *ClientKV) mergePendingReferences(tx Transaction, pkg *domain.Package) e
 }
 
 // MergePendingReferences tries merges all outstanding pending references.
-func (c *ClientKV) MergePendingReferences() error {
+func (c *KVClient) MergePendingReferences() error {
 	return nil
 }
 
@@ -228,11 +228,11 @@ func stringsToBytes(ss []string) [][]byte {
 }
 
 // PackageDelete N.B. no existence check is performed.
-func (c *ClientKV) PackageDelete(pkgPaths ...string) error {
+func (c *KVClient) PackageDelete(pkgPaths ...string) error {
 	return c.be.Delete(TablePackages, stringsToBytes(pkgPaths)...)
 }
 
-func (c *ClientKV) Package(pkgPath string) (*domain.Package, error) {
+func (c *KVClient) Package(pkgPath string) (*domain.Package, error) {
 	var pkg *domain.Package
 
 	if err := c.be.View(func(tx Transaction) error {
@@ -247,7 +247,7 @@ func (c *ClientKV) Package(pkgPath string) (*domain.Package, error) {
 	return pkg, nil
 }
 
-func (c *ClientKV) pkg(tx Transaction, pkgPath string) (*domain.Package, error) {
+func (c *KVClient) pkg(tx Transaction, pkgPath string) (*domain.Package, error) {
 	pkg := &domain.Package{}
 	k := []byte(pkgPath)
 
@@ -275,7 +275,7 @@ func (c *ClientKV) pkg(tx Transaction, pkgPath string) (*domain.Package, error) 
 	return pkg, nil
 }
 
-func (c *ClientKV) Packages(pkgPaths ...string) (map[string]*domain.Package, error) {
+func (c *KVClient) Packages(pkgPaths ...string) (map[string]*domain.Package, error) {
 	pkgs := map[string]*domain.Package{}
 
 	if err := c.be.View(func(tx Transaction) error {
@@ -297,7 +297,7 @@ func (c *ClientKV) Packages(pkgPaths ...string) (map[string]*domain.Package, err
 //
 // Then when multiple pkgPaths reference the same package, the single
 // ptr from the pool will be shared amongst all pkgPath keys.
-func (c *ClientKV) pkgs(tx Transaction, pkgPaths []string, pool bool) (map[string]*domain.Package, error) {
+func (c *KVClient) pkgs(tx Transaction, pkgPaths []string, pool bool) (map[string]*domain.Package, error) {
 	pkgs := map[string]*domain.Package{}
 
 	for _, pkgPath := range pkgPaths {
@@ -332,7 +332,7 @@ func (c *ClientKV) pkgs(tx Transaction, pkgPaths []string, pool bool) (map[strin
 	return pkgs, nil
 }
 
-func (_ *ClientKV) findPkg(pool map[string]*domain.Package, searchPkgPath string) *domain.Package {
+func (_ *KVClient) findPkg(pool map[string]*domain.Package, searchPkgPath string) *domain.Package {
 	for pkgPath, pkg := range pool {
 		if strings.HasPrefix(searchPkgPath, pkgPath) && pkg.Contains(searchPkgPath) {
 			return pkg
@@ -343,7 +343,7 @@ func (_ *ClientKV) findPkg(pool map[string]*domain.Package, searchPkgPath string
 
 // hierarchicalKeySearch searches for any keys matching the leading part of the
 // input key when split by "/" characters.
-func (c *ClientKV) hierarchicalKeySearch(tx Transaction, key []byte, splitOn []byte) ([]byte, error) {
+func (c *KVClient) hierarchicalKeySearch(tx Transaction, key []byte, splitOn []byte) ([]byte, error) {
 	if pieces := bytes.Split(key, splitOn); len(pieces) >= 2 {
 		prefix := bytes.Join(pieces[0:2], splitOn)
 		v, err := tx.Get(TablePackages, prefix)
@@ -365,7 +365,7 @@ func (c *ClientKV) hierarchicalKeySearch(tx Transaction, key []byte, splitOn []b
 }
 
 // PathPrefixSearch finds all packages with a given prefix.
-func (c *ClientKV) PathPrefixSearch(prefix string) (map[string]*domain.Package, error) {
+func (c *KVClient) PathPrefixSearch(prefix string) (map[string]*domain.Package, error) {
 	pkgs := map[string]*domain.Package{}
 	err := c.be.Update(func(tx Transaction) error {
 		var (
@@ -399,7 +399,7 @@ func (c *ClientKV) PathPrefixSearch(prefix string) (map[string]*domain.Package, 
 	return pkgs, nil
 }
 
-func (c *ClientKV) EachPackage(fn func(pkg *domain.Package)) error {
+func (c *KVClient) EachPackage(fn func(pkg *domain.Package)) error {
 	var protoErr error
 	if err := c.EachRow(TablePackages, func(k []byte, v []byte) {
 		pkg := &domain.Package{}
@@ -417,7 +417,7 @@ func (c *ClientKV) EachPackage(fn func(pkg *domain.Package)) error {
 	return nil
 }
 
-func (c *ClientKV) EachPackageWithBreak(fn func(pkg *domain.Package) bool) error {
+func (c *KVClient) EachPackageWithBreak(fn func(pkg *domain.Package) bool) error {
 	var protoErr error
 	if err := c.EachRowWithBreak(TablePackages, func(k []byte, v []byte) bool {
 		pkg := &domain.Package{}
@@ -436,11 +436,11 @@ func (c *ClientKV) EachPackageWithBreak(fn func(pkg *domain.Package) bool) error
 	return nil
 }
 
-func (c *ClientKV) PackagesLen() (int, error) {
+func (c *KVClient) PackagesLen() (int, error) {
 	return c.be.Len(TablePackages)
 }
 
-func (c *ClientKV) RecordImportedBy(refPkg *domain.Package, resources map[string]*domain.PackageReferences) error {
+func (c *KVClient) RecordImportedBy(refPkg *domain.Package, resources map[string]*domain.PackageReferences) error {
 	log.WithField("referenced-pkg", refPkg.Path).Infof("Recording imported by; n-resources=%v", len(resources))
 	var (
 		entries     = []*domain.ToCrawlEntry{}
@@ -537,7 +537,7 @@ func (c *ClientKV) RecordImportedBy(refPkg *domain.Package, resources map[string
 }
 
 // pendingReferenceAdd merges or adds a new pending reference into the pending-references table.
-func (c *ClientKV) pendingReferenceAdd(tx Transaction, refPkg *domain.Package, pkgPath string) (bool, error) {
+func (c *KVClient) pendingReferenceAdd(tx Transaction, refPkg *domain.Package, pkgPath string) (bool, error) {
 	existing, err := c.pendingReferences(tx, pkgPath)
 	if err != nil {
 		return false, err
@@ -588,7 +588,7 @@ func (c *ClientKV) pendingReferenceAdd(tx Transaction, refPkg *domain.Package, p
 	return !found, nil
 }
 
-func (c *ClientKV) CrawlResultAdd(cr *domain.CrawlResult, opts *QueueOptions) error {
+func (c *KVClient) CrawlResultAdd(cr *domain.CrawlResult, opts *QueueOptions) error {
 	if opts == nil {
 		opts = NewQueueOptions()
 	}
@@ -606,7 +606,7 @@ func (c *ClientKV) CrawlResultAdd(cr *domain.CrawlResult, opts *QueueOptions) er
 
 }
 
-func (c *ClientKV) CrawlResultDequeue() (*domain.CrawlResult, error) {
+func (c *KVClient) CrawlResultDequeue() (*domain.CrawlResult, error) {
 	value, err := c.q.Dequeue(TableCrawlResults)
 	if err != nil {
 		return nil, err
@@ -618,7 +618,7 @@ func (c *ClientKV) CrawlResultDequeue() (*domain.CrawlResult, error) {
 	return cr, nil
 }
 
-func (c *ClientKV) EachCrawlResult(fn func(cr *domain.CrawlResult)) error {
+func (c *KVClient) EachCrawlResult(fn func(cr *domain.CrawlResult)) error {
 	var protoErr error
 	err := c.q.Scan(TableCrawlResults, nil, func(value []byte) {
 		if protoErr != nil {
@@ -639,7 +639,7 @@ func (c *ClientKV) EachCrawlResult(fn func(cr *domain.CrawlResult)) error {
 	return nil
 }
 
-func (c *ClientKV) EachCrawlResultWithBreak(fn func(cr *domain.CrawlResult) bool) error {
+func (c *KVClient) EachCrawlResultWithBreak(fn func(cr *domain.CrawlResult) bool) error {
 	var (
 		keepGoing = true
 		protoErr  error
@@ -664,11 +664,11 @@ func (c *ClientKV) EachCrawlResultWithBreak(fn func(cr *domain.CrawlResult) bool
 	return nil
 }
 
-func (c *ClientKV) CrawlResultsLen() (int, error) {
+func (c *KVClient) CrawlResultsLen() (int, error) {
 	return c.q.Len(TableCrawlResults, 0)
 }
 
-func (c *ClientKV) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *QueueOptions) (int, error) {
+func (c *KVClient) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *QueueOptions) (int, error) {
 	if opts == nil {
 		opts = NewQueueOptions()
 	}
@@ -720,12 +720,12 @@ func (c *ClientKV) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *QueueOptions
 	return numNew, nil
 }
 
-func (c *ClientKV) ToCrawlRemove(pkgs []string) (int, error) {
+func (c *KVClient) ToCrawlRemove(pkgs []string) (int, error) {
 	return 0, ErrNotImplemented
 }
 
 // ToCrawlDequeue pops the next *domain.ToCrawlEntry off the from of the crawl queue.
-func (c *ClientKV) ToCrawlDequeue() (*domain.ToCrawlEntry, error) {
+func (c *KVClient) ToCrawlDequeue() (*domain.ToCrawlEntry, error) {
 	value, err := c.q.Dequeue(TableToCrawl)
 	if err != nil {
 		return nil, err
@@ -737,7 +737,7 @@ func (c *ClientKV) ToCrawlDequeue() (*domain.ToCrawlEntry, error) {
 	return entry, nil
 }
 
-func (c *ClientKV) EachToCrawl(fn func(entry *domain.ToCrawlEntry)) error {
+func (c *KVClient) EachToCrawl(fn func(entry *domain.ToCrawlEntry)) error {
 	var protoErr error
 	err := c.q.Scan(TableToCrawl, nil, func(value []byte) {
 		if protoErr != nil {
@@ -758,7 +758,7 @@ func (c *ClientKV) EachToCrawl(fn func(entry *domain.ToCrawlEntry)) error {
 	return nil
 }
 
-func (c *ClientKV) EachToCrawlWithBreak(fn func(entry *domain.ToCrawlEntry) bool) error {
+func (c *KVClient) EachToCrawlWithBreak(fn func(entry *domain.ToCrawlEntry) bool) error {
 	var (
 		keepGoing = true
 		protoErr  error
@@ -783,13 +783,13 @@ func (c *ClientKV) EachToCrawlWithBreak(fn func(entry *domain.ToCrawlEntry) bool
 	return nil
 }
 
-func (c *ClientKV) ToCrawlsLen() (int, error) {
+func (c *KVClient) ToCrawlsLen() (int, error) {
 	return c.q.Len(TableToCrawl, 0)
 }
 
 // TODO: Add Get (slow, n due to iteration) and Update methods for ToCrawl.
 
-func (c *ClientKV) MetaSave(key string, src interface{}) error {
+func (c *KVClient) MetaSave(key string, src interface{}) error {
 	var v []byte
 
 	switch src.(type) {
@@ -812,11 +812,11 @@ func (c *ClientKV) MetaSave(key string, src interface{}) error {
 	return c.be.Put(TableMetadata, []byte(key), v)
 }
 
-func (c *ClientKV) MetaDelete(key string) error {
+func (c *KVClient) MetaDelete(key string) error {
 	return c.be.Delete(TableMetadata, []byte(key))
 }
 
-func (c *ClientKV) Meta(key string, dst interface{}) error {
+func (c *KVClient) Meta(key string, dst interface{}) error {
 	v, err := c.be.Get(TableMetadata, []byte(key))
 	if err != nil {
 		return err
@@ -841,7 +841,7 @@ func (c *ClientKV) Meta(key string, dst interface{}) error {
 	return nil
 }
 
-func (c *ClientKV) Search(q string) (*domain.Package, error) {
+func (c *KVClient) Search(q string) (*domain.Package, error) {
 	return nil, fmt.Errorf("not yet implemented")
 }
 
@@ -849,7 +849,7 @@ func (c *ClientKV) Search(q string) (*domain.Package, error) {
 // rebuild.
 var RebuildBatchSize = 25000
 
-func (c *ClientKV) RebuildTo(otherClient Client, kvFilters ...KeyValueFilterFunc) error {
+func (c *KVClient) RebuildTo(otherClient Client, kvFilters ...KeyValueFilterFunc) error {
 	var (
 		skipKV bool
 		skipQ  bool
@@ -885,7 +885,7 @@ func funcName(i interface{}) string {
 	return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
 }
 
-func (c *ClientKV) copyBackend(otherClient Client, kvFilters ...KeyValueFilterFunc) error {
+func (c *KVClient) copyBackend(otherClient Client, kvFilters ...KeyValueFilterFunc) error {
 	return c.be.View(func(tx Transaction) error {
 		for _, table := range kvTables() {
 			otherTx, err := otherClient.Backend().Begin(true)
@@ -962,7 +962,7 @@ func (c *ClientKV) copyBackend(otherClient Client, kvFilters ...KeyValueFilterFu
 // copyQueue note: this implementation / API does not support preserving
 // priority.  New items will be inserted in priority order with
 // priority=DefaultQueuePriority.
-func (c *ClientKV) copyQueue(otherClient Client) error {
+func (c *KVClient) copyQueue(otherClient Client) error {
 	var err error
 	for _, table := range qTables {
 		var l int
@@ -985,7 +985,7 @@ func (c *ClientKV) copyQueue(otherClient Client) error {
 	return nil
 }
 
-func (c *ClientKV) PendingReferences(pkgPathPrefix string) ([]*domain.PendingReferences, error) {
+func (c *KVClient) PendingReferences(pkgPathPrefix string) ([]*domain.PendingReferences, error) {
 	refs := []*domain.PendingReferences{}
 	if err := c.be.View(func(tx Transaction) error {
 		var err error
@@ -999,7 +999,7 @@ func (c *ClientKV) PendingReferences(pkgPathPrefix string) ([]*domain.PendingRef
 	return refs, nil
 }
 
-func (c *ClientKV) pendingReferences(tx Transaction, pkgPathPrefix string) ([]*domain.PendingReferences, error) {
+func (c *KVClient) pendingReferences(tx Transaction, pkgPathPrefix string) ([]*domain.PendingReferences, error) {
 	refs := []*domain.PendingReferences{}
 	var (
 		prefixBs = []byte(pkgPathPrefix)
@@ -1024,13 +1024,13 @@ func (c *ClientKV) pendingReferences(tx Transaction, pkgPathPrefix string) ([]*d
 	return refs, nil
 }
 
-func (c *ClientKV) PendingReferencesSave(pendingRefs ...*domain.PendingReferences) error {
+func (c *KVClient) PendingReferencesSave(pendingRefs ...*domain.PendingReferences) error {
 	return c.be.Update(func(tx Transaction) error {
 		return c.pendingReferencesSave(tx, pendingRefs)
 	})
 }
 
-func (c *ClientKV) pendingReferencesSave(tx Transaction, pendingRefs []*domain.PendingReferences) error {
+func (c *KVClient) pendingReferencesSave(tx Transaction, pendingRefs []*domain.PendingReferences) error {
 	for _, prs := range pendingRefs {
 		v, err := proto.Marshal(prs)
 		if err != nil {
@@ -1043,13 +1043,13 @@ func (c *ClientKV) pendingReferencesSave(tx Transaction, pendingRefs []*domain.P
 	return nil
 }
 
-func (c *ClientKV) PendingReferencesDelete(keys ...string) error {
+func (c *KVClient) PendingReferencesDelete(keys ...string) error {
 	return c.be.Update(func(tx Transaction) error {
 		return c.pendingReferencesDelete(tx, keys)
 	})
 }
 
-func (c *ClientKV) pendingReferencesDelete(tx Transaction, keys []string) error {
+func (c *KVClient) pendingReferencesDelete(tx Transaction, keys []string) error {
 	var err error
 	log.Debugf("Deleting %v pending-references: %+v", len(keys), keys)
 	for _, key := range keys {
@@ -1060,11 +1060,11 @@ func (c *ClientKV) pendingReferencesDelete(tx Transaction, keys []string) error 
 	return nil
 }
 
-func (c *ClientKV) PendingReferencesLen() (int, error) {
+func (c *KVClient) PendingReferencesLen() (int, error) {
 	return c.be.Len(TablePendingReferences)
 }
 
-func (c *ClientKV) EachPendingReferences(fn func(pendingRefs *domain.PendingReferences)) error {
+func (c *KVClient) EachPendingReferences(fn func(pendingRefs *domain.PendingReferences)) error {
 	var protoErr error
 	if err := c.EachRow(TablePendingReferences, func(k []byte, v []byte) {
 		pendingRefs := &domain.PendingReferences{}
@@ -1082,7 +1082,7 @@ func (c *ClientKV) EachPendingReferences(fn func(pendingRefs *domain.PendingRefe
 	return nil
 }
 
-func (c *ClientKV) EachPendingReferencesWithBreak(fn func(pendingRefs *domain.PendingReferences) bool) error {
+func (c *KVClient) EachPendingReferencesWithBreak(fn func(pendingRefs *domain.PendingReferences) bool) error {
 	var protoErr error
 	if err := c.EachRowWithBreak(TablePendingReferences, func(k []byte, v []byte) bool {
 		pendingRefs := &domain.PendingReferences{}
@@ -1101,11 +1101,11 @@ func (c *ClientKV) EachPendingReferencesWithBreak(fn func(pendingRefs *domain.Pe
 	return nil
 }
 
-func (c *ClientKV) Backend() Backend {
+func (c *KVClient) Backend() Backend {
 	return c.be
 }
 
-func (c *ClientKV) Queue() Queue {
+func (c *KVClient) Queue() Queue {
 	return c.q
 }
 

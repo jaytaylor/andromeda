@@ -141,7 +141,7 @@ func NewClient(config Config) Client {
 			panic(fmt.Errorf("Opening bolt backend: %s", err))
 		}
 		q := NewBoltQueue(be.db)
-		return newClient(be, q)
+		return newKVClient(be, q)
 
 	case Rocks:
 		// MORE TEMPORARY UGLINESS TO MAKE IT WORK FOR NOW:
@@ -155,12 +155,12 @@ func NewClient(config Config) Client {
 			panic(fmt.Errorf("Creating bolt queue: %s", err))
 		}
 		q := NewBoltQueue(db)
-		return newClient(be, q)
+		return newKVClient(be, q)
 
 	case Postgres:
 		be := NewPostgresBackend(config.(*PostgresConfig))
 		q := NewPostgresQueue(config.(*PostgresConfig))
-		return newClient(be, q)
+		return newKVClient(be, q)
 
 	default:
 		panic(fmt.Errorf("no client constructor available for db configuration type: %v", typ))
