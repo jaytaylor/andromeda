@@ -3,11 +3,11 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:167798a7411812394df981f99cc17aeefbf4830dd1fe497399c8bd16ec999d19"
+  digest = "1:854c5c42b89d3d50df0d6fe922720c4c0712459cc42e252f48fd54f097137fde"
   name = "gigawatt.io/concurrency"
   packages = ["."]
   pruneopts = "UT"
-  revision = "50754d622ccd2e4dc110e38d79b7640d37381ca2"
+  revision = "33d4501a150c30ef779f18e03313f91c83b1bfa9"
 
 [[projects]]
   branch = "master"
@@ -35,22 +35,22 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:124dbb13b2e90bedc8dcc6831a0815559aa54af21a6f935af87576befb4cc06d"
+  digest = "1:c440da2ab42e6fac92ccc7ea458a06e294493080ccb2360d1c4b505167f278c7"
   name = "gigawatt.io/web"
   packages = [
     ".",
     "route",
   ]
   pruneopts = "UT"
-  revision = "8f07421a2184379d96e7f2926c9a065c0893cad3"
+  revision = "785fa05ef12b22a2d491d3a97683d1ad1a4e2ae0"
 
 [[projects]]
-  digest = "1:1aef569b177f49b2d7640cc438b987a320c7f31e8f1f92bbfc31ffe3ac127576"
+  digest = "1:55388fd080150b9a072912f97b1f5891eb0b50df43401f8b75fb4273d3fec9fc"
   name = "github.com/Masterminds/semver"
   packages = ["."]
   pruneopts = "UT"
-  revision = "59c29afe1a994eacb71c833025ca7acf874bb1da"
-  version = "v1.2.2"
+  revision = "c7af12943936e8c39859482e61f0574c2fd7fc75"
+  version = "v1.4.2"
 
 [[projects]]
   digest = "1:46a054a232ea2b7f0a35398d682b433d26ba9975fce9197b1784824402059f5b"
@@ -61,11 +61,12 @@
   version = "v2.15.0"
 
 [[projects]]
-  digest = "1:10bb36acbe3beb4e529f2711e02c66335adc17dffaceb1d6ceca9554c2d8baa0"
+  digest = "1:8f5416c7f59da8600725ae1ff00a99af1da8b04c211ae6f3c8f8bcab0164f650"
   name = "github.com/aokoli/goutils"
   packages = ["."]
   pruneopts = "UT"
-  revision = "9c37978a95bd5c709a15883b6242714ea6709e64"
+  revision = "3391d3790d23d03408670993e957e8f408993c34"
+  version = "v1.0.1"
 
 [[projects]]
   digest = "1:2209584c0f7c9b68c23374e659357ab546e1b70eec2761f03280f69a8fd23d77"
@@ -129,14 +130,6 @@
   packages = ["."]
   pruneopts = "UT"
   revision = "751773369052141c013c6e827a71e8f35c07879c"
-
-[[projects]]
-  branch = "master"
-  digest = "1:f3babb273ae1b74ce2aecea6c94118eb4a07a570bf0f0913fc2dd007595f9db3"
-  name = "github.com/gigawattio/errorlib"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "1db943df2ebbcd4a1f8f3ace8389b187f5c15640"
 
 [[projects]]
   branch = "master"
@@ -218,20 +211,20 @@
   revision = "23cecc559c21434d2c2bdb647bf58ed539a33da6"
 
 [[projects]]
-  digest = "1:8f8811f9be822914c3a25c6a071e93beb4c805d7b026cbf298bc577bc1cc945b"
+  digest = "1:3a26588bc48b96825977c1b3df964f8fd842cd6860cc26370588d3563433cf11"
   name = "github.com/google/uuid"
   packages = ["."]
   pruneopts = "UT"
-  revision = "064e2069ce9c359c118179501254f67d7d37ba24"
-  version = "0.2"
+  revision = "d460ce9f8df2e77fb1ba55ca87fafed96c607494"
+  version = "v1.0.0"
 
 [[projects]]
-  digest = "1:cee8e8ac80df6373e7daa11baf1f98c1b6f7242c49ccae7e1ec34a971dc408d9"
+  digest = "1:7b5c6e2eeaa9ae5907c391a91c132abfd5c9e8a784a341b5625e750c67e6825d"
   name = "github.com/gorilla/websocket"
   packages = ["."]
   pruneopts = "UT"
-  revision = "3ff3320c2a1756a3691521efc290b4701575147c"
-  version = "v1.3.0"
+  revision = "66b9c49e59c6c48f0ffce28c2d8b8a5678502c6d"
+  version = "v1.4.0"
 
 [[projects]]
   digest = "1:36d8bdf4367306ad70e7fb62c6cd6735a3c448a5ef3ac912b384fd143a36ff3a"
@@ -255,19 +248,20 @@
   revision = "3511cd63f456392ba97c7f2f237e8af0cbee5ae4"
 
 [[projects]]
-  digest = "1:80544abec6a93301c477926d6ed12dffce5029ddb34101435d88277f98006844"
+  digest = "1:4e0aa2a8f7c5d6e125af6ed331f5389003429e4fb0747f6d4be9715f246800f0"
   name = "github.com/huandu/xstrings"
   packages = ["."]
   pruneopts = "UT"
-  revision = "3959339b333561bf62a38b424fd41517c2c90f40"
+  revision = "55ae428c2ac4f74d7430952ef528631e656ac92c"
+  version = "v1.1.0"
 
 [[projects]]
-  digest = "1:1069357a2767ba898fd6c715fb15d005403e5becf9b2e747630fbdde2a340302"
+  digest = "1:8eb1de8112c9924d59bf1d3e5c26f5eaa2bfc2a5fcbb92dc1c2e4546d695f277"
   name = "github.com/imdario/mergo"
   packages = ["."]
   pruneopts = "UT"
-  revision = "7fe0c75c13abdee74b09fcacef5ea1c6bba6a874"
-  version = "0.2.4"
+  revision = "9f23e2d6bd2a77f959b2bf6acdbefd708a83a4a4"
+  version = "v0.3.6"
 
 [[projects]]
   digest = "1:870d441fe217b8e689d7949fef6e43efbc787e50f200cb1e70dbca9204a1d6be"
@@ -429,12 +423,12 @@
   version = "v1.1"
 
 [[projects]]
-  digest = "1:39c2113f3a89585666e6f973650cff186b2d06deb4aa202c88addb87b0a201db"
+  branch = "master"
+  digest = "1:46caac7a4eafb9b50542b2f542ae97eadf520ac9bc7b7a557dae8ddb2e083d97"
   name = "github.com/russross/blackfriday"
   packages = ["."]
   pruneopts = "UT"
-  revision = "cadec560ec52d93835bf2f15bd794700d3a2473b"
-  version = "v2.0.0"
+  revision = "f1f45ab762c27468d6384ce800fd56bea62bbfe1"
 
 [[projects]]
   digest = "1:d917313f309bda80d27274d53985bc65651f81a5b66b820749ac7f8ef061fd04"
@@ -443,14 +437,6 @@
   pruneopts = "UT"
   revision = "1744e2970ca51c86172c8190fadad617561ed6e7"
   version = "v1.0.0"
-
-[[projects]]
-  branch = "master"
-  digest = "1:def689e73e9252f6f7fe66834a76751a41b767e03daab299e607e7226c58a855"
-  name = "github.com/shurcooL/sanitized_anchor_name"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "86672fcb3f950f35f2e675df2240550f2a50762f"
 
 [[projects]]
   digest = "1:d867dfa6751c8d7a435821ad3b736310c2ed68945d05b50fb9d23aee0540c8cc"
@@ -591,7 +577,7 @@
     "windows/svc/mgr",
   ]
   pruneopts = "UT"
-  revision = "fa5fdf94c78965f1aa8423f0cc50b8b8d728b05a"
+  revision = "2b024373dcd9800f0cae693839fac6ede8d64a8c"
 
 [[projects]]
   digest = "1:a2ab62866c75542dd18d2b069fec854577a20211d7c0ea6ae746072a1dccdd18"
@@ -755,12 +741,12 @@
   revision = "725b8494969aa247f039e9e4ace3aac43444694f"
 
 [[projects]]
-  digest = "1:a7c01f7cf3aa0cfb633ed91d781fca7bf6a9c95d9ccec4d2ec3fb7deee872967"
+  branch = "master"
+  digest = "1:989270fffe265c4238404733c5591302fdccafa4ecd48d2f59cfa1e7e1ea3937"
   name = "mvdan.cc/xurls"
   packages = ["."]
   pruneopts = "UT"
-  revision = "d315b61cf6727664f310fa87b3197e9faf2a8513"
-  version = "v1.1.0"
+  revision = "70405f5eab516c9f7b626d803b043415809499a6"
 
 [solve-meta]
   analyzer-name = "dep"
