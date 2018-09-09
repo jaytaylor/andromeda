@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 
 	bolt "github.com/coreos/bbolt"
+	"github.com/golang/protobuf/proto"
+	"github.com/jinzhu/inflection"
 	log "github.com/sirupsen/logrus"
 
 	"jaytaylor.com/andromeda/domain"
@@ -257,4 +259,54 @@ func IsQ(s string) bool {
 		}
 	}
 	return false
+}
+
+// StructFor takes a table or queue name and returns a pointer to the newly
+// allocated struct of the corresponding type associated with the table.
+func StructFor(tableOrQueue string) (proto.Message, error) {
+	if tableOrQueue == "pkg" || tableOrQueue == "pkgs" {
+		tableOrQueue = TablePackages
+	}
+
+	switch tableOrQueue {
+	// N.B.: Metadata type is arbitrary on a per-key basis, so unsupported here.
+	// case TableMetadata:
+
+	case inflection.Plural(TablePackages), inflection.Singular(TablePackages):
+		return &domain.Package{}, nil
+
+	case inflection.Plural(TablePendingReferences), inflection.Singular(TablePendingReferences):
+		return &domain.Package{}, nil
+
+	case inflection.Plural(TableCrawlResults), inflection.Singular(TableCrawlResults):
+		return &domain.CrawlResult{}, nil
+
+	case inflection.Plural(TableToCrawl), inflection.Singular(TableToCrawl):
+		return nil, nil // &domain.ToCrawl{}, nil
+
+	default:
+		return nil, fmt.Errorf("unrecognized or unsupported table or queue %q", tableOrQueue)
+	}
+}
+
+// FuzzyTableResolver attempts to resolve the input string to a corresponding table or
+// queue name.
+//
+// An empty string is returned if no match is found.
+func FuzzyTableResolver(tableOrQueue string) string {
+	if tableOrQueue == "pkg" || tableOrQueue == "pkgs" {
+		return TablePackages
+	}
+	if tableOrQueue == "pending" {
+		return TablePendingReferences
+	}
+	if tableOrQueue == "metadata" || tableOrQueue == "meta" {
+		return TableMetadata
+	}
+	for _, name := range tables {
+		if inflection.Singular(name) == tableOrQueue || inflection.Plural(name) == tableOrQueue {
+			return name
+		}
+	}
+	return ""
 }

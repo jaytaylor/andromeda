@@ -117,6 +117,7 @@ apt-get install \
 - [ ] Move failed to-crawls to different table instead of dropping them outright.
 - [ ] 1/2 Expose queue contents over rest API.
 - [ ] 2/2 Frontend viewer for queue head and tail contents.
+- [ ] Migrate table names to be singular.
 
 To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -9,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/profile"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -144,26 +146,6 @@ func newLocalDestroyCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient db.Client) error {
 				return dbClient.Destroy(args...)
-				/*switch args[0] {
-				case db.TablePackages, "package", "pkg":
-					if err := dbClient.Purge(db.TablePackages); err != nil {
-						return fmt.Errorf("delete all packages: %s", err)
-					}
-
-				case db.TableToCrawl, "to-crawls":
-					if err := dbClient.Purge(db.TableToCrawl); err != nil {
-						return fmt.Errorf("delete all to-crawl entries: %s", err)
-					}
-
-				case db.TableMetadata, "metadata", "meta":
-					if err := dbClient.Purge(db.TableMetadata); err != nil {
-						return fmt.Errorf("delete all metadata entries: %s", err)
-					}
-
-				default:
-					return fmt.Errorf("unrecognized table %q", args[0])
-				}
-				return nil*/
 			}); err != nil {
 				log.Fatalf("main: %s", err)
 			}
@@ -174,9 +156,9 @@ func newLocalDestroyCmd() *cobra.Command {
 
 func newLocalGetCmd() *cobra.Command {
 	getCmd := &cobra.Command{
-		Use:   "get",
-		Short: "[table] [key]",
-		Long:  ".. jay will fill this long one out sometime ..",
+		Use:   "get <table> <key-1> [<key-2> ...]",
+		Short: "Retrieve one or more records as JSON based on key from a table as JSON",
+		Long:  "Retrieve one or more records as JSON based on key from a table as JSON",
 		Args:  cobra.MinimumNArgs(2),
 		PreRun: func(_ *cobra.Command, _ []string) {
 			initLogging()
@@ -192,48 +174,42 @@ func newLocalGetCmd() *cobra.Command {
 			}
 
 			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient db.Client) error {
-				switch args[0] {
-				case db.TablePackages, "package", "pkg":
-					pkg, err := dbClient.Package(args[1])
-					if err != nil {
-						return fmt.Errorf("getting package: %s", err)
-					}
-					return emitJSON(pkg)
-
-				case db.TableToCrawl, "to-crawls":
-					var entry *domain.ToCrawlEntry
-					if err := dbClient.EachToCrawlWithBreak(func(e *domain.ToCrawlEntry) bool {
-						if e.PackagePath == args[1] {
-							entry = e
-							return false
-						}
-						return true
-					}); err != nil {
-						return err
-					}
-					if entry == nil {
-						return fmt.Errorf("to-crawl entry %q not found", args[1])
-					}
-					return emitJSON(entry)
-
-				case db.TablePendingReferences, "pending-refs", "pending":
-					refs, err := dbClient.PendingReferences(args[1])
-					if err != nil {
-						log.Fatal(err)
-					}
-					return emitJSON(refs)
-
-				case db.TableMetadata, "metadata", "meta":
-					var s string
-					if err := dbClient.Meta(args[1], &s); err != nil {
-						log.Fatal(err)
-					}
-					fmt.Printf("%v\n", s)
-
-				default:
-					return fmt.Errorf("unrecognized table %q", args[0])
+				t := db.FuzzyTableResolver(args[0])
+				if t == "" {
+					log.Fatalf("Unrecognized table %q", args[0])
 				}
-				return nil
+
+				if len(args) == 2 {
+					v, err := dbClient.Backend().Get(t, []byte(args[1]))
+					if err != nil {
+						log.Fatal(err)
+					}
+					ptr, err := db.StructFor(t)
+					if err != nil {
+						log.Fatal(err)
+					}
+					if err = proto.Unmarshal(v, ptr); err != nil {
+						log.Fatal(err)
+					}
+					return emitJSON(ptr)
+				}
+
+				ptrs := []interface{}{}
+				for _, arg := range args[1:] {
+					v, err := dbClient.Backend().Get(t, []byte(arg))
+					if err != nil {
+						log.Fatal(err)
+					}
+					ptr, err := db.StructFor(t)
+					if err != nil {
+						log.Fatal(err)
+					}
+					if err = proto.Unmarshal(v, ptr); err != nil {
+						log.Fatal(err)
+					}
+					ptrs = append(ptrs, ptr)
+				}
+				return emitJSON(ptrs)
 			}); err != nil {
 				log.Fatalf("main: %s", err)
 			}
@@ -246,134 +222,107 @@ func newLocalGetCmd() *cobra.Command {
 	return getCmd
 }
 
-func newLocalListCmd() *cobra.Command {
+func newLocalCatCmd() *cobra.Command {
 	max := -1
 
-	lsCmd := &cobra.Command{
-		Use:     "ls",
-		Aliases: []string{"cat"},
-		Short:   "[table] [optional-filter]",
-		Long:    "[table] [optional-filter], e.g. pkg -CommittedAt",
-		Args:    cobra.MinimumNArgs(1),
+	catCmt := &cobra.Command{
+		Use:   "cat <table> [<filter> ...]",
+		Short: "Lists table contents with optional filtration; <table> [optional-filter], e.g. pkg -CommittedAt",
+		Long:  "Lists table contents with optional filtration; <table> [optional-filter], e.g. pkg -CommittedAt",
+		Args:  cobra.MinimumNArgs(1),
 		PreRun: func(_ *cobra.Command, _ []string) {
 			initLogging()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient db.Client) error {
-				switch args[0] {
-				case db.TablePackages, "package", "pkg":
-					if len(args) == 1 {
-						fmt.Println("[")
-						var (
-							i       = 0
-							prevPkg *domain.Package
-						)
-						if err := dbClient.EachPackageWithBreak(func(pkg *domain.Package) bool {
-							if prevPkg != nil {
-								j, _ := json.MarshalIndent(prevPkg, "", "    ")
-								fmt.Printf("%v", string(j))
-								if max <= 0 || max > 1 {
-									fmt.Print(",")
-								}
-								fmt.Print("\n")
-							}
-							prevPkg = pkg
-							i++
-							if i >= max {
-								return false
-							}
-							return true
-						}); err != nil {
-							return err
-						}
-						if prevPkg != nil {
-							j, _ := json.MarshalIndent(prevPkg, "", "    ")
-							fmt.Printf("%v\n", string(j))
-						}
-						fmt.Println("]")
-					} else {
-						lessFn, err := resolveLessFn(args[1])
-						if err != nil {
-							return err
-						}
-						h := domain.NewPackagesHeap(lessFn)
-						if err := dbClient.EachPackage(func(pkg *domain.Package) {
-							h.PackagePush(pkg)
-							if max > 0 && h.Len() > max {
-								h.PackagePop()
-							}
-						}); err != nil {
-							return err
-						}
-						emitJSON(h.Slice())
-					}
+				t := db.FuzzyTableResolver(args[0])
+				if t == "" {
+					log.Fatalf("Unrecognized table %q", args[0])
+				}
 
-				case db.TableToCrawl, "to-crawls":
-					fmt.Println("[")
-					var prevEntry *domain.ToCrawlEntry
-					if err := dbClient.EachToCrawl(func(entry *domain.ToCrawlEntry) {
-						if prevEntry != nil {
-							j, _ := json.MarshalIndent(prevEntry, "", "    ")
-							fmt.Printf("%v", string(j))
-							if max <= 0 || max > 1 {
-								fmt.Print(",")
-							}
-							fmt.Print("\n")
-						}
-						prevEntry = entry
-					}); err != nil {
-						return err
-					}
-					if prevEntry != nil {
-						j, _ := json.MarshalIndent(prevEntry, "", "    ")
-						fmt.Printf("%v\n", string(j))
-					}
-					fmt.Println("]")
-
-				case db.TablePendingReferences, "pending-refs", "pending":
-					fmt.Println("[")
-					var prevEntry *domain.PendingReferences
-					if err := dbClient.EachPendingReferences(func(pendingRefs *domain.PendingReferences) {
-						if prevEntry != nil {
-							j, _ := json.MarshalIndent(prevEntry, "", "    ")
-							fmt.Printf("%v", string(j))
-							if max <= 0 || max > 1 {
-								fmt.Print(",")
-							}
-							fmt.Print("\n")
-						}
-						prevEntry = pendingRefs
-					}); err != nil {
-						return err
-					}
-					if prevEntry != nil {
-						j, _ := json.MarshalIndent(prevEntry, "", "    ")
-						fmt.Printf("%v\n", string(j))
-					}
-					fmt.Println("]")
-
-				case db.TableMetadata, "metadata", "meta":
+				// The metadata table is a special case.
+				if t == db.TableMetadata {
 					m := map[string]string{}
 					if err := dbClient.EachRow(db.TableMetadata, func(k []byte, v []byte) {
 						m[string(k)] = string(v)
 					}); err != nil {
 						log.Fatal(err)
 					}
-					emitJSON(m)
-
-				default:
-					return fmt.Errorf("unrecognized table %q", args[0])
+					return emitJSON(m)
 				}
-				return nil
+
+				if len(args) == 1 {
+					return dumpTable(dbClient, t, max)
+				}
+				return dumpFiltered(dbClient, t, max, args[1])
 			}); err != nil {
 				log.Fatalf("main: %s", err)
 			}
 		},
 	}
 
-	lsCmd.Flags().IntVarP(&max, "max", "m", max, "Maximum number of items to include")
+	catCmt.Flags().IntVarP(&max, "max", "m", max, "Maximum number of items to include")
 
-	return lsCmd
+	return catCmt
+}
+
+func dumpTable(dbClient db.Client, t string, max int) error {
+	fmt.Println("[")
+	var (
+		i       = 0
+		prevPtr interface{}
+	)
+	if err := dbClient.Backend().EachRowWithBreak(t, func(k []byte, v []byte) bool {
+		ptr, err := db.StructFor(t)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err = proto.Unmarshal(v, ptr); err != nil {
+			log.Fatal(err)
+		}
+		if prevPtr != nil {
+			j, _ := json.MarshalIndent(prevPtr, "", "    ")
+			fmt.Printf("%v", string(j))
+			if max <= 0 || max > 1 {
+				fmt.Print(",")
+			}
+			fmt.Print("\n")
+		}
+		prevPtr = ptr
+		i++
+		if i >= max {
+			return false
+		}
+		return true
+	}); err != nil {
+		return err
+	}
+	if prevPtr != nil {
+		j, _ := json.MarshalIndent(prevPtr, "", "    ")
+		fmt.Printf("%v\n", string(j))
+	}
+	fmt.Println("]")
+	return nil
+}
+
+func dumpFiltered(dbClient db.Client, t string, max int, filter string) error {
+	if t != db.TablePackages {
+		return errors.New("filtration is only available for the packages table")
+	}
+	lessFn, err := resolveLessFn(filter)
+	if err != nil {
+		return err
+	}
+	h := domain.NewPackagesHeap(lessFn)
+	if err := dbClient.EachPackage(func(ptr *domain.Package) {
+		h.PackagePush(ptr)
+		if max > 0 && h.Len() > max {
+			h.PackagePop()
+		}
+	}); err != nil {
+		return err
+	}
+	return emitJSON(h.Slice())
 }
 
 func resolveLessFn(name string) (domain.PackagesLessFunc, error) {
