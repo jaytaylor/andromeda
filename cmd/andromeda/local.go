@@ -35,7 +35,7 @@ func newLocalCmd() *cobra.Command {
 		newLocalEnqueueCmd(),
 		newLocalDeletePackageCmd(),
 		newLocalGetCmd(),
-		newLocalListCmd(),
+		newLocalCatCmd(),
 		newLocalDeleteQueueCmd(),
 		newLocalDestroyCmd(),
 	)
