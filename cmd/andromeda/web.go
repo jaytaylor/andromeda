@@ -18,7 +18,10 @@ import (
 )
 
 func newWebCmd() *cobra.Command {
-	var runUpdateProcessor bool
+	var (
+		runUpdateProcessor bool
+		hostnames          []string
+	)
 
 	webCmd := &cobra.Command{
 		Use:   "web",
@@ -46,7 +49,8 @@ func newWebCmd() *cobra.Command {
 				cfg := &web.Config{
 					Addr: WebAddr,
 					// TODO: DevMode
-					Master: master,
+					Master:    master,
+					Hostnames: hostnames,
 				}
 				ws := web.New(dbClient, cfg)
 				if err := ws.Start(); err != nil {
@@ -103,6 +107,8 @@ func newWebCmd() *cobra.Command {
 	webCmd.Flags().BoolVarP(&runUpdateProcessor, "update-processor", "", runUpdateProcessor, "Run update-processor routine as a background task; makes the most sense to turn this on when not using postgres as the backing data store")
 
 	webCmd.Flags().BoolVarP(&MemoryProfiler, "memory-profiler", "", MemoryProfiler, "Enable the memory profiler; creates a mem.pprof file while the application is shutting down")
+
+	webCmd.Flags().StringSliceVarP(&hostnames, "hostnames", "", hostnames, "Server domain name(s) / hostnames to enable CORS policy on and allow public certificate requests for; flag may be comma-delimited or repeated multiple times")
 
 	return webCmd
 }

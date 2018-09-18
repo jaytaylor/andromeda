@@ -7,7 +7,7 @@ Type=simple
 User=myuser
 EnvironmentFile=-/etc/default/andromeda
 WorkingDirectory=/home/myuser/go/src/jaytaylor.com/andromeda
-ExecStart=/home/myuser/go/bin/andromeda web -v --driver postgres --db "dbname=andromeda host=/var/run/postgresql" -a 0.0.0.0:8001
+ExecStart=/home/myuser/go/bin/andromeda web -v --driver postgres --db "dbname=andromeda host=/var/run/postgresql" -a 0.0.0.0:8001 --hostnames "a.example.com,andromeda.example.com,go.example.com"
 Restart=on-failure
 
 [Install]
