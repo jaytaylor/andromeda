@@ -24,6 +24,7 @@ import (
 	"jaytaylor.com/andromeda/crawler"
 	"jaytaylor.com/andromeda/db"
 	"jaytaylor.com/andromeda/domain"
+	"jaytaylor.com/andromeda/pkg/openssl"
 	"jaytaylor.com/andromeda/web/public"
 )
 
@@ -32,9 +33,10 @@ import (
 //var AsyncRequestHandlerTimeout time.Duration = 5 * time.Second
 
 type Config struct {
-	Addr    string
-	DevMode bool
-	Master  *crawler.Master
+	Addr      string
+	DevMode   bool
+	Master    *crawler.Master
+	Hostnames []string // Specifies permitted CORS domain name(s) / hostname(s).  Also used to filter public certificate lookup requests.
 }
 
 type WebService struct {
@@ -229,6 +231,11 @@ func (service *WebService) pkg(w http.ResponseWriter, req *http.Request) {
 	// Handle API request.
 	// TODO: This is not good structure, clean it up with a proper mux.
 	if strings.HasPrefix(pkgPath, "v1/") {
+		if strings.HasPrefix(pkgPath, "v1/public-key-crt") {
+			service.publicKeyCrt(w, req, strings.TrimLeft(pkgPath, "v1/public-key-crt"))
+			return
+		}
+
 		pkgPath = strings.SplitN(pkgPath, "v1/", 2)[1]
 		pkg, err := service.DB.Package(pkgPath)
 		if err != nil {
@@ -325,4 +332,24 @@ func (service *WebService) subPkgFallback(w http.ResponseWriter, req *http.Reque
 	} else {
 		web.RespondWithHtml(w, 404, fmt.Sprintf(`%[1]q not found in %[2]v<br><br>Perhaps you'd like to <a href="/%[2]v">view all packages contained in %[2]v</a>`, pkgPath, pkg.Path))
 	}
+}
+
+// publicKeyCrt provides a mechanism for crawlers operating behind a proxy to
+// obtain the requisite public-key certificate.
+//
+// This is helpful because crawlers operating behind a proxy will not be able to
+// use the openssl command to connect directly to port 443.
+func (service *WebService) publicKeyCrt(w http.ResponseWriter, req *http.Request, domain string) {
+	for _, name := range service.Config.Hostnames {
+		if name == strings.Split(domain, ":")[0] {
+			s, err := openssl.CertPubKey(domain)
+			if err != nil {
+				web.RespondWithText(w, 500, err.Error())
+				return
+			}
+			web.RespondWithText(w, 200, s)
+			return
+		}
+	}
+	web.RespondWithText(w, 404, "not found")
 }
