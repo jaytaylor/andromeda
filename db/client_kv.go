@@ -673,6 +673,27 @@ func (c *KVClient) ToCrawlAdd(entries []*domain.ToCrawlEntry, opts *QueueOptions
 		opts = NewQueueOptions()
 	}
 
+	if opts.OnlyIfNotExists {
+		// Filter out pre-existing packages.
+		log.WithField("n", len(entries)).Debug("OnlyIfNotExists activated: Filtering out package paths which already exist")
+		paths := make([]string, len(entries))
+		for i, entry := range entries {
+			paths[i] = entry.PackagePath
+		}
+		foundPkgs, err := c.Packages(paths...)
+		if err != nil {
+			return 0, err
+		}
+		filtered := []*domain.ToCrawlEntry{}
+		for _, entry := range entries {
+			if _, ok := foundPkgs[entry.PackagePath]; !ok {
+				filtered = append(filtered, entry)
+			}
+		}
+		log.WithField("n", len(filtered)).Debugf("OnlyIfNotExists filtration complete, pruned %v entries", len(entries)-len(filtered))
+		entries = filtered
+	}
+
 	candidates := map[string]*domain.ToCrawlEntry{}
 	for _, entry := range entries {
 		candidates[entry.PackagePath] = entry

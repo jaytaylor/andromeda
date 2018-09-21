@@ -304,7 +304,8 @@ func (m *Master) SaveLoop(stopCh chan struct{}) {
 func (m *Master) Enqueue(ctx context.Context, req *domain.EnqueueRequest) (*domain.EnqueueResponse, error) {
 	log.WithField("entries", len(req.Entries)).Debug("Received enqueue request")
 	opts := &db.QueueOptions{
-		Priority: int(req.Priority),
+		Priority:        int(req.Priority),
+		OnlyIfNotExists: req.OnlyIfNotExists,
 	}
 	n, err := m.db.ToCrawlAdd(req.Entries, opts)
 	if err != nil {

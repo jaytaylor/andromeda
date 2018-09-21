@@ -170,7 +170,8 @@ func NewClient(config Config) Client {
 }
 
 type QueueOptions struct {
-	Priority int
+	Priority        int
+	OnlyIfNotExists bool // Only enqueue items which don't already exist.
 }
 
 func NewQueueOptions() *QueueOptions {
