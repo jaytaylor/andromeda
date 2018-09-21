@@ -1182,6 +1182,9 @@ func encodeVarintPackage(dAtA []byte, offset int, v uint64) int {
 	return offset + 1
 }
 func (m *Package) Size() (n int) {
+	if m == nil {
+		return 0
+	}
 	var l int
 	_ = l
 	if m.ID != 0 {
@@ -1241,6 +1244,9 @@ func (m *Package) Size() (n int) {
 }
 
 func (m *PackageReferences) Size() (n int) {
+	if m == nil {
+		return 0
+	}
 	var l int
 	_ = l
 	if len(m.Refs) > 0 {
@@ -1256,6 +1262,9 @@ func (m *PackageReferences) Size() (n int) {
 }
 
 func (m *PackageReference) Size() (n int) {
+	if m == nil {
+		return 0
+	}
 	var l int
 	_ = l
 	l = len(m.Path)
@@ -1280,6 +1289,9 @@ func (m *PackageReference) Size() (n int) {
 }
 
 func (m *PackageCrawl) Size() (n int) {
+	if m == nil {
+		return 0
+	}
 	var l int
 	_ = l
 	if m.JobStartedAt != nil {
@@ -1314,6 +1326,9 @@ func (m *PackageCrawl) Size() (n int) {
 }
 
 func (m *PackageSnapshot) Size() (n int) {
+	if m == nil {
+		return 0
+	}
 	var l int
 	_ = l
 	if m.CreatedAt != nil {
@@ -1388,6 +1403,9 @@ func (m *PackageSnapshot) Size() (n int) {
 }
 
 func (m *SubPackage) Size() (n int) {
+	if m == nil {
+		return 0
+	}
 	var l int
 	_ = l
 	l = len(m.Name)

@@ -108,7 +108,11 @@ func runRemoteFeedConnector(addr string, f *feed.Feed, priority int) {
 		}
 		entry := domain.NewToCrawlEntry(possiblePkg, "discovered by feed crawler")
 		for {
-			n, err := r.Enqueue([]*domain.ToCrawlEntry{entry}, priority)
+			opts := db.NewQueueOptions()
+			opts.Priority = priority
+			opts.OnlyIfNotExists = true
+
+			n, err := r.Enqueue([]*domain.ToCrawlEntry{entry}, opts)
 			if err == nil {
 				plural := ""
 				if n > 1 || n == 0 {

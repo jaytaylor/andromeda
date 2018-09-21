@@ -66,6 +66,8 @@ func newLocalCrawlCmd() *cobra.Command {
 }
 
 func newLocalEnqueueCmd() *cobra.Command {
+	var onlyIfNotExists bool
+
 	localEnqueueCmd := &cobra.Command{
 		Use:   "enqueue <package-path-1> [<package-path-2> ...]",
 		Short: "Add packages to the to-crawl queue",
@@ -86,6 +88,9 @@ func newLocalEnqueueCmd() *cobra.Command {
 					}
 				}
 				opts := db.NewQueueOptions()
+				opts.Priority = db.DefaultQueuePriority
+				opts.OnlyIfNotExists = onlyIfNotExists
+
 				n, err := dbClient.ToCrawlAdd(entries, opts)
 				if err != nil {
 					return err
@@ -100,6 +105,7 @@ func newLocalEnqueueCmd() *cobra.Command {
 
 	localEnqueueCmd.Flags().IntVarP(&db.DefaultQueuePriority, "priority", "p", db.DefaultQueuePriority, "Priority level to use when adding items to the queue")
 	localEnqueueCmd.Flags().StringVarP(&EnqueueReason, "reason", "r", EnqueueReason, "Reason to use for to-crawl entries")
+	localEnqueueCmd.Flags().BoolVarP(&onlyIfNotExists, "only-if-not-exists", "", onlyIfNotExists, "Only enqueue if the package does not already exist")
 
 	return localEnqueueCmd
 }

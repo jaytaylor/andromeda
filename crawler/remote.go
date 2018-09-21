@@ -163,7 +163,11 @@ func (r *Remote) Run(stopCh chan struct{}) {
 	}
 }
 
-func (r *Remote) Enqueue(entries []*domain.ToCrawlEntry, priority ...int) (int, error) {
+func (r *Remote) Enqueue(entries []*domain.ToCrawlEntry, opts *db.QueueOptions) (int, error) {
+	if opts == nil {
+		opts = db.NewQueueOptions()
+	}
+
 	conn, err := r.conn()
 	if err != nil {
 		return 0, err
@@ -172,12 +176,10 @@ func (r *Remote) Enqueue(entries []*domain.ToCrawlEntry, priority ...int) (int, 
 
 	rcsc := domain.NewRemoteCrawlerServiceClient(conn)
 
-	if len(priority) == 0 {
-		priority = []int{db.DefaultQueuePriority}
-	}
 	req := &domain.EnqueueRequest{
-		Entries:  entries,
-		Priority: int32(priority[0]),
+		Entries:         entries,
+		Priority:        int32(opts.Priority),
+		OnlyIfNotExists: opts.OnlyIfNotExists,
 	}
 
 	resp, err := rcsc.Enqueue(context.Background(), req)

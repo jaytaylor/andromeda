@@ -42,6 +42,8 @@ func newRemoteCmd() *cobra.Command {
 }
 
 func newRemoteEnqueueCmd() *cobra.Command {
+	var onlyIfNotExists bool
+
 	remoteEnqueueCmd := &cobra.Command{
 		Use:   "enqueue <pkg-path-1> [<pkg-path-2> ...]",
 		Short: "Add items to the to-crawl queue",
@@ -70,8 +72,11 @@ func newRemoteEnqueueCmd() *cobra.Command {
 					Force:       EnqueueForce,
 				}
 			}
+			opts := db.NewQueueOptions()
+			opts.Priority = db.DefaultQueuePriority
+			opts.OnlyIfNotExists = onlyIfNotExists
 
-			n, err := r.Enqueue(toCrawls, db.DefaultQueuePriority)
+			n, err := r.Enqueue(toCrawls, opts)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -82,6 +87,7 @@ func newRemoteEnqueueCmd() *cobra.Command {
 	remoteEnqueueCmd.Flags().IntVarP(&db.DefaultQueuePriority, "priority", "p", db.DefaultQueuePriority, "Priority level to use when adding items to the queue")
 	remoteEnqueueCmd.Flags().StringVarP(&EnqueueReason, "reason", "r", EnqueueReason, "Reason to use for to-crawl entries")
 	remoteEnqueueCmd.Flags().BoolVarP(&EnqueueForce, "force", "f", EnqueueForce, "Force queue insertion and crawl")
+	remoteEnqueueCmd.Flags().BoolVarP(&onlyIfNotExists, "only-if-not-exists", "", onlyIfNotExists, "Only enqueue if the package does not already exist")
 	addRemoteFlags(remoteEnqueueCmd)
 
 	return remoteEnqueueCmd
