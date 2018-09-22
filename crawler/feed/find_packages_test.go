@@ -33,7 +33,7 @@ func TestFindPackages(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		if actual := findPackages(testCase.input); !reflect.DeepEqual(actual, testCase.expected) {
+		if actual := FindPackages(testCase.input); !reflect.DeepEqual(actual, testCase.expected) {
 			t.Errorf("[i=%v] Expected returned pkgs(%v)=%+v but acutal(%v)=%v", i, len(testCase.expected), testCase.expected, len(actual), actual)
 		}
 	}

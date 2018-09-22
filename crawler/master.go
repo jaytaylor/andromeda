@@ -265,6 +265,24 @@ func (m *Master) SaveLoop(stopCh chan struct{}) {
 			existing *domain.Package
 			err      error
 		)
+
+		if len(cr.Discoveries) > 0 {
+			entries := make([]*domain.ToCrawlEntry, len(cr.Discoveries))
+
+			for i, candidate := range cr.Discoveries {
+				entries[i] = domain.NewToCrawlEntry(candidate, "discovered by crawler")
+			}
+
+			opts := db.NewQueueOptions()
+			opts.OnlyIfNotExists = true
+
+			if n, err := m.db.ToCrawlAdd(entries, opts); err != nil {
+				log.Errorf("Problem queueing crawler discoveries: %s", err)
+			} else {
+				log.WithField("n", n).Debug("Enqueued crawler content discoveries as to-crawls")
+			}
+		}
+
 		if existing, err = m.db.Package(cr.Package.Path); err != nil && err != db.ErrKeyNotFound {
 			log.WithField("pkg", pkgPath).Errorf("Problem getting existing package for merge: %s", err)
 			continue

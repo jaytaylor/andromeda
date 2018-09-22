@@ -64,7 +64,7 @@ func (ds *Reddit) Refresh() ([]string, error) {
 	if err := ds.mark(time.Unix(int64(pruned[0].Data.CreatedUtc), 0)); err != nil {
 		return nil, err
 	}
-	possiblePkgs := findPackages(string(body))
+	possiblePkgs := FindPackages(string(body))
 	return possiblePkgs, nil
 }
 
