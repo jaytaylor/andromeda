@@ -35,7 +35,7 @@ func (ds *Reddit) Refresh() ([]string, error) {
 	}
 	var hits redditResponse
 	if err := json.Unmarshal(body, &hits); err != nil {
-		log.Info("Failed to parse JSON: %v", string(body))
+		log.Infof("Failed to parse JSON: %v", string(body))
 		return nil, err
 	}
 	if len(hits.Data.Children) == 0 {

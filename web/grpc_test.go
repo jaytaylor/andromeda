@@ -69,7 +69,8 @@ func TestRemote(t *testing.T) {
 
 		{
 			// Add several (3+) to-crawl entries.
-			n, err := r.Enqueue(toCrawls, db.DefaultQueuePriority)
+			opts := db.NewQueueOptions()
+			n, err := r.Enqueue(toCrawls, opts)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -80,7 +81,8 @@ func TestRemote(t *testing.T) {
 		}
 		{
 			// Adding them again should return n=0.
-			n, err := r.Enqueue(toCrawls, db.DefaultQueuePriority)
+			opts := db.NewQueueOptions()
+			n, err := r.Enqueue(toCrawls, opts)
 			if err != nil {
 				t.Fatal(err)
 			}
