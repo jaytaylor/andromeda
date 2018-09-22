@@ -40,7 +40,8 @@ option (gogoproto.messagename_all) = true;
 message CrawlResult {
   Package Package = 1;
   map<string, PackageReferences> imported_resources = 2; // Root Import Path -> Package Path.
-  string ErrMsg = 3;
+  string ErrMsg = 3; // TODO:Fix this, it's improperly named.  Fix at a time when crawler upgrades can be checked, since this is a breaking change.
+  repeated string discoveries = 4; // TODO: At the same time, push err_msg below this one, while you're at it.
 }
 
 message EnqueueRequest {

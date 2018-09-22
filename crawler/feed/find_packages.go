@@ -78,8 +78,8 @@ var (
 	}
 )
 
-// findPackages identifies all possible package paths in a block of text.
-func findPackages(text string) []string {
+// FindPackages identifies all possible package paths in a block of text.
+func FindPackages(text string) []string {
 	text = cleanExpr.ReplaceAllString(text, ` $1 `)
 	matches := xurls.Relaxed().FindAllString(text, -1)
 	accepted := []string{}

@@ -48,7 +48,7 @@ func (ds *HackerNews) Refresh() ([]string, error) {
 	if err := ds.mark(hits.Hits[0].CreatedAt); err != nil {
 		return nil, err
 	}
-	possiblePkgs := findPackages(string(body))
+	possiblePkgs := FindPackages(string(body))
 	return possiblePkgs, nil
 }
 
