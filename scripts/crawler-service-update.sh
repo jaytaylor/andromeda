@@ -47,6 +47,7 @@ function main() {
 
     local rc
     local owner
+    local updater
 
     if [ "$(id -u)" -ne 0 ] ; then
         echo "ERROR: $0 must be run as root" 1>&2
@@ -70,9 +71,11 @@ function main() {
         exit 1
     fi
 
+    updater="$(realpath "$(dirname "$0")/self-update.sh")"
+
     set +o errexit
     set +o pipefail
-    sudo --set-home --login --non-interactive -u "${owner}" "$(dirname "$0")/self-update.sh"
+    sudo --set-home --login --non-interactive -u "${owner}" "${updater}"
     rc=$?
 
     echo "INFO: self-update.sh exited with status code=${rc}" 2>&1

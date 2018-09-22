@@ -22,6 +22,7 @@ func newUtilCmd() *cobra.Command {
 	}
 
 	utilCmd.AddCommand(
+		newRepoRootCmd(),
 		newRebuildDBCmd(),
 	)
 
@@ -31,7 +32,7 @@ func newUtilCmd() *cobra.Command {
 // newRepoRootCmd TODO: move this to util sub-command.
 func newRepoRootCmd() *cobra.Command {
 	repoRootCmd := &cobra.Command{
-		Use:     "repo-root",
+		Use:     "repo-root <package-path>",
 		Aliases: []string{"reporoot", "rr"},
 		Short:   "Package repository root lookup",
 		Long:    "Administrative utilithy to lookup the repository root for a package",

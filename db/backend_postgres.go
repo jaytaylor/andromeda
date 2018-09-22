@@ -197,7 +197,7 @@ func (be *PostgresBackend) delete(pTx *pgTx, table string, keys ...[]byte) error
 	return nil
 }
 
-func (be *PostgresBackend) Drop(tables ...string) error {
+func (be *PostgresBackend) Destroy(tables ...string) error {
 	return be.withTx(true, func(pTx *pgTx) error {
 		return be.drop(pTx, tables...)
 	})

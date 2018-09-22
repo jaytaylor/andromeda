@@ -5,16 +5,15 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
-// DownloadCertPubKey Windows implementation.
-func DownloadCertPubKey(addr string) (string, error) {
+// CertPubKey Windows implementation.
+func CertPubKey(addr string) ([]byte, error) {
 	hostname := strings.Split(addr, ":")[0]
 	intermediateFile, err := ioutil.TempFile("", "")
 	if err != nil {
-		return "", fmt.Errorf("creating batch file intermediate temp file: %s", err)
+		return []byte{}, fmt.Errorf("creating batch file intermediate temp file: %s", err)
 	}
 	batchCmds := fmt.Sprintf(
 		`
@@ -25,26 +24,22 @@ openssl x509 -outform PEM < %[3]v`,
 		intermediateFile.Name(),
 	)
 	if err = intermediateFile.Close(); err != nil {
-		return "", fmt.Errorf("closing batch file intermediate temp file before write: %s", err)
+		return []byte{}, fmt.Errorf("closing batch file intermediate temp file before write: %s", err)
 	}
 	defer os.Remove(intermediateFile.Name())
 	batchFilename := fmt.Sprintf("%v.bat", intermediateFile.Name())
 	if err != nil {
-		return "", fmt.Errorf("creating batch file: %s", err)
+		return []byte{}, fmt.Errorf("creating batch file: %s", err)
 	}
 	if err := ioutil.WriteFile(batchFilename, []byte(batchCmds), os.FileMode(int(0600))); err != nil {
-		return "", fmt.Errorf("writing batch file %q: %s", batchFilename, err)
+		return []byte{}, fmt.Errorf("writing batch file %q: %s", batchFilename, err)
 	}
 	defer os.Remove(batchFilename)
 
 	cmd := exec.Command(batchFilename)
 	data, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("downloading certificate public-key: %s", err)
+		return []byte{}, fmt.Errorf("downloading certificate public-key: %s", err)
 	}
-	filename := filepath.Join(os.TempDir(), fmt.Sprintf("%v.pem", hostname))
-	if err := ioutil.WriteFile(filename, data, os.FileMode(int(0600))); err != nil {
-		return "", fmt.Errorf("writing out PEM file %q: %s", filename, err)
-	}
-	return filename, nil
+	return data, nil
 }

@@ -94,7 +94,7 @@ func (q *PostgresQueue) Enqueue(table string, priority int, values ...[]byte) er
 
 	if priority <= 0 {
 		// Default to lowest priority when an unsupported value is received.
-		priority = numPriorities
+		priority = MaxPriority
 	}
 
 	var (
@@ -227,4 +227,38 @@ func (q *PostgresQueue) Len(table string, priority int) (int, error) {
 func (_ *PostgresQueue) normalizeTable(table string) string {
 	table = strings.Replace(table, "-", "_", -1)
 	return table
+}
+
+// Destroy completely eliminates the named queue topics.
+func (q *PostgresQueue) Destroy(topics ...string) error {
+	if len(topics) == 0 {
+		return nil
+	}
+
+	tx, err := q.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	bestEffortRB := func(table string) error {
+		if rbErr := tx.Rollback(); rbErr != nil {
+			log.WithField("table", table).Errorf("Rolling back due to error dropping table: %s", rbErr)
+			return rbErr
+		}
+		return nil
+	}
+
+	for _, topic := range topics {
+		topic = q.normalizeTable(topic)
+		_, err := tx.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS %v`, pq.QuoteIdentifier(topic)))
+		if err != nil {
+			bestEffortRB(topic)
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return nil
 }

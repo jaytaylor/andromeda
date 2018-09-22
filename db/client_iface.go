@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 
 	bolt "github.com/coreos/bbolt"
+	"github.com/golang/protobuf/proto"
+	"github.com/jinzhu/inflection"
 	log "github.com/sirupsen/logrus"
 
 	"jaytaylor.com/andromeda/domain"
@@ -19,7 +21,7 @@ const (
 	TableCrawlResults      = "crawl-result"
 	TableToCrawl           = "to-crawl"
 
-	numPriorities = 10 // Number of supported priorities, 0-based.
+	MaxPriority = 10 // Number of supported priorities, 1-indexed.
 )
 
 var (
@@ -52,7 +54,7 @@ var (
 type Client interface {
 	Open() error                                                                                   // Open / start DB client connection.
 	Close() error                                                                                  // Close / shutdown the DB client connection.
-	Purge(tables ...string) error                                                                  // Reset a DB table.
+	Destroy(tables ...string) error                                                                // Destroy K/V tables and / or queue topics.
 	EachRow(table string, fn func(k []byte, v []byte)) error                                       // Invoke a callback on the key/value pair for each row of the named table.
 	EachRowWithBreak(table string, fn func(k []byte, v []byte) bool) error                         // Invoke a callback on the key/value pair for each row of the named table until cb returns false.
 	PackageSave(pkgs ...*domain.Package) error                                                     // Performs an upsert merge operation on a fully crawled package.
@@ -141,26 +143,26 @@ func NewClient(config Config) Client {
 			panic(fmt.Errorf("Opening bolt backend: %s", err))
 		}
 		q := NewBoltQueue(be.db)
-		return newClient(be, q)
+		return newKVClient(be, q)
 
 	case Rocks:
 		// MORE TEMPORARY UGLINESS TO MAKE IT WORK FOR NOW:
 		if err := os.MkdirAll(config.(*RocksConfig).Dir, os.FileMode(int(0700))); err != nil {
-			panic(err)
+			panic(fmt.Errorf("Creating rocks directory %q: %s", config.(*RocksConfig).Dir, err))
 		}
+		be := NewRocksBackend(config.(*RocksConfig))
 		queueFile := filepath.Join(config.(*RocksConfig).Dir, DefaultBoltQueueFilename)
 		db, err := bolt.Open(queueFile, 0600, NewBoltConfig("").BoltOptions)
 		if err != nil {
 			panic(fmt.Errorf("Creating bolt queue: %s", err))
 		}
 		q := NewBoltQueue(db)
-		be := NewRocksBackend(config.(*RocksConfig))
-		return newClient(be, q)
+		return newKVClient(be, q)
 
 	case Postgres:
-		q := NewPostgresQueue(config.(*PostgresConfig))
 		be := NewPostgresBackend(config.(*PostgresConfig))
-		return newClient(be, q)
+		q := NewPostgresQueue(config.(*PostgresConfig))
+		return newKVClient(be, q)
 
 	default:
 		panic(fmt.Errorf("no client constructor available for db configuration type: %v", typ))
@@ -168,7 +170,8 @@ func NewClient(config Config) Client {
 }
 
 type QueueOptions struct {
-	Priority int
+	Priority        int
+	OnlyIfNotExists bool // Only enqueue items which don't already exist.
 }
 
 func NewQueueOptions() *QueueOptions {
@@ -226,6 +229,18 @@ func kvTables() []string {
 // KVTables publicly exported version of kvTables.
 func KVTables() []string { return kvTables() }
 
+// IsKV returns true when s is the name of a Key-Value oriented table.
+//
+// Note: Does not normalize postgres_formatted_names..
+func IsKV(s string) bool {
+	for _, t := range kvTables() {
+		if s == t {
+			return true
+		}
+	}
+	return false
+}
+
 // QTables returns slice of queue table names.
 func QTables() []string {
 	tables := []string{}
@@ -233,4 +248,66 @@ func QTables() []string {
 		tables = append(tables, table)
 	}
 	return tables
+}
+
+// Returns true when the name corresponds with a table.
+//
+// Note: Does not normalize postgres_formatted_names..
+func IsQ(s string) bool {
+	for _, qT := range QTables() {
+		if s == qT {
+			return true
+		}
+	}
+	return false
+}
+
+// StructFor takes a table or queue name and returns a pointer to the newly
+// allocated struct of the corresponding type associated with the table.
+func StructFor(tableOrQueue string) (proto.Message, error) {
+	if tableOrQueue == "pkg" || tableOrQueue == "pkgs" {
+		tableOrQueue = TablePackages
+	}
+
+	switch tableOrQueue {
+	// N.B.: Metadata type is arbitrary on a per-key basis, so unsupported here.
+	// case TableMetadata:
+
+	case inflection.Plural(TablePackages), inflection.Singular(TablePackages):
+		return &domain.Package{}, nil
+
+	case inflection.Plural(TablePendingReferences), inflection.Singular(TablePendingReferences):
+		return &domain.Package{}, nil
+
+	case inflection.Plural(TableCrawlResults), inflection.Singular(TableCrawlResults):
+		return &domain.CrawlResult{}, nil
+
+	case inflection.Plural(TableToCrawl), inflection.Singular(TableToCrawl):
+		return nil, nil // &domain.ToCrawl{}, nil
+
+	default:
+		return nil, fmt.Errorf("unrecognized or unsupported table or queue %q", tableOrQueue)
+	}
+}
+
+// FuzzyTableResolver attempts to resolve the input string to a corresponding table or
+// queue name.
+//
+// An empty string is returned if no match is found.
+func FuzzyTableResolver(tableOrQueue string) string {
+	if tableOrQueue == "pkg" || tableOrQueue == "pkgs" {
+		return TablePackages
+	}
+	if tableOrQueue == "pending" {
+		return TablePendingReferences
+	}
+	if tableOrQueue == "metadata" || tableOrQueue == "meta" {
+		return TableMetadata
+	}
+	for _, name := range tables {
+		if inflection.Singular(name) == tableOrQueue || inflection.Plural(name) == tableOrQueue {
+			return name
+		}
+	}
+	return ""
 }

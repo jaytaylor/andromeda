@@ -511,7 +511,7 @@ func withTestClient(config Config, fn func(client Client) error) error {
 					if err == nil {
 						err = fmt.Errorf("%vRemoving %q: %s", typ, path, rmErr)
 					} else {
-						log.Error("%v[TEST] Error removing %q: %s (logging because existing err=%s", typ, path, rmErr, err)
+						log.Errorf("%v[TEST] Error removing %q: %s (logging because existing err=%s", typ, path, rmErr, err)
 					}
 					return
 				}
@@ -528,15 +528,15 @@ func withTestClient(config Config, fn func(client Client) error) error {
 					if err == nil {
 						err = fmt.Errorf("%vGathering test tables: %s", typ, cleanupErr)
 					} else {
-						log.Error("%v[TEST] Error gathering test tables: %s (logging because existing err=%s", typ, cleanupErr, err)
+						log.Errorf("%v[TEST] Error gathering test tables: %s (logging because existing err=%s", typ, cleanupErr, err)
 					}
 					return
 				}
-				if dropErr := client.Backend().Drop(tables...); dropErr != nil {
+				if dropErr := client.Backend().Destroy(tables...); dropErr != nil {
 					if err == nil {
 						err = fmt.Errorf("%vCleaning up test tables: %s", typ, dropErr)
 					} else {
-						log.Error("%v[TEST] Error cleaning up test tables: %s (logging because existing err=%s", typ, dropErr, err)
+						log.Errorf("%v[TEST] Error cleaning up test tables: %s (logging because existing err=%s", typ, dropErr, err)
 					}
 					return
 				}

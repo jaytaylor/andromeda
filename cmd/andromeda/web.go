@@ -6,6 +6,7 @@ import (
 	"syscall"
 	"time"
 
+	"gigawatt.io/concurrency"
 	"github.com/pkg/profile"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -13,12 +14,14 @@ import (
 	"jaytaylor.com/andromeda/crawler"
 	"jaytaylor.com/andromeda/crawler/feed"
 	"jaytaylor.com/andromeda/db"
-	"jaytaylor.com/andromeda/domain"
 	"jaytaylor.com/andromeda/web"
 )
 
 func newWebCmd() *cobra.Command {
-	var runUpdateProcessor bool
+	var (
+		runUpdateProcessor bool
+		hostnames          []string
+	)
 
 	webCmd := &cobra.Command{
 		Use:   "web",
@@ -46,7 +49,8 @@ func newWebCmd() *cobra.Command {
 				cfg := &web.Config{
 					Addr: WebAddr,
 					// TODO: DevMode
-					Master: master,
+					Master:    master,
+					Hostnames: hostnames,
 				}
 				ws := web.New(dbClient, cfg)
 				if err := ws.Start(); err != nil {
@@ -60,17 +64,13 @@ func newWebCmd() *cobra.Command {
 					log.Info("Async updates processor started")
 				}
 
+				var f *feed.Feed
 				if FeedsEnabled {
-					f := newFeed(dbClient)
+					f = newFeed(dbClient)
 					if err := f.Start(); err != nil {
 						log.Fatal(err)
 					}
-					defer func() {
-						if err := f.Stop(); err != nil {
-							log.Error(err)
-						}
-					}()
-					go runFeedConnector(dbClient, f)
+					go runDBFeedConnector(dbClient, f, db.DefaultQueuePriority)
 				}
 				sigCh := make(chan os.Signal, 1)
 				signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -81,8 +81,14 @@ func newWebCmd() *cobra.Command {
 						log.Debug("Stopping updates processor..")
 						updateProcessorStopCh <- struct{}{}
 					}
-					log.Debug("Stopping web-server..")
-					if err := ws.Stop(); err != nil {
+					stopFuncs := []func() error{ws.Stop}
+					msg := ""
+					if FeedsEnabled {
+						stopFuncs = append(stopFuncs, f.Stop)
+						msg = " and feeds monitor"
+					}
+					log.Debugf("Stopping web-server%v..", msg)
+					if err := concurrency.MultiGo(stopFuncs...); err != nil {
 						return err
 					}
 				}
@@ -94,38 +100,15 @@ func newWebCmd() *cobra.Command {
 	}
 
 	webCmd.Flags().StringVarP(&WebAddr, "addr", "a", "", "Interface bind address:port spec")
+
 	webCmd.Flags().BoolVarP(&FeedsEnabled, "feeds", "", FeedsEnabled, "Enable feed data sources crawler for HN and reddit.com/r/golang")
 	webCmd.Flags().StringVarP(&feed.DefaultSchedule, "feeds-refresh-schedule", "", feed.DefaultSchedule, "Feeds refresh update cron schedule")
+
 	webCmd.Flags().BoolVarP(&runUpdateProcessor, "update-processor", "", runUpdateProcessor, "Run update-processor routine as a background task; makes the most sense to turn this on when not using postgres as the backing data store")
+
 	webCmd.Flags().BoolVarP(&MemoryProfiler, "memory-profiler", "", MemoryProfiler, "Enable the memory profiler; creates a mem.pprof file while the application is shutting down")
 
+	webCmd.Flags().StringSliceVarP(&hostnames, "hostnames", "", hostnames, "Server domain name(s) / hostnames to enable CORS policy on and allow public certificate requests for; flag may be comma-delimited or repeated multiple times")
+
 	return webCmd
-}
-
-func newFeed(dbClient db.Client) *feed.Feed {
-	cfg := feed.Config{
-		Sources: []feed.DataSource{
-			feed.NewHackerNews(dbClient),
-			feed.NewReddit(dbClient, "golang"),
-		},
-		Schedule: feed.DefaultSchedule,
-	}
-	f := feed.New(cfg)
-	return f
-}
-
-func runFeedConnector(dbClient db.Client, f *feed.Feed) {
-	for {
-		ch := f.Channel()
-		if ch == nil {
-			return
-		}
-		possiblePkg, ok := <-ch
-		if !ok {
-			return
-		}
-		log.WithField("candidate", possiblePkg).Debug("Enqueueing possible pkg")
-		entry := domain.NewToCrawlEntry(possiblePkg, "discovered by feed crawler")
-		dbClient.ToCrawlAdd([]*domain.ToCrawlEntry{entry}, nil)
-	}
 }

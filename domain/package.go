@@ -106,7 +106,8 @@ func (pkg *Package) Merge(other *Package) *Package {
 		}
 	}
 	if len(other.History) > 0 {
-		pkg.History = append(pkg.History, other.History...)
+		// pkg.History = append(pkg.History, other.History...)
+		pkg.History = other.History
 	}
 	/* DISABLED: THIS MAKES NO SENSE!!!
 	if len(other.ImportedBy) > 0 {
@@ -148,6 +149,19 @@ func (pkg *Package) MergePending(pendingRefs *PendingReferences) {
 			}
 		}
 	}
+}
+
+func (pkg Package) Contains(path string) bool {
+	if !strings.HasPrefix(path, pkg.Path) {
+		return false
+	}
+	path = SubPackagePathNormalize(pkg.Path, path)
+	for sub, _ := range pkg.Data.SubPackages {
+		if sub == path {
+			return true
+		}
+	}
+	return false
 }
 
 func (ref *PackageReference) Merge(other *PackageReference) {

@@ -21,7 +21,9 @@ import (
 	"golang.org/x/tools/go/vcs"
 	git "gopkg.in/src-d/go-git.v4"
 
+	"jaytaylor.com/andromeda/crawler/feed"
 	"jaytaylor.com/andromeda/domain"
+	"jaytaylor.com/andromeda/pkg/unique"
 	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/cfg"
 	"jaytaylor.com/andromeda/twilightzone/go/cmd/go/external/load"
 )
@@ -237,7 +239,7 @@ func (c *Crawler) Collect(ctx *crawlerContext) error {
 // If pkg is nil, it is assumed that this is the first crawl.
 func (c *Crawler) Hydrate(ctx *crawlerContext) error {
 	//log.Debug("hydrate starting")
-	err := c.Interrogate(ctx.pkg, ctx.rr)
+	err := c.Interrogate(ctx)
 
 	finishedAt := time.Now()
 
@@ -364,11 +366,17 @@ func (c *Crawler) gitUpdate(dst string) error {
 	return nil
 }
 
-func (c *Crawler) Interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
+func (c *Crawler) Interrogate(ctx *crawlerContext) error {
 	var (
+		pkg       = ctx.pkg
+		rr        = ctx.rr
 		pc        = pkg.LatestCrawl()
 		localPath string // = filepath.Join(c.Config.SrcPath, rr.Root)
 	)
+
+	if ctx.res.Discoveries == nil {
+		ctx.res.Discoveries = []string{}
+	}
 
 	{
 		// Use golang lookup to determine pkg path on filesystem to ensure correct path
@@ -430,6 +438,9 @@ func (c *Crawler) Interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 		pc.Data.SubPackages[goPkg.ImportPath] = subPkg
 
 		subPkg.Readme, subPkg.Synopsis = detectReadme(dir)
+
+		ctx.res.Discoveries = append(ctx.res.Discoveries, feed.FindPackages(subPkg.Readme)...)
+
 		// log.Infof("%# v", *goPkg)
 		for _, imp := range goPkg.Imports {
 			if path, ok := extractVendored(imp); ok {
@@ -451,6 +462,8 @@ func (c *Crawler) Interrogate(pkg *domain.Package, rr *vcs.RepoRoot) error {
 		}
 		return nil
 	}
+
+	ctx.res.Discoveries = unique.Strings(ctx.res.Discoveries)
 
 	errs := []error{}
 	if err := scanDir(localPath); err != nil {

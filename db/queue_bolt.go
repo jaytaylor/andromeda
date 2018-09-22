@@ -1,6 +1,7 @@
 package db
 
 import (
+	"bytes"
 	"sync"
 
 	bolt "github.com/coreos/bbolt"
@@ -85,7 +86,7 @@ func (bq *BoltQueue) Len(name string, priority int) (int, error) {
 		return bq.q.Len(name, priority)
 	}
 	sum := 0
-	for i := 1; i <= numPriorities; i++ {
+	for i := 1; i <= MaxPriority; i++ {
 		n, err := bq.q.Len(name, i)
 		if err != nil {
 			return 0, err
@@ -93,4 +94,22 @@ func (bq *BoltQueue) Len(name string, priority int) (int, error) {
 		sum += n
 	}
 	return sum, nil
+}
+
+// Destroy completely eliminates the named queue topics.
+func (bq *BoltQueue) Destroy(topics ...string) error {
+	return bq.db.View(func(tx *bolt.Tx) error {
+		for _, topic := range topics {
+			err := tx.ForEach(func(bucket []byte, _ *bolt.Bucket) error {
+				if len(topic) > 0 && bytes.HasPrefix(bucket, []byte(topic)) {
+					return tx.DeleteBucket(bucket)
+				}
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
