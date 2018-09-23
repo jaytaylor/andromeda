@@ -252,6 +252,7 @@ TBD
 #### Uncategorized
 
 - [X] Add git version check to crawler (because it's easy to forget to upgrade git!).  Note: This is part of the `check` command, also verifies availability of openssl binary.
+- [ ] Make it work for repo roots without go files, e.g. github.com/deferpanic/virgo
 - [ ] Add a monitor and require that the disk where the DB is stored always has at least X GB free, where X is based on a multiple of the Bolt database file.  This is to ensure safety that things don't get into a state where data cannot be written to the DB or even worse it gets corrupt.  Remember that DB size may grow non-linearly (need to double check this, but this is what I recall observing).
 - [ ] Move failed to-crawls to different table instead of dropping them outright.
 - [ ] 1/2 Expose queue contents over rest API.
