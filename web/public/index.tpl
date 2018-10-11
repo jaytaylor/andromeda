@@ -8,6 +8,7 @@
 
     <script type="text/javascript">
         window.onload = function () {
+            var maxLogLines = 14;
             var conn;
             var status = document.getElementById('status');
             var msg = document.getElementById('msg');
@@ -17,6 +18,9 @@
                 log.appendChild(item);
                 if (doScroll) {
                     log.scrollTop = log.scrollHeight - log.clientHeight;
+                }
+                if (log.childElementCount > maxLogLines) {
+                    log.removeChild(log.children[0]);
                 }
             }
             /*document.getElementById('form').onsubmit = function () {
@@ -75,7 +79,9 @@
             padding: 0;
             margin: 0;
             width: 800px;
-            height: 250px;
+            height: 300px;
+            min-height: 300px;
+            max-height: 300px;
             background: gray;
         }
         #log {
@@ -84,6 +90,8 @@
             padding: 0; /*0.5em 0.5em 0.5em 0.5em;*/
             width: 800px;
             height: 250px;
+            min-height: 250px;
+            max-height: 250px;
             overflow: auto;
         }
         #form {
@@ -139,33 +147,57 @@
     <h3>Crawl Stream</h3>
     <div> Connection status: <span id="status"></span></div>
     <div id="log"></div>
-    <!--<form id="form">
-        <input type="submit" value="Send" />
-        <input type="text" id="msg" size="64"/>
-    </form>-->
 </div>
 <br>
 
-{{ with $latest := .Config.Master.Latest }}
-{{ if $latest }}
+{{- with $ctx := . }}
+
+    {{- with $latest := .Config.Master.Latest -}}
+        {{- if $latest -}}
 <div>
     <h3>Latest Crawled Packages</h3>
     <ul style="list-style-type: none">
-{{ range $pkg := $latest }}
+            {{ range $pkg := $latest -}}
         <li>{{ index $pkg "CreatedAt" }} <a href="/{{ index $pkg "Path" }}">{{ index $pkg "Path" }}</a></li>
-{{ end }}
+            {{- end }}
     </ul>
 </div>
-{{ end }}
-{{ end }}
-Number of packages in index: {{ .DB.PackagesLen }}
+        {{- end -}}
+    {{- end }}
+
+    {{- with $db := .DB }}
+Number of indexed repositories: {{ $db.PackagesLen }}
 <br>
-Crawl queue: {{ .DB.ToCrawlsLen }}
+
+Crawl queue: {{ $db.ToCrawlsLen }}
 <br>
-Unprocessed crawl results: {{ .DB.CrawlResultsLen }}
+        {{- range $i, $_ := N 11 }}
+            {{- if $i -}}
+                {{- with $len := $db.Queue.Len "to-crawl" $i -}}
+                    {{- if $len -}}
+&nbsp;&nbsp;&nbsp;&nbsp;priority={{ $i }}: {{ $len }}
 <br>
-Active workers: {{ index .Config.Master.Stats "remotes" }}
+                    {{- end -}}
+                {{- end -}}
+            {{- end -}}
+        {{- end }}
 <br>
-Crawls since program started: {{ index .Config.Master.Stats "crawls" }}
+
+Results queue:
+        {{ with $unprocessed := $db.Queue.Len "crawl-result" 0 -}}
+{{ $unprocessed }}
+        {{- else -}}
+all caught up :)
+        {{- end }}
+<br>
+
+    {{- end }}
+
+Active workers: {{ index $ctx.Config.Master.Stats "remotes" }}
+<br>
+Crawls since program started: {{ index $ctx.Config.Master.Stats "crawls" }}
+<br>
+{{- end }}
+
 </body>
 </html>

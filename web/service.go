@@ -14,6 +14,7 @@ import (
 	"gigawatt.io/web"
 	"gigawatt.io/web/route"
 	"github.com/Masterminds/sprig"
+	"github.com/bradfitz/iter"
 	"github.com/hkwi/h2c"
 	"github.com/nbio/hitch"
 	log "github.com/sirupsen/logrus"
@@ -203,7 +204,7 @@ func (service *WebService) tplAsset(asset string) func(w http.ResponseWriter, re
 	if err != nil {
 		panic(fmt.Errorf("problem with asset %q: %v", asset, err))
 	}
-	tpl := template.Must(template.New(asset).Funcs(sprig.FuncMap()).Parse(string(content)))
+	tpl := template.Must(template.New(asset).Funcs(sprig.FuncMap()).Funcs(template.FuncMap{"N": iter.N}).Parse(string(content)))
 
 	return func(w http.ResponseWriter, req *http.Request) {
 		if err := tpl.Execute(w, service); err != nil {
