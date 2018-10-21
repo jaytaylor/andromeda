@@ -196,6 +196,15 @@ andromeda util rebuild-db \
     --rebuild-db-filters clearHistories
 ```
 
+### Cronjobs
+
+```
+5 */6 * * * /home/ppx/go/src/jaytaylor.com/andromeda/scripts/cron/download-godoc-packages.sh >/dev/null 2>&1
+15 */6 * * * /home/ppx/go/src/jaytaylor.com/andromeda/scripts/cron/enqueue-godoc.sh >/dev/null 2>&1
+45 */12 * * * /home/ppx/go/src/jaytaylor.com/andromeda/scripts/cron/trends.now.sh >/dev/null 2>&1
+*/5 * * * * /home/ppx/go/src/jaytaylor.com/andromeda/scripts/cron/github.sh >/dev/null 2>&1
+```
+
 ### License
 
 TBD
