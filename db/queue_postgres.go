@@ -39,7 +39,18 @@ func (q *PostgresQueue) Open() error {
 	}
 	q.db = db
 
-	if err := q.initDB(); err != nil {
+	db.SetMaxOpenConns(q.config.MaxConns)
+
+	tx, err := q.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	if err := q.initDB(tx, qTables...); err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
 		return err
 	}
 
@@ -61,26 +72,26 @@ func (q *PostgresQueue) Close() error {
 	return nil
 }
 
-func (q *PostgresQueue) initDB() error {
-	for _, table := range qTables {
+func (q *PostgresQueue) initDB(tx *sql.Tx, tables ...string) error {
+	for _, table := range tables {
 		table = q.normalizeTable(table)
-		_, err := q.db.Exec(fmt.Sprintf(`
-CREATE TABLE IF NOT EXISTS %v (
-	id SERIAL PRIMARY KEY,
-	priority SMALLINT NOT NULL,
-	value BYTEA NOT NULL
-)
-`, pq.QuoteIdentifier(table)))
+		_, err := tx.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %v (
+    id SERIAL PRIMARY KEY,
+    priority SMALLINT NOT NULL,
+    value BYTEA NOT NULL
+)`, pq.QuoteIdentifier(table)))
 		if err != nil {
+			tx.Rollback()
 			return fmt.Errorf("creating table %q: %s", table, err)
 		}
-		_, err = q.db.Exec(fmt.Sprintf(
+		_, err = tx.Exec(fmt.Sprintf(
 			`CREATE INDEX IF NOT EXISTS %v ON %v (%v)`,
 			pq.QuoteIdentifier(fmt.Sprintf("%v_priority_index", table)),
 			pq.QuoteIdentifier(table),
 			pq.QuoteIdentifier("priority"),
 		))
 		if err != nil {
+			tx.Rollback()
 			return fmt.Errorf("creating table %q: %s", table, err)
 		}
 	}
@@ -127,21 +138,11 @@ func (q *PostgresQueue) Enqueue(table string, priority int, values ...[]byte) er
 }
 
 func (q *PostgresQueue) Dequeue(table string) ([]byte, error) {
-	tx, err := q.db.Begin()
-	if err != nil {
-		return nil, err
-	}
-
-	bestEffortRB := func() error {
-		if rbErr := tx.Rollback(); rbErr != nil {
-			log.WithField("table", table).Errorf("Rolling back due to error deleting row: %s", rbErr)
-			return rbErr
-		}
-		return nil
-	}
-
-	row := tx.QueryRow(fmt.Sprintf(
-		`SELECT id, priority, value FROM %v ORDER BY priority, id ASC LIMIT 1`,
+	row := q.db.QueryRow(fmt.Sprintf(
+		`DELETE FROM %[1]v WHERE id = (
+   SELECT id FROM %[1]v ORDER BY priority, id ASC FOR UPDATE SKIP LOCKED LIMIT 1
+)
+RETURNING id, priority, value`,
 		pq.QuoteIdentifier(q.normalizeTable(table)),
 	))
 
@@ -150,27 +151,11 @@ func (q *PostgresQueue) Dequeue(table string) ([]byte, error) {
 		p  int
 		v  []byte
 	)
-	if err = row.Scan(&id, &p, &v); err != nil {
+	if err := row.Scan(&id, &p, &v); err != nil {
 		if err == sql.ErrNoRows {
-			if err = bestEffortRB(); err != nil {
-				return nil, err
-			}
 			return nil, io.EOF
 		}
 		return nil, fmt.Errorf("scanning row values: %s", err)
-	}
-
-	_, err = tx.Exec(
-		fmt.Sprintf(`DELETE FROM %v WHERE id=$1`, pq.QuoteIdentifier(q.normalizeTable(table))),
-		id,
-	)
-	if err != nil {
-		bestEffortRB()
-		return nil, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, err
 	}
 	return v, nil
 }
@@ -257,7 +242,11 @@ func (q *PostgresQueue) Destroy(topics ...string) error {
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err = q.initDB(tx, topics...); err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
 		return err
 	}
 	return nil

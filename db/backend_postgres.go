@@ -14,10 +14,12 @@ import (
 
 var (
 	DefaultPostgresConnString = "dbname=andromeda host=/var/run/postgresql" // ssl-mode=verify-full"
+	DefaultPostgresMaxConns   = 10
 )
 
 type PostgresConfig struct {
 	ConnString string
+	MaxConns   int
 }
 
 func NewPostgresConfig(connString string) *PostgresConfig {
@@ -26,6 +28,7 @@ func NewPostgresConfig(connString string) *PostgresConfig {
 	}
 	cfg := &PostgresConfig{
 		ConnString: connString,
+		MaxConns:   DefaultPostgresMaxConns,
 	}
 	return cfg
 }
@@ -61,6 +64,8 @@ func (be *PostgresBackend) Open() error {
 	}
 	be.db = db
 
+	db.SetMaxOpenConns(be.config.MaxConns)
+
 	if err := be.withTx(true, func(pTx *pgTx) error {
 		return be.initDB(pTx)
 	}); err != nil {
@@ -92,10 +97,9 @@ func (be *PostgresBackend) initDB(pTx *pgTx) error {
 		table = be.normalizeTable(table)
 		_, err := pTx.tx.Exec(fmt.Sprintf(
 			`CREATE TABLE IF NOT EXISTS %v (
-	key BYTEA NOT NULL,
-	value BYTEA NOT NULL
-)
-`, pq.QuoteIdentifier(table)))
+    key BYTEA NOT NULL,
+    value BYTEA NOT NULL
+)`, pq.QuoteIdentifier(table)))
 		if err != nil {
 			return fmt.Errorf("creating table %q: %s", table, err)
 		}
@@ -166,8 +170,7 @@ func (be *PostgresBackend) put(tx Transaction, table string, key []byte, value [
 			`INSERT INTO %v (key, value) VALUES ($1::BYTEA, $2::BYTEA)
     ON CONFLICT (key)
     DO UPDATE SET
-	value=EXCLUDED.value
-`,
+    value=EXCLUDED.value`,
 			pq.QuoteIdentifier(table),
 		),
 		key,
