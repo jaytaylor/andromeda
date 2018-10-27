@@ -455,6 +455,18 @@ func TestClientCrossBackendCopy(t *testing.T) {
 	}
 }
 
+func TestKVTables(t *testing.T) {
+	kvts := map[string]struct{}{}
+	for _, table := range KVTables() {
+		kvts[table] = struct{}{}
+	}
+	for _, qTable := range QTables() {
+		if _, ok := kvts[qTable]; ok {
+			t.Errorf("queue table found in KV tables list: %s", qTable)
+		}
+	}
+}
+
 func newConfigs() []Config {
 	var (
 		filename = filepath.Join(os.TempDir(), testlib.CurrentRunningTest())

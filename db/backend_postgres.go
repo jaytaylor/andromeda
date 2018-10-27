@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 
+	"github.com/iancoleman/strcase"
 	pq "github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
 )
@@ -269,6 +269,13 @@ func (be *PostgresBackend) EachRow(table string, fn func(key []byte, value []byt
 	})
 }
 
+// EachRowWithBreak important note: This can be slow to "break" if only a small
+// number of records are consumed before break is initiated.  This is due to
+// lib/pq doing a for-loop over all remaining rows.
+//
+// See:
+//
+//    https://github.com/lib/pq/blob/a8bb68eb453341d8c44a1333a579a13a8b4be428/conn.go#L1364-L1378
 func (be *PostgresBackend) EachRowWithBreak(table string, fn func(key []byte, value []byte) bool) error {
 	return be.withTx(false, func(pTx *pgTx) error {
 		c := pTx.Cursor(table)
@@ -329,9 +336,9 @@ func (be *PostgresBackend) withTx(writable bool, fn func(pTx *pgTx) error) error
 
 }
 
-func (_ *PostgresBackend) normalizeTable(table string) string {
-	table = strings.Replace(table, "-", "_", -1)
-	return table
+func (_ *PostgresBackend) normalizeTable(name string) string {
+	name = strcase.ToSnake(name)
+	return name
 }
 
 func (be *PostgresBackend) wrapTx(tx *sql.Tx) *pgTx {

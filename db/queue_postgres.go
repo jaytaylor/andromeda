@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"strings"
 	"sync"
 
+	"github.com/iancoleman/strcase"
 	pq "github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
 )
@@ -218,9 +218,9 @@ func (q *PostgresQueue) Len(table string, priority int) (int, error) {
 	return int(count), nil
 }
 
-func (_ *PostgresQueue) normalizeTable(table string) string {
-	table = strings.Replace(table, "-", "_", -1)
-	return table
+func (_ *PostgresQueue) normalizeTable(name string) string {
+	name = strcase.ToSnake(name)
+	return name
 }
 
 // Destroy completely eliminates the named queue topics.

@@ -70,6 +70,8 @@ func newRootCmd() *cobra.Command {
 }
 
 func main() {
+	doConfig()
+
 	rootCmd := newRootCmd()
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
