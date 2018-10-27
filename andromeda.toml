@@ -1,0 +1,4 @@
+driver = "postgres"
+db = "dbname=andromeda host=/var/run/postgresql"
+quiet = false
+verbose = true

@@ -205,6 +205,20 @@ andromeda util rebuild-db \
 */5 * * * * /home/ppx/go/src/jaytaylor.com/andromeda/scripts/cron/github.sh >/dev/null 2>&1
 ```
 
+### Default Configuration
+
+Default application values can be overridden by a `~/.andromeda.toml` or `~/.config/andromeda.toml` configuration file (they are searched for in this order, first one found to exist will be used).
+
+It's helpful to have these settings already defined in a configuration file if you use the command-line client much.  Specifying long flags like `--driver` and `--db <connection string>` over and over gets tiresome!
+
+For available configuration variables, see the example [andromeda.toml config file](andromeda.toml).
+
+To get started, copy it to your home directory:
+
+```bash
+cp andromeda.toml ~/.andromeda.toml
+```
+
 ### License
 
 TBD
@@ -255,7 +269,7 @@ TBD
 - [ ] Add git commit hash to builds, and has gRPC client send it with requests.
 - [ ] Implement pure-postgres native db.Client interface and see if or how much better we can do compared to K/V approach.
 - [X] Implement pending references updates as a batch job (currently it's been disabled due to low performance).  Another way to solve it would be to only save pending references sometimes - just add an extra parameter on the internal save method (went with this, was very simple to add a single param to the save functions to avoid merging pending references for recursively-triggered saves.
-- [ ] Implement a ~/.andromeda/config configuration file to avoid having to pass `--driver`/`--db` all the time.
+- [X] Implement a ~/.andromeda/config configuration file to avoid having to pass `--driver`/`--db` all the time.
 - [ ] Review github cron: verify it is well-behaved and doesn't submit duplicates every run.
 
 #### Uncategorized

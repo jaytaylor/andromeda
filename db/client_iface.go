@@ -8,10 +8,12 @@ import (
 
 	bolt "github.com/coreos/bbolt"
 	"github.com/golang/protobuf/proto"
+	"github.com/iancoleman/strcase"
 	"github.com/jinzhu/inflection"
 	log "github.com/sirupsen/logrus"
 
 	"jaytaylor.com/andromeda/domain"
+	"jaytaylor.com/andromeda/pkg/contains"
 )
 
 const (
@@ -233,12 +235,7 @@ func KVTables() []string { return kvTables() }
 //
 // Note: Does not normalize postgres_formatted_names..
 func IsKV(s string) bool {
-	for _, t := range kvTables() {
-		if s == t {
-			return true
-		}
-	}
-	return false
+	return contains.String(kvTables(), s)
 }
 
 // QTables returns slice of queue table names.
@@ -254,17 +251,23 @@ func QTables() []string {
 //
 // Note: Does not normalize postgres_formatted_names..
 func IsQ(s string) bool {
-	for _, qT := range QTables() {
-		if s == qT {
-			return true
-		}
+	return contains.String(qTables, s)
+}
+
+// Tables returns a slice of all tables.
+func Tables() []string {
+	out := []string{}
+	for _, table := range tables {
+		out = append(out, table)
 	}
-	return false
+	return out
 }
 
 // StructFor takes a table or queue name and returns a pointer to the newly
 // allocated struct of the corresponding type associated with the table.
 func StructFor(tableOrQueue string) (proto.Message, error) {
+	tableOrQueue = strcase.ToKebab(tableOrQueue)
+
 	if tableOrQueue == "pkg" || tableOrQueue == "pkgs" {
 		tableOrQueue = TablePackages
 	}
@@ -277,13 +280,13 @@ func StructFor(tableOrQueue string) (proto.Message, error) {
 		return &domain.Package{}, nil
 
 	case inflection.Plural(TablePendingReferences), inflection.Singular(TablePendingReferences):
-		return &domain.Package{}, nil
+		return &domain.PendingReferences{}, nil
 
 	case inflection.Plural(TableCrawlResults), inflection.Singular(TableCrawlResults):
 		return &domain.CrawlResult{}, nil
 
 	case inflection.Plural(TableToCrawl), inflection.Singular(TableToCrawl):
-		return nil, nil // &domain.ToCrawl{}, nil
+		return &domain.ToCrawl{}, nil
 
 	default:
 		return nil, fmt.Errorf("unrecognized or unsupported table or queue %q", tableOrQueue)

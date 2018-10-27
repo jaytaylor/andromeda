@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/iancoleman/strcase"
 	"github.com/pkg/profile"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -31,6 +32,7 @@ func newLocalCmd() *cobra.Command {
 	}
 
 	localCmd.AddCommand(
+		newLocalListTablesCmd(),
 		newLocalCrawlCmd(),
 		newLocalEnqueueCmd(),
 		newLocalDeletePackageCmd(),
@@ -41,6 +43,43 @@ func newLocalCmd() *cobra.Command {
 	)
 
 	return localCmd
+}
+
+func newLocalListTablesCmd() *cobra.Command {
+	crawlCmd := &cobra.Command{
+		Use:     "list-tables",
+		Aliases: []string{"tables"},
+		Short:   `Lists available tables, may optionally specify a type ("key/value" / "kv", or "queue" / "q")`,
+		Long:    `Lists available tables, may optionally specify a type ("key/value" / "kv", or "queue" / "q")`,
+		PreRun: func(_ *cobra.Command, args []string) {
+			initLogging()
+		},
+		Run: func(cmd *cobra.Command, args []string) {
+			var tables []string
+
+			if len(args) > 0 {
+				if args[0] == "kv" || args[0] == "key/value" {
+					tables = db.KVTables()
+				} else if args[0] == "q" || args[0] == "queue" {
+					tables = db.QTables()
+				} else {
+					log.Fatalf(`Unknown table classification type %q; must be one of: "key/value" / "kv", or "queue" / "q"`, args[0])
+				}
+			} else {
+				tables = db.Tables()
+			}
+
+			bs, err := json.MarshalIndent(&tables, "", "    ")
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Println(string(bs))
+		},
+	}
+
+	addCrawlerFlags(crawlCmd)
+
+	return crawlCmd
 }
 
 func newLocalCrawlCmd() *cobra.Command {
@@ -274,6 +313,8 @@ func newLocalCatCmd() *cobra.Command {
 
 // dumpTable dumps both Key/Value and Queue tables as JSON.
 func dumpTable(dbClient db.Client, t string, max int) error {
+	t = strcase.ToKebab(t)
+
 	fmt.Println("[")
 	var (
 		i       = 0
@@ -288,7 +329,7 @@ func dumpTable(dbClient db.Client, t string, max int) error {
 			}
 			if prevPtr != nil {
 				j, _ := json.MarshalIndent(prevPtr, "", "    ")
-				fmt.Printf("%v", string(j))
+				fmt.Print(string(j))
 				if max <= 0 || max > 1 {
 					fmt.Print(",")
 				}
@@ -321,7 +362,7 @@ func dumpTable(dbClient db.Client, t string, max int) error {
 
 	if prevPtr != nil {
 		j, _ := json.MarshalIndent(prevPtr, "", "    ")
-		fmt.Printf("%v\n", string(j))
+		fmt.Println(string(j))
 	}
 	fmt.Println("]")
 	return nil
