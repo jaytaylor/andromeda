@@ -161,6 +161,13 @@ RETURNING id, priority, value`,
 }
 
 func (q *PostgresQueue) Scan(table string, opts *QueueOptions, fn func(value []byte)) error {
+	return q.ScanWithBreak(table, opts, func(value []byte) bool {
+		fn(value)
+		return true
+	})
+}
+
+func (q *PostgresQueue) ScanWithBreak(table string, opts *QueueOptions, fn func(value []byte) bool) error {
 	var (
 		query = fmt.Sprintf(`SELECT value FROM %v `, pq.QuoteIdentifier(q.normalizeTable(table)))
 		args  []interface{}
@@ -184,7 +191,9 @@ func (q *PostgresQueue) Scan(table string, opts *QueueOptions, fn func(value []b
 		if err = rows.Scan(&value); err != nil {
 			return err
 		}
-		fn(value)
+		if !fn(value) {
+			break
+		}
 	}
 	return nil
 }
