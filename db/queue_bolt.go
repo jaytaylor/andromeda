@@ -81,6 +81,17 @@ func (bq *BoltQueue) Scan(name string, opts *QueueOptions, fn func(value []byte)
 	})
 }
 
+func (bq *BoltQueue) ScanWithBreak(name string, opts *QueueOptions, fn func(value []byte) bool) error {
+	return bq.q.ScanWithBreak(name, func(m *boltqueue.Message) bool {
+		if opts != nil {
+			if p := m.Priority(); p > 0 && p != opts.Priority {
+				return true
+			}
+		}
+		return fn(m.Value)
+	})
+}
+
 func (bq *BoltQueue) Len(name string, priority int) (int, error) {
 	if priority <= 0 {
 		return bq.q.Len(name, priority)

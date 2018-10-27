@@ -272,37 +272,53 @@ func newLocalCatCmd() *cobra.Command {
 	return catCmt
 }
 
+// dumpTable dumps both Key/Value and Queue tables as JSON.
 func dumpTable(dbClient db.Client, t string, max int) error {
 	fmt.Println("[")
 	var (
 		i       = 0
 		prevPtr interface{}
-	)
-	if err := dbClient.Backend().EachRowWithBreak(t, func(k []byte, v []byte) bool {
-		ptr, err := db.StructFor(t)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if err = proto.Unmarshal(v, ptr); err != nil {
-			log.Fatal(err)
-		}
-		if prevPtr != nil {
-			j, _ := json.MarshalIndent(prevPtr, "", "    ")
-			fmt.Printf("%v", string(j))
-			if max <= 0 || max > 1 {
-				fmt.Print(",")
+		iterFn  = func(v []byte) bool {
+			ptr, err := db.StructFor(t)
+			if err != nil {
+				log.Fatal(err)
 			}
-			fmt.Print("\n")
+			if err = proto.Unmarshal(v, ptr); err != nil {
+				log.Fatal(err)
+			}
+			if prevPtr != nil {
+				j, _ := json.MarshalIndent(prevPtr, "", "    ")
+				fmt.Printf("%v", string(j))
+				if max <= 0 || max > 1 {
+					fmt.Print(",")
+				}
+				fmt.Print("\n")
+			}
+			prevPtr = ptr
+			i++
+			if i >= max {
+				return false
+			}
+			return true
 		}
-		prevPtr = ptr
-		i++
-		if i >= max {
-			return false
+	)
+
+	if db.IsKV(t) {
+		if err := dbClient.Backend().EachRowWithBreak(t, func(_ []byte, v []byte) bool {
+			return iterFn(v)
+		}); err != nil {
+			return err
 		}
-		return true
-	}); err != nil {
-		return err
+	} else if db.IsQ(t) {
+		if err := dbClient.Queue().ScanWithBreak(t, nil, func(v []byte) bool {
+			return iterFn(v)
+		}); err != nil {
+			return err
+		}
+	} else {
+		return fmt.Errorf("unknown table %q", t)
 	}
+
 	if prevPtr != nil {
 		j, _ := json.MarshalIndent(prevPtr, "", "    ")
 		fmt.Printf("%v\n", string(j))
@@ -311,6 +327,7 @@ func dumpTable(dbClient db.Client, t string, max int) error {
 	return nil
 }
 
+// dumpFiltered only supports the packages table.
 func dumpFiltered(dbClient db.Client, t string, max int, filter string) error {
 	if t != db.TablePackages {
 		return errors.New("filtration is only available for the packages table")
@@ -331,6 +348,7 @@ func dumpFiltered(dbClient db.Client, t string, max int, filter string) error {
 	return emitJSON(h.Slice())
 }
 
+// resolveLessFn maps command-line args to a package field ordering function.
 func resolveLessFn(name string) (domain.PackagesLessFunc, error) {
 	var (
 		orig    = name
