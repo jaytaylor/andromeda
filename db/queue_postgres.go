@@ -174,7 +174,7 @@ func (q *PostgresQueue) ScanWithBreak(table string, opts *QueueOptions, fn func(
 	)
 
 	if opts == nil || opts.Priority <= 0 {
-		query += fmt.Sprintf(`ORDER BY id, priority ASC`)
+		query += fmt.Sprintf(`ORDER BY priority, id ASC`)
 	} else {
 		query += fmt.Sprintf(`WHERE priority=$1 ORDER BY id ASC`)
 		args = []interface{}{opts.Priority}
