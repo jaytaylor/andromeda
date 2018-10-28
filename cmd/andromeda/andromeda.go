@@ -40,12 +40,24 @@ var (
 )
 
 func newRootCmd() *cobra.Command {
+	configFile := ""
+
 	rootCmd := &cobra.Command{
 		Use:   "andromeda",
 		Short: "Search the entire visible golang universe",
 		Long:  "The most complete golang packages DB in this universe",
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			cfg := NewConfig()
+			if configFile != "" {
+				cfg.File = configFile
+			}
+			if err := cfg.Do(); err != nil {
+				log.Fatal(err)
+			}
+		},
 	}
 
+	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "", "", "Specify andromeda TOML configuration file path (only necessary when deviating from default location of ~/.andromeda.toml or ~/.config/andromeda.toml)")
 	rootCmd.PersistentFlags().BoolVarP(&Quiet, "quiet", "q", false, "Activate quiet log output")
 	rootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "Activate verbose log output")
 	rootCmd.PersistentFlags().StringVarP(&DBDriver, "driver", "", DBDriver, "DB driver backend, one of: bolt, rocks, postgres")
@@ -70,8 +82,6 @@ func newRootCmd() *cobra.Command {
 }
 
 func main() {
-	doConfig()
-
 	rootCmd := newRootCmd()
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
