@@ -219,6 +219,8 @@ To get started, copy it to your home directory:
 cp andromeda.toml ~/.andromeda.toml
 ```
 
+A non-default configuration file path location may be specified with the `-config` flag.
+
 ### License
 
 TBD

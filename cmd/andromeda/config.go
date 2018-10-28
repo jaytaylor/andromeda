@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -8,78 +9,97 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var (
+	// DefaultConfigSearchPaths is a slice of default locations to check for an
+	// andromeda TOML configuration file.
+	DefaultConfigSearchPaths = []string{
+		filepath.Join(os.Getenv("HOME"), ".andromeda.toml"),
+		filepath.Join(os.Getenv("HOME"), ".config", "andromeda.toml"),
+	}
+
+	ErrNoConfigFileSet = errors.New("no config file specified")
+)
+
 // Config is the TOML configuration struct.  When a ~/.andromeda.toml or
-// ~/.config/andromeda.toml file exists, the values contained therein will
+// ~/.cfg/andromeda.toml file exists, the values contained therein will
 // override the compiled-in defaults.
 type Config struct {
+	File        string
+	SearchPaths []string
+
 	Driver  string
 	DB      string
 	Quiet   bool
 	Verbose bool
 }
 
-// doConfig handles initialization and application of new default values if a
-// configuration file is found.
-func doConfig() {
-	file, err := findConfigFile()
-	if err != nil {
-		log.Fatalf("locating andromeda TOML configuration: %s", err)
+func NewConfig() *Config {
+	cfg := &Config{
+		SearchPaths: DefaultConfigSearchPaths,
 	}
-
-	if len(file) == 0 {
-		// No configuration file found.
-		return
-	}
-
-	config, err := parseConfig(file)
-	if err != nil {
-		log.Fatalf("parsing andromeda TOML configuration file %q: %s", file, err)
-	}
-
-	config.Apply()
+	return cfg
 }
 
-func (config *Config) Apply() {
-	if len(config.Driver) > 0 {
-		DBDriver = config.Driver
+// Do handles discovery (if file hasn't already been set to a non-empty value)
+// and parsing of TOML configuration file, then applies new default values.
+func (cfg *Config) Do() error {
+	if cfg.File == "" {
+		if err := cfg.Find(); err != nil {
+			return err
+		}
 	}
-	if len(config.DB) > 0 {
-		DBFile = config.DB
+	if cfg.File == "" {
+		return nil
 	}
-	if config.Quiet {
-		Quiet = true
+	if err := cfg.Parse(); err != nil {
+		return err
 	}
-	if config.Verbose {
-		Verbose = true
-	}
+	cfg.Apply()
+	return nil
 }
 
-// parseConfig parses an andromeda TOML configuration file.
-func parseConfig(file string) (*Config, error) {
-	config := &Config{}
-	if _, err := toml.DecodeFile(file, &config); err != nil {
-		return nil, err
-	}
-	return config, nil
-}
-
-// findConfigFile searches for a ~/.andromeda.toml or ~/.config/andromeda.toml
-// file (in this order).
+// Find searches the default locations for an andromeda TOML configuration file.
 //
-// If no config file is found, ("", nil) is returned.
-func findConfigFile() (string, error) {
-	paths := []string{
-		filepath.Join(os.Getenv("HOME"), ".andromeda.toml"),
-		filepath.Join(os.Getenv("HOME"), ".config", ".andromeda.toml"),
-	}
-	for _, path := range paths {
+// If no config file is found, Config.File will not be set and nil is returned.
+func (cfg *Config) Find() error {
+	for _, path := range cfg.SearchPaths {
 		if _, err := os.Stat(path); err == nil {
-			return path, nil
+			log.WithField("path", path).Debug("Located andromeda configuration file")
+			cfg.File = path
+			return nil
 		} else if os.IsNotExist(err) {
 			continue
 		} else if err != nil {
-			return "", err
+			return err
 		}
 	}
-	return "", nil
+	return nil
+}
+
+// Parse consumes an andromeda TOML configuration file and sets the values on
+// the Config struct instance.
+func (cfg *Config) Parse() error {
+	if cfg.File == "" {
+		return ErrNoConfigFileSet
+	}
+	if _, err := toml.DecodeFile(cfg.File, &cfg); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Apply sets new default values for non-empty / false-y attributes.
+func (cfg *Config) Apply() {
+	if len(cfg.Driver) > 0 {
+		DBDriver = cfg.Driver
+	}
+	if len(cfg.DB) > 0 {
+		DBFile = cfg.DB
+	}
+	if cfg.Quiet {
+		Quiet = true
+	}
+	if cfg.Verbose {
+		Verbose = true
+	}
 }
