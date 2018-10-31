@@ -14,7 +14,6 @@ set -o nounset
 # <Configuration>
 #
 
-batchSize=1000
 priority=7
 serverAddr='127.0.0.1:8001'
 
@@ -37,7 +36,7 @@ fi
 
 jq -r '.results[].path' < "${infile}" \
     | grep '\.' \
-    | xargs -n "${batchSize}" \
+    | xargs \
         andromeda remote enqueue --only-if-not-exists --priority "${priority}" -a "${serverAddr}"
 
 if [ -e "${infile}.xz" ] && ! [[ "${PRESERVE:-}" =~ 1|true|yes ]] ; then
