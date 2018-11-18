@@ -33,8 +33,7 @@ fi
 
 cd "$(dirname "$0")/.."
 
-#mainBranch='master'
-mainBranch='jay/distributed-crawler'
+mainBranch='master'
 
 oldCommitHash="$(git rev-parse HEAD)"
 
