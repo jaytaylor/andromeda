@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -46,25 +48,45 @@ func newRemoteEnqueueCmd() *cobra.Command {
 
 	remoteEnqueueCmd := &cobra.Command{
 		Use:   "enqueue <pkg-path-1> [<pkg-path-2> ...]",
-		Short: "Add items to the to-crawl queue",
-		Long:  "Add items to the to-crawl queue",
+		Short: "Add items to the to-crawl queue (or pass '-' to read from STDIN)",
+		Long:  "Add items to the to-crawl queue (or pass '-' to read from STDIN)",
 		Args:  cobra.MinimumNArgs(1),
 		PreRun: func(_ *cobra.Command, _ []string) {
 			initLogging()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				cfg = crawler.NewConfig()
-				r   = crawler.NewRemote(CrawlServerAddr, cfg)
+				cfg    = crawler.NewConfig()
+				r      = crawler.NewRemote(CrawlServerAddr, cfg)
+				now    = time.Now()
+				tokens = args
 			)
 
 			if err := configureRemoteCrawler(r); err != nil {
 				log.Fatalf("main: configuring remote crawler: %s", err)
 			}
 
-			now := time.Now()
-			toCrawls := make([]*domain.ToCrawlEntry, len(args))
-			for i, arg := range args {
+			if len(args) > 0 && args[0] == "-" {
+				// Tokenize STDIN.
+				s := bufio.NewScanner(os.Stdin)
+				expr := regexp.MustCompile("[ \t\n\r]+")
+				tokens = []string{}
+				for s.Scan() {
+					txt := s.Text()
+					// To prevent submission of empty-string entries, remove leading or
+					// trailing separator characters.
+					for _, sep := range []string{" ", "\t", "\n", "\r"} {
+						txt = strings.Trim(txt, sep)
+					}
+					tokens = append(tokens, expr.Split(txt, -1)...)
+				}
+				if err := s.Err(); err != nil {
+					log.Fatal(err)
+				}
+			}
+
+			toCrawls := make([]*domain.ToCrawlEntry, len(tokens))
+			for i, arg := range tokens {
 				toCrawls[i] = &domain.ToCrawlEntry{
 					PackagePath: arg,
 					Reason:      EnqueueReason,
@@ -80,7 +102,7 @@ func newRemoteEnqueueCmd() *cobra.Command {
 			if err != nil {
 				log.Fatal(err)
 			}
-			log.WithField("num-submitted", len(args)).WithField("num-added", n).Info("Enqueue operation successfully completed")
+			log.WithField("num-submitted", len(tokens)).WithField("num-added", n).Info("Enqueue operation successfully completed")
 		},
 	}
 
