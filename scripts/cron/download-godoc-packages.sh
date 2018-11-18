@@ -17,3 +17,5 @@ xz --compress --extreme "${filename}"
 
 rm "${filename}"
 
+# ls -1 | grep -v '\.xz' | xargs -n1 rm
+

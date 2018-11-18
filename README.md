@@ -13,6 +13,12 @@ Andromeda analyzes the complete graph of the known Go Universe.
 * OpenSSL (for automatic retrieval of SSL/TLS server public-key to feed gRPC by remote-crawler)
 * xz (for downloading daily snapshots from godoc.org)
 
+Note: openssl cert.pem cmd:
+
+```bash
+openssl s_client -showcerts -servername andromeda.gigawatt.io -connect andromeda.gigawatt.io:443 < /dev/null 2>/dev/null | openssl x509 -outform PEM 2>/dev/null
+```
+
 ## Installation
 
 ```bash
@@ -227,6 +233,8 @@ TBD
 
 ### TODOs
 
+Note: Instead of "repo" or whatever, think about calling a reporoot a "tree".  This terminology is used [here](https://github.com/golang/go/wiki/Modules).
+
 #### Fancy Data
 
 - [ ] Add attribute "CanGoGet" to indicate if package is buildable via `go get`.  Then provide a search filter to only include such packages.
@@ -284,6 +292,7 @@ TBD
 - [ ] 2/2 Frontend viewer for queue head and tail contents.
 - [ ] Migrate table names to be singular.
 - [ ] Add "view on sourcegraph.com" link.
+- [ ] Handle `"transport: authentication handshake failed: x509: certificate signed by unknown authority" source="crawler/remote.go:150"` errors by fetching latest cert.pem.
 
 To locate additional TODOs just `find . -name '*.go' -exec grep 'TODO'`
 
