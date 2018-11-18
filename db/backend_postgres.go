@@ -67,7 +67,7 @@ func (be *PostgresBackend) Open() error {
 	db.SetMaxOpenConns(be.config.MaxConns)
 
 	if err := be.withTx(true, func(pTx *pgTx) error {
-		return be.initDB(pTx)
+		return be.initDB(pTx, kvTables()...)
 	}); err != nil {
 		return err
 	}
@@ -92,8 +92,8 @@ func (be *PostgresBackend) Close() error {
 	return nil
 }
 
-func (be *PostgresBackend) initDB(pTx *pgTx) error {
-	for _, table := range kvTables() {
+func (be *PostgresBackend) initDB(pTx *pgTx, tables ...string) error {
+	for _, table := range tables {
 		table = be.normalizeTable(table)
 		_, err := pTx.tx.Exec(fmt.Sprintf(
 			`CREATE TABLE IF NOT EXISTS %v (
@@ -202,7 +202,10 @@ func (be *PostgresBackend) delete(pTx *pgTx, table string, keys ...[]byte) error
 
 func (be *PostgresBackend) Destroy(tables ...string) error {
 	return be.withTx(true, func(pTx *pgTx) error {
-		return be.drop(pTx, tables...)
+		if err := be.drop(pTx, tables...); err != nil {
+			return err
+		}
+		return be.initDB(pTx, tables...)
 	})
 }
 
