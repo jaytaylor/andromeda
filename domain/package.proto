@@ -3,28 +3,39 @@ syntax = "proto3";
 package domain;
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/infobloxopen/protoc-gen-gorm/options/gorm.proto";
 import "google/protobuf/timestamp.proto";
 
-option go_package = "jaytaylor.com/andromeda/domain";
+option go_package = "jaytaylor.com/andromeda/domain;domain";
+
+/*message Tester {
+  option (gorm.opts).ormable = true;
+  uint64 id = 1 [(gogoproto.customname) = "ID", (gorm.field).tag = {type: "bigserial" primary_key: true}];
+  string name = 2;
+}*/
 
 message Package {
-  uint64 id = 1 [(gogoproto.customname) = "ID"]; //, (gogoproto.moretags) = "gorm:\"primary_key;auto_increment\""];
-  string name = 2; // [(gogoproto.moretags) = "gorm:\"type:varchar(64);\""];
-  string path = 3; // [(gogoproto.moretags) = "gorm:\"type:varchar(255);unique_index\""];
-  string url = 4 [(gogoproto.customname) = "URL"]; //, (gogoproto.moretags) = "gorm:\"type:varchar(255);unique\""]; // TODO: Rename to Repo, and auto calc the URL if possible..
-  string owner = 5; // [(gogoproto.moretags) = "gorm:\"type:varchar(64)\""];
-  string vcs = 6 [(gogoproto.customname) = "VCS"]; //, (gogoproto.moretags) = "gorm:\"type:varchar(16)\""];
-  map<string, PackageReferences> imported_by = 7; // TODO: Consider making this a type which tracks when the import was first and last seen.
-  PackageSnapshot data = 8;
-  repeated PackageCrawl history = 9;
+  option (gorm.opts).ormable = true;
+  uint64 id = 1 [(gogoproto.customname) = "ID", (gorm.field).tag = {type: "bigserial" primary_key: true}];
+  string name = 2 [(gorm.field) = {tag: {type: "varchar(64)"}}]; // [(gogoproto.moretags) = "gorm:\"type:varchar(64);\""];
+  string path = 3  [(gorm.field) = {tag: {type: "varchar(255);unique_index"}}]; // [(gogoproto.moretags) = "gorm:\"type:varchar(255);unique_index\""];
+  string url = 4 [(gogoproto.customname) = "URL", (gorm.field) = {tag: {type: "varchar(255);unique"}}]; //, (gogoproto.moretags) = "gorm:\"type:varchar(255);unique\""]; // TODO: Rename to Repo, and auto calc the URL if possible..
+  string owner = 5  [(gorm.field) = {tag: {type: "varchar(64)"}}]; // [(gogoproto.moretags) = "gorm:\"type:varchar(64)\""];
+  string vcs = 6 [(gogoproto.customname) = "VCS", (gorm.field) = {tag: {type: "varchar(16)"}}]; //, (gogoproto.moretags) = "gorm:\"type:varchar(16)\""];
+  map<string, PackageReferences> imported_by = 7;
+  PackageSnapshot data = 8 [(gorm.field).belongs_to = {}];
+  repeated PackageCrawl history = 9 [(gorm.field).has_many = {position_field: "job_finished_at" foreignkey_tag: {not_null: true}}];
   google.protobuf.Timestamp first_seen_at = 10 [(gogoproto.stdtime) = true];
 }
 
 message PackageReferences {
+  option (gorm.opts).ormable = true;
   repeated PackageReference refs = 1;
+  string root = 2 [(gorm.field).tag = {type: "string" primary_key: true}];
 }
 
 message PackageReference {
+  option (gorm.opts).ormable = true;
   string path = 1;
   bool active = 2;
   google.protobuf.Timestamp first_seen_at = 3 [(gogoproto.stdtime) = true];

@@ -3,12 +3,14 @@ syntax = "proto3";
 package domain;
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/infobloxopen/protoc-gen-gorm/options/gorm.proto";
 import "google/protobuf/timestamp.proto";
 
-option go_package = "jaytaylor.com/andromeda/domain";
+option go_package = "jaytaylor.com/andromeda/domain;domain";
 
 message ToCrawlEntry {
-  uint64 id = 1 [(gogoproto.customname) = "ID"];
+  option (gorm.opts).ormable = true;
+  uint64 id = 1 [(gogoproto.customname) = "ID", (gorm.field).tag = {type: "bigserial" primary_key: true}];
   string package_path = 2;
   string reason = 3;
   uint32 errors = 4;

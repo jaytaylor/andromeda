@@ -2,9 +2,9 @@ syntax = "proto3";
 
 package domain;
 
-import "google/protobuf/empty.proto";
-import "google/protobuf/timestamp.proto";
-import "google/protobuf/field_mask.proto";
+///import "google/protobuf/empty.proto";
+//import "google/protobuf/timestamp.proto";
+//import "google/protobuf/field_mask.proto";
 import "google/api/annotations.proto";
 import "protoc-gen-swagger/options/annotations.proto";
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
@@ -13,7 +13,7 @@ import "github.com/mwitkow/go-proto-validators/validator.proto";
 import "package.proto";
 import "tocrawlentry.proto";
 
-option go_package = "jaytaylor.com/andromeda/domain";
+option go_package = "jaytaylor.com/andromeda/domain;domain";
 
 option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
   info: {
