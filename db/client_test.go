@@ -30,6 +30,15 @@ func TestClientToCrawlOperations(t *testing.T) {
 					"want-moar",
 				}
 
+				{
+					l, err := client.PackagesLen()
+					if err != nil {
+						t.Fatalf("%v%s", typ, err)
+					}
+					if expected, actual := 0, l; actual != expected {
+						t.Errorf("%vExpected indexed packages len=%v but actual=%v", typ, 0, actual)
+					}
+				}
 				for i, pkgPath := range pkgPaths {
 					now := time.Now()
 					entry := &domain.ToCrawlEntry{
@@ -160,6 +169,15 @@ func TestClientPackageOperations(t *testing.T) {
 					"github.com/pkg/errors",
 				}
 
+				{
+					l, err := client.PackagesLen()
+					if err != nil {
+						t.Fatalf("%v%s", typ, err)
+					}
+					if expected, actual := 0, l; actual != expected {
+						t.Errorf("%vExpected indexed packages len=%v but actual=%v", typ, 0, actual)
+					}
+				}
 				for i, pkgPath := range pkgPaths {
 					now := time.Now()
 					pkg := domain.NewPackage(newFakeRR(pkgPath, pkgPath), &now)
@@ -531,20 +549,15 @@ func withTestClient(config Config, fn func(client Client) error) error {
 		}()
 
 		if isPostgres(config) {
-			defer func() {
-				tables := []string{}
-				if cleanupErr := client.Backend().EachTable(func(table string, tx Transaction) error {
-					tables = append(tables, table)
-					return nil
-				}); cleanupErr != nil {
+			reset := func() {
+				if destroyErr := client.Queue().Destroy(QTables()...); destroyErr != nil {
 					if err == nil {
-						err = fmt.Errorf("%vGathering test tables: %s", typ, cleanupErr)
+						err = fmt.Errorf("%vCleaning up test queues: %s", typ, destroyErr)
 					} else {
-						log.Errorf("%v[TEST] Error gathering test tables: %s (logging because existing err=%s", typ, cleanupErr, err)
+						log.Errorf("%v[TEST] Error cleaning up test queues: %s (logging because existing err=%s)", typ, destroyErr, err)
 					}
-					return
 				}
-				if dropErr := client.Backend().Destroy(tables...); dropErr != nil {
+				if dropErr := client.Backend().Destroy(KVTables()...); dropErr != nil {
 					if err == nil {
 						err = fmt.Errorf("%vCleaning up test tables: %s", typ, dropErr)
 					} else {
@@ -552,6 +565,15 @@ func withTestClient(config Config, fn func(client Client) error) error {
 					}
 					return
 				}
+			}
+
+			reset()
+			if err != nil {
+				return
+			}
+
+			defer func() {
+				reset()
 			}()
 		}
 

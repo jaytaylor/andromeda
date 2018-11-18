@@ -72,8 +72,8 @@ func (q *PostgresQueue) Close() error {
 	return nil
 }
 
-func (q *PostgresQueue) initDB(tx *sql.Tx, tables ...string) error {
-	for _, table := range tables {
+func (q *PostgresQueue) initDB(tx *sql.Tx, topics ...string) error {
+	for _, table := range topics {
 		table = q.normalizeTable(table)
 		_, err := tx.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %v (
     id SERIAL PRIMARY KEY,
@@ -82,7 +82,7 @@ func (q *PostgresQueue) initDB(tx *sql.Tx, tables ...string) error {
 )`, pq.QuoteIdentifier(table)))
 		if err != nil {
 			tx.Rollback()
-			return fmt.Errorf("creating table %q: %s", table, err)
+			return fmt.Errorf("creating queue %q: %s", table, err)
 		}
 		_, err = tx.Exec(fmt.Sprintf(
 			`CREATE INDEX IF NOT EXISTS %v ON %v (%v)`,
@@ -92,7 +92,7 @@ func (q *PostgresQueue) initDB(tx *sql.Tx, tables ...string) error {
 		))
 		if err != nil {
 			tx.Rollback()
-			return fmt.Errorf("creating table %q: %s", table, err)
+			return fmt.Errorf("creating queue %q: %s", table, err)
 		}
 	}
 	return nil

@@ -185,25 +185,25 @@ func NewQueueOptions() *QueueOptions {
 
 // WithClient is a convenience utility which handles DB client construction,
 // open, and close..
-func WithClient(config Config, fn func(dbClient Client) error) (err error) {
-	dbClient := NewClient(config)
+func WithClient(config Config, fn func(client Client) error) (err error) {
+	client := NewClient(config)
 
-	if err = dbClient.Open(); err != nil {
-		err = fmt.Errorf("opening DB client %T: %s", dbClient, err)
+	if err = client.Open(); err != nil {
+		err = fmt.Errorf("opening DB client %T: %s", client, err)
 		return
 	}
 	defer func() {
-		if closeErr := dbClient.Close(); closeErr != nil {
+		if closeErr := client.Close(); closeErr != nil {
 			if err == nil {
-				err = fmt.Errorf("closing DB client %T: %s", dbClient, closeErr)
+				err = fmt.Errorf("closing DB client %T: %s", client, closeErr)
 			} else {
-				log.Errorf("Existing error before attempt to close DB client %T: %s", dbClient, err)
-				log.Errorf("Also encountered problem closing DB client %T: %s", dbClient, closeErr)
+				log.Errorf("Existing error before attempt to close DB client %T: %s", client, err)
+				log.Errorf("Also encountered problem closing DB client %T: %s", client, closeErr)
 			}
 		}
 	}()
 
-	if err = fn(dbClient); err != nil {
+	if err = fn(client); err != nil {
 		return
 	}
 
@@ -215,8 +215,8 @@ func kvTables() []string {
 	kv := []string{}
 	for _, table := range tables {
 		regular := true
-		for _, irregularTable := range qTables {
-			if table == irregularTable {
+		for _, qTable := range qTables {
+			if table == qTable {
 				regular = false
 				break
 			}
@@ -286,7 +286,7 @@ func StructFor(tableOrQueue string) (proto.Message, error) {
 		return &domain.CrawlResult{}, nil
 
 	case inflection.Plural(TableToCrawl), inflection.Singular(TableToCrawl):
-		return &domain.ToCrawl{}, nil
+		return &domain.ToCrawlEntry{}, nil
 
 	default:
 		return nil, fmt.Errorf("unrecognized or unsupported table or queue %q", tableOrQueue)
