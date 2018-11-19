@@ -16,9 +16,6 @@ func newCheckCmd() *cobra.Command {
 		Use:   "check",
 		Short: "Check dependencies are installed",
 		Long:  "Check that dependencies are installed and within required versions",
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				checkGit = func() error {

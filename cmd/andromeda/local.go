@@ -26,9 +26,6 @@ func newLocalCmd() *cobra.Command {
 		Use:   "local",
 		Short: "Local operations",
 		Long:  "Local operations",
-		PreRun: func(_ *cobra.Command, args []string) {
-			initLogging()
-		},
 	}
 
 	localCmd.AddCommand(
@@ -46,14 +43,11 @@ func newLocalCmd() *cobra.Command {
 }
 
 func newLocalListTablesCmd() *cobra.Command {
-	crawlCmd := &cobra.Command{
+	localListCmd := &cobra.Command{
 		Use:     "list-tables",
 		Aliases: []string{"tables"},
 		Short:   `Lists available tables, may optionally specify a type ("key/value" / "kv", or "queue" / "q")`,
 		Long:    `Lists available tables, may optionally specify a type ("key/value" / "kv", or "queue" / "q")`,
-		PreRun: func(_ *cobra.Command, args []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			var tables []string
 
@@ -77,9 +71,9 @@ func newLocalListTablesCmd() *cobra.Command {
 		},
 	}
 
-	addCrawlerFlags(crawlCmd)
+	addCrawlerFlags(localListCmd)
 
-	return crawlCmd
+	return localListCmd
 }
 
 func newLocalCrawlCmd() *cobra.Command {
@@ -87,9 +81,7 @@ func newLocalCrawlCmd() *cobra.Command {
 		Use:   "crawl",
 		Short: "Local crawl",
 		Long:  "Invoke a local crawler for 1 or more packages",
-		PreRun: func(_ *cobra.Command, args []string) {
-			initLogging()
-		},
+		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient db.Client) error {
 				return crawl(dbClient, args...)
@@ -112,9 +104,6 @@ func newLocalEnqueueCmd() *cobra.Command {
 		Short: "Add packages to the to-crawl queue",
 		Long:  "Add one or more packages to the to-crawl queue",
 		Args:  cobra.MinimumNArgs(1),
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient db.Client) error {
 				now := time.Now()
@@ -156,9 +145,6 @@ func newLocalDeleteQueueCmd() *cobra.Command {
 		Short:   "Remove items from the to-crawl queue",
 		Long:    "Remove one or more packages from the to-crawl queue",
 		Args:    cobra.MinimumNArgs(1),
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient db.Client) error {
 				n, err := dbClient.ToCrawlRemove(args)
@@ -185,9 +171,6 @@ func newLocalDestroyCmd() *cobra.Command {
 		Short: "Destroy the named tables and / or queues",
 		Long:  "Destroy the named tables and / or queues",
 		Args:  cobra.MinimumNArgs(1),
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient db.Client) error {
 				return dbClient.Destroy(args...)
@@ -205,9 +188,6 @@ func newLocalGetCmd() *cobra.Command {
 		Short: "Retrieve one or more records as JSON based on key from a table as JSON",
 		Long:  "Retrieve one or more records as JSON based on key from a table as JSON",
 		Args:  cobra.MinimumNArgs(2),
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if MemoryProfiler {
 				log.Debug("Starting memory profiler")
@@ -275,9 +255,6 @@ func newLocalCatCmd() *cobra.Command {
 		Short: "Lists table contents with optional filtration; <table> [optional-filter], e.g. pkg -CommittedAt",
 		Long:  "Lists table contents with optional filtration; <table> [optional-filter], e.g. pkg -CommittedAt",
 		Args:  cobra.MinimumNArgs(1),
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient db.Client) error {
 				t := db.FuzzyTableResolver(args[0])
@@ -433,9 +410,6 @@ func newLocalDeletePackageCmd() *cobra.Command {
 		Short:   "Delete a package from the database",
 		Long:    "Delete a package from the database",
 		Args:    cobra.MinimumNArgs(1),
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient db.Client) error {
 				return dbClient.PackageDelete(args...)

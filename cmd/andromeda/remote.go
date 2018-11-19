@@ -30,9 +30,6 @@ func newRemoteCmd() *cobra.Command {
 		Use:   "remote",
 		Short: "RPCs",
 		Long:  "RPC operations",
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 	}
 
 	remoteCmd.AddCommand(
@@ -51,9 +48,6 @@ func newRemoteEnqueueCmd() *cobra.Command {
 		Short: "Add items to the to-crawl queue (or pass '-' to read from STDIN)",
 		Long:  "Add items to the to-crawl queue (or pass '-' to read from STDIN)",
 		Args:  cobra.MinimumNArgs(1),
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				cfg    = crawler.NewConfig()
@@ -121,9 +115,6 @@ func newRemoteCrawlerCmd(aliases ...string) *cobra.Command {
 		Aliases: aliases,
 		Short:   "Start a remote crawler worker",
 		Long:    "Launch a remote crawler gRPC worker",
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				cfg       = crawler.NewConfig()

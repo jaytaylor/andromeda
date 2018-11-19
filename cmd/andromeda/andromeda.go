@@ -47,6 +47,7 @@ func newRootCmd() *cobra.Command {
 		Short: "Search the entire visible golang universe",
 		Long:  "The most complete golang packages DB in this universe",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			initLogging()
 			cfg := NewConfig()
 			if configFile != "" {
 				cfg.File = configFile

@@ -39,9 +39,6 @@ func newDBStatsCmd() *cobra.Command {
 		Use:   "db",
 		Short: "DB table-entry counts",
 		Long:  "Displays packages and to-crawls table counts",
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := db.WithClient(db.NewConfig(DBDriver, DBFile), func(dbClient db.Client) error {
 				counts := map[string]int{}
@@ -73,9 +70,6 @@ func newHostsCmd() *cobra.Command {
 		Use:   "hosts",
 		Short: "Unique hosts",
 		Long:  "Map of each unique host, and repo and package counts per host",
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				dbCfg = db.NewConfig(DBDriver, DBFile)

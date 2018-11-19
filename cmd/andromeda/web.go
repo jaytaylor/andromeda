@@ -27,9 +27,6 @@ func newWebCmd() *cobra.Command {
 		Use:   "web",
 		Short: "Andromeda web server",
 		Long:  "Runs the Andromeda HTTP1.1/HTTP2 web frontend and HTTP/2 gRPC server",
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if MemoryProfiler {
 				log.Debug("Starting memory profiler")

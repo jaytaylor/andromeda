@@ -20,9 +20,6 @@ func newUpdatesProcessorCmd() *cobra.Command {
 		Aliases: []string{"updates", "update-processor"},
 		Short:   "Andromeda async crawl result updates processor",
 		Long:    "Andromeda async crawl result updates processor; makes the most sense when running with postgres as the backing data store",
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if MemoryProfiler {
 				log.Debug("Starting memory profiler")

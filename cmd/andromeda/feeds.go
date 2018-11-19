@@ -25,9 +25,6 @@ func newFeedsCmd() *cobra.Command {
 		Short:   "Feeds collector",
 		Long:    "Stand-alone feeds collector service, can insert directly to the DB or submit over gRPC to an Andromeda web-server",
 		//		ArgAliases: []string{}"
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if MemoryProfiler {
 				log.Debug("Starting memory profiler")

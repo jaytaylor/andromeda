@@ -37,9 +37,6 @@ func newRepoRootCmd() *cobra.Command {
 		Short:   "Package repository root lookup",
 		Long:    "Administrative utilithy to lookup the repository root for a package",
 		Args:    cobra.MinimumNArgs(1),
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			rr, err := crawler.PackagePathToRepoRoot(args[0])
 			if err != nil {
@@ -111,7 +108,6 @@ func newRebuildDBCmd() *cobra.Command {
 		Short:   "Rebuilds the database",
 		Long:    "Rebuilds the entire database",
 		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
 			if len(RebuildDBDriver) == 0 {
 				log.Fatal("rebuild-db-driver value is required")
 			}

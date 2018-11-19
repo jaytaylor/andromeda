@@ -56,9 +56,6 @@ func newServerServiceInstallCmd() *cobra.Command {
 		Aliases: []string{"inst", "i"},
 		Short:   "Install Andromeda Server system service",
 		Long:    "Install Andromeda Server system service",
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			panic("not yet implemented")
 
@@ -114,9 +111,6 @@ func newServerServiceRemoveCmd() *cobra.Command {
 		Aliases: []string{"uninst", "u", "remove", "rm", "r"},
 		Short:   "Uninstall Andromeda Server system service",
 		Long:    "Uninstall Andromeda Server system service",
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			panic("not yet implemented")
 		},
@@ -149,9 +143,6 @@ func newCrawlerServiceInstallCmd() *cobra.Command {
 		Aliases: []string{"inst", "i"},
 		Short:   "Install Andromeda Crawler system service",
 		Long:    "Install Andromeda Crawler system service",
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := doCrawlerServiceVerb("install"); err != nil {
 				log.Fatal(err)
@@ -176,9 +167,6 @@ func newCrawlerServiceRemoveCmd() *cobra.Command {
 		Aliases: []string{"uninst", "u", "remove", "rem", "rm", "r", "delete", "del", "d"},
 		Short:   "Uninstall Andromeda Crawler system service",
 		Long:    "Uninstall Andromeda Crawler system service",
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := doCrawlerServiceVerb("uninstall"); err != nil {
 				log.Fatal(err)
@@ -194,9 +182,6 @@ func newCrawlerServiceStartCmd() *cobra.Command {
 		Use:   "start",
 		Short: "Start Andromeda Crawler system service",
 		Long:  "Start Andromeda Crawler system service",
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := doCrawlerServiceVerb("start"); err != nil {
 				log.Fatal(err)
@@ -212,9 +197,6 @@ func newCrawlerServiceStopCmd() *cobra.Command {
 		Use:   "stop",
 		Short: "Stop Andromeda Crawler system service",
 		Long:  "Stop Andromeda Crawler system service",
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := doCrawlerServiceVerb("stop"); err != nil {
 				log.Fatal(err)
@@ -230,9 +212,6 @@ func newCrawlerServiceRestartCmd() *cobra.Command {
 		Use:   "restart",
 		Short: "Restart Andromeda Crawler system service",
 		Long:  "Restart Andromeda Crawler system service",
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := doCrawlerServiceVerb("restart"); err != nil {
 				log.Fatal(err)
@@ -248,9 +227,6 @@ func newCrawlerServiceRunCmd() *cobra.Command {
 		Use:   "run",
 		Short: "Run Andromeda Crawler system service",
 		Long:  "Run Andromeda Crawler system service",
-		PreRun: func(_ *cobra.Command, _ []string) {
-			initLogging()
-		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := doCrawlerServiceVerb("run"); err != nil {
 				log.Fatal(err)
