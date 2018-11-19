@@ -370,7 +370,7 @@ func (m *Master) Run(stopCh chan struct{}) error {
 			}
 		}
 
-		if res, err = m.crawler.Do(pkg, stopCh); err != nil {
+		if res, err = m.crawler.Do(pkg, entry, stopCh); err != nil {
 			if err2 := m.requeue(entry, err); err2 != nil {
 				return errorlib.Merge([]error{err, err2})
 			}
@@ -472,7 +472,7 @@ func (m *Master) Do(stopCh chan struct{}, pkgs ...string) error {
 				Path: pkgs[i],
 			}
 		}
-		if res, err = m.crawler.Do(pkg, stopCh); err != nil && err == ErrStopRequested {
+		if res, err = m.crawler.Do(pkg, &domain.ToCrawlEntry{PackagePath: pkg.Path}, stopCh); err != nil && err == ErrStopRequested {
 			break
 		}
 

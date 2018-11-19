@@ -93,17 +93,18 @@ func New(cfg *Config) *Crawler {
 }
 
 type crawlerContext struct {
+	pkg    *domain.Package
 	entry  *domain.ToCrawlEntry
 	rr     *vcs.RepoRoot
 	res    *domain.CrawlResult
-	pkg    *domain.Package
 	stopCh chan struct{}
 }
 
-func newCrawlerContext(pkg *domain.Package, stopCh chan struct{}) *crawlerContext {
+func newCrawlerContext(pkg *domain.Package, entry *domain.ToCrawlEntry, stopCh chan struct{}) *crawlerContext {
 	ctx := &crawlerContext{
-		res:    domain.NewCrawlResult(pkg, nil),
 		pkg:    pkg,
+		entry:  entry,
+		res:    domain.NewCrawlResult(pkg, nil),
 		stopCh: stopCh,
 	}
 	return ctx
@@ -123,10 +124,10 @@ func (c *Crawler) Resolve(pkgPath string) (*vcs.RepoRoot, error) {
 	return PackagePathToRepoRoot(pkgPath)
 }
 
-func (c *Crawler) Do(pkg *domain.Package, stopCh chan struct{}) (*domain.CrawlResult, error) {
+func (c *Crawler) Do(pkg *domain.Package, entry *domain.ToCrawlEntry, stopCh chan struct{}) (*domain.CrawlResult, error) {
 	log.WithField("pkg", pkg.Path).Debug("Starting crawl")
 
-	ctx := newCrawlerContext(pkg, stopCh)
+	ctx := newCrawlerContext(pkg, entry, stopCh)
 
 	if ctx.shouldStop() {
 		return nil, ErrStopRequested
@@ -383,7 +384,15 @@ func (c *Crawler) Interrogate(ctx *crawlerContext) error {
 		// value for all packages, including builtins.
 		goPkg, err := loadPackageDynamic(c.Config.SrcPath, rr.Root)
 		if err != nil {
-			return err
+			if ctx.entry == nil {
+				return err
+			}
+			// When the root can't be loaded as a package, try falling back to the
+			// originally named import.
+			goPkg, err = loadPackageDynamic(c.Config.SrcPath, ctx.entry.PackagePath)
+			if err != nil {
+				return err
+			}
 		}
 		localPath = goPkg.Dir
 	}

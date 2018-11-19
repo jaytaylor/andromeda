@@ -125,7 +125,7 @@ func (r *Remote) Run(stopCh chan struct{}) {
 					}
 				}
 
-				res, err = r.crawler.Do(&domain.Package{Path: entry.PackagePath}, stopCh)
+				res, err = r.crawler.Do(&domain.Package{Path: entry.PackagePath}, entry, stopCh)
 
 				if res == nil && err != nil {
 					res = domain.NewCrawlResult(nil, err)
@@ -199,7 +199,7 @@ func (r *Remote) Do(pkgs []string, stopCh chan struct{}) error {
 	rcsc := domain.NewRemoteCrawlerServiceClient(conn)
 
 	for _, pkg := range pkgs {
-		res, err := r.crawler.Do(&domain.Package{Path: pkg}, stopCh)
+		res, err := r.crawler.Do(&domain.Package{Path: pkg}, nil, stopCh)
 		if res == nil && err != nil {
 			res = domain.NewCrawlResult(nil, err)
 		} else if res.Error() == nil && err != nil {
