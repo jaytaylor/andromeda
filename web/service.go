@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -343,6 +344,10 @@ func (service *WebService) subPkgFallback(w http.ResponseWriter, req *http.Reque
 // This is helpful because crawlers operating behind a proxy will not be able to
 // use the openssl command to connect directly to port 443.
 func (service *WebService) publicKeyCrt(w http.ResponseWriter, req *http.Request, domain string) {
+	if !regexp.MustCompile(`^.*:[0-9]+$$`).MatchString(domain) {
+		web.RespondWithText(w, 400, "malformed input domain name, missing port specification")
+		return
+	}
 	for _, name := range service.Config.Hostnames {
 		if name == strings.Split(domain, ":")[0] {
 			s, err := openssl.CertPubKey(domain)
