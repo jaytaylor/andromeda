@@ -215,7 +215,8 @@ func (service *WebService) tplAsset(asset string) func(w http.ResponseWriter, re
 }
 
 func (service *WebService) pkg(w http.ResponseWriter, req *http.Request) {
-	pkgPath, redirect := domain.PackagePathFromURL(strings.Trim(hitch.Params(req).ByName("package"), "/"))
+	path := strings.Trim(hitch.Params(req).ByName("package"), "/")
+	pkgPath, redirect := domain.PackagePathFromURL(path)
 	if redirect {
 		http.Redirect(w, req, "/"+pkgPath, 301)
 		return
@@ -232,9 +233,9 @@ func (service *WebService) pkg(w http.ResponseWriter, req *http.Request) {
 
 	// Handle API request.
 	// TODO: This is not good structure, clean it up with a proper mux.
-	if strings.HasPrefix(pkgPath, "v1/") {
-		if strings.HasPrefix(pkgPath, "v1/public-key-crt") {
-			service.publicKeyCrt(w, req, strings.TrimLeft(pkgPath, "v1/public-key-crt"))
+	if strings.HasPrefix(path, "v1/") {
+		if strings.HasPrefix(path, "v1/public-key-crt") {
+			service.publicKeyCrt(w, req, strings.TrimLeft(path, "v1/public-key-crt"))
 			return
 		}
 
