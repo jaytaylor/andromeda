@@ -372,29 +372,11 @@ func (c *Crawler) Interrogate(ctx *crawlerContext) error {
 		pkg       = ctx.pkg
 		rr        = ctx.rr
 		pc        = pkg.LatestCrawl()
-		localPath string // = filepath.Join(c.Config.SrcPath, rr.Root)
+		localPath = filepath.Join(c.Config.SrcPath, rr.Root)
 	)
 
 	if ctx.res.Discoveries == nil {
 		ctx.res.Discoveries = []string{}
-	}
-
-	{
-		// Use golang lookup to determine pkg path on filesystem to ensure correct path
-		// value for all packages, including builtins.
-		goPkg, err := loadPackageDynamic(c.Config.SrcPath, rr.Root)
-		if err != nil {
-			if ctx.entry == nil {
-				return err
-			}
-			// When the root can't be loaded as a package, try falling back to the
-			// originally named import.
-			goPkg, err = loadPackageDynamic(c.Config.SrcPath, ctx.entry.PackagePath)
-			if err != nil {
-				return err
-			}
-		}
-		localPath = goPkg.Dir
 	}
 
 	if err := analyzeFiles(pkg.Data, localPath); err != nil {
