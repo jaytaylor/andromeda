@@ -215,13 +215,14 @@ func (service *WebService) tplAsset(asset string) func(w http.ResponseWriter, re
 }
 
 func (service *WebService) pkg(w http.ResponseWriter, req *http.Request) {
-	pkgPath := strings.Trim(hitch.Params(req).ByName("package"), "/")
-	if len(pkgPath) == 0 {
+	pkgPath, redirect := domain.PackagePathFromURL(strings.Trim(hitch.Params(req).ByName("package"), "/"))
+	if redirect {
+		http.Redirect(w, req, "/"+pkgPath, 301)
+		return
+	} else if len(pkgPath) == 0 {
 		service.tplAsset("index.tpl")(w, req)
 		return
-	}
-
-	if pkgPath == "ws" {
+	} else if pkgPath == "ws" {
 		log.Debug("Passing off to serveWs handler")
 		serveWs(service.hub, w, req)
 		return
