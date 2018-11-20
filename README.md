@@ -233,6 +233,8 @@ TBD
 
 ### TODOs
 
+[X] Re-enable kubernetes (hardcoded as disabled in master.go).
+
 Note: Instead of "repo" or whatever, think about calling a reporoot a "tree".  This terminology is used [here](https://github.com/golang/go/wiki/Modules).
 
 #### Fancy Data
