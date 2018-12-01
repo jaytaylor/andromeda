@@ -322,9 +322,8 @@ func (service *WebService) subPkgFallback(w http.ResponseWriter, req *http.Reque
 	}
 	tpl := template.Must(template.New(asset).Funcs(sprig.FuncMap()).Parse(string(content)))
 
-	nPkgPath := domain.SubPackagePathNormalize(pkg.Path, pkgPath)
-	log.Debugf("nPkgPath=%v", nPkgPath)
-	if sub, ok := pkg.Data.SubPackages[nPkgPath]; ok {
+	if sub, ok := pkg.Data.SubPackages[pkgPath]; ok {
+		log.WithField("pkg-path", pkgPath).Debugf("Subpackage identified")
 		tplCtx := &SubPackageContext{
 			Path: pkgPath,
 			Pkg:  pkg,
