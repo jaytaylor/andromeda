@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-var gitURLExpr = regexp.MustCompile(`^(?:[hH][tT][tT][pP][sS]?:\/\/|.+@(.+\..+:))?(.+?)(?:\.git)?$`)
+var gitURLExpr = regexp.MustCompile(`^(?:[hH][tT][tT][pP][sS]?:\/\/|.+@(.+\..+:))(.+?)(?:\.git)?$`)
 
 // PackagePathFromURL supports extracting a go package name from a git clone URL.
 // Returns the cleaned package path name and a boolean indicating whether or not

@@ -233,7 +233,9 @@ TBD
 
 ### TODOs
 
-[X] Re-enable kubernetes (hardcoded as disabled in master.go).
+- [ ] Show nested packages listing in sub-packages template (subs don't imply a terminal!).
+- [ ] Find a way to include `main` packages.
+- [X] Re-enable kubernetes (hardcoded as disabled in master.go).
 
 Note: Instead of "repo" or whatever, think about calling a reporoot a "tree".  This terminology is used [here](https://github.com/golang/go/wiki/Modules).
 

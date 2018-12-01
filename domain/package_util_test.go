@@ -38,8 +38,8 @@ func TestPackagePathFromURL(t *testing.T) {
 			expected: tuple{"github.com/jaytaylor/andromeda/crawler/feed", false},
 		},
 		{
-			input:    "github.com/jaytaylor/andromeda.git",
-			expected: tuple{"github.com/jaytaylor/andromeda", true},
+			input:    "github.com/jaytaylor/git.git",
+			expected: tuple{"github.com/jaytaylor/git.git", false},
 		},
 		{
 			input:    "git@github.com:jaytaylor/andromeda",
