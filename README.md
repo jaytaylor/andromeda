@@ -229,7 +229,7 @@ A non-default configuration file path location may be specified with the `-confi
 
 ### License
 
-TBD
+(C) All Rights Reserved, Jay Taylor, 2018-2019.
 
 ### TODOs
 
