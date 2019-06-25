@@ -158,12 +158,12 @@ See [52830545-git-clone-not-works-with-some-ramdisk-and-ntfs](https://www.bounty
 ### Running remote-crawler behind a proxy
 
 #### Linux
-Host github.com gitlab.com bitbucket.com bitbucket.org code.cloudfoundry.org launchpad.net
+Host github.com gitlab.com bitbucket.com bitbucket.org code.cloudfoundry.org launchpad.net git.code.sf.net
     ProxyCommand ncat --proxy proxy.example.com:80 %h %p
     Compression yes
 
 ##### macOS
-Host github.com gitlab.com bitbucket.com bitbucket.org code.cloudfoundry.org launchpad.net
+Host github.com gitlab.com bitbucket.com bitbucket.org code.cloudfoundry.org launchpad.net git.code.sf.net
     ProxyCommand nc -X connect -x proxy.example.com:80 %h %p
     Compression yes
 
@@ -233,6 +233,7 @@ A non-default configuration file path location may be specified with the `-confi
 
 ### TODOs
 
+- [ ] Elasticsearch backend?
 - [ ] Show nested packages listing in sub-packages template (subs don't imply a terminal!).
 - [ ] Find a way to include `main` packages.
 - [X] Re-enable kubernetes (hardcoded as disabled in master.go).

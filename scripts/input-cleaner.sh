@@ -24,6 +24,11 @@ if [ -z "${1:-}" ] ; then
     echo 'INFO: Reading from STDIN' 1>&2
 fi
 
+# n.b. git.code.sf.net doesn't appear to use a conventional layout.
+#
+# e.g. https://git.code.sf.net/p/grinder/code grinder-code
+#      git://git.code.sf.net/p/grinder/code grinder-code
+
 grep -v '\/\(_\?vendor\|Godeps\/_workspace\/src\)\/' < "${file}" \
     | grep -v '^[^\.]*$' \
     | sed 's/^\(\(github\.com\|bitbucket\.com\|bitbucket\.org\|code\.cloudfoundry\.org\|launchpad\.net\|k8s\.io\|gopkg\.in\|jaytaylor\.com\|gigawatt\.io\)\/\([^\/]\+\/[^\/]\+\)\).*/\1/' \
